@@ -6,6 +6,10 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { SessionLocaleSync } from "@/app/_components/SessionLocaleSync";
 import { StayLogo } from "@/app/_components/StayLogo";
+import {
+  settingsSurfaceEnabled,
+  type PropertySettingsRoot,
+} from "@/lib/propertySettings";
 import type { AppConfig } from "@/lib/types";
 
 type Props = {
@@ -19,6 +23,7 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
   const t = useTranslations("nav");
   const [featureFlags, setFeatureFlags] = useState(featureFlagsProp);
   const [channelManager, setChannelManager] = useState<string | undefined>();
+  const [settingsEnabled, setSettingsEnabled] = useState(false);
 
   useEffect(() => {
     if (featureFlagsProp) {
@@ -31,6 +36,13 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
         if (config?.channel_manager) setChannelManager(config.channel_manager);
       })
       .catch(() => undefined);
+
+    void fetch("/api/stay/reception/settings/")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((root: PropertySettingsRoot | null) => {
+        setSettingsEnabled(settingsSurfaceEnabled(root));
+      })
+      .catch(() => setSettingsEnabled(false));
   }, [featureFlagsProp]);
 
   async function logout() {
@@ -41,7 +53,9 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
 
   const linkClass = (href: string) =>
     `rounded-xl px-3 py-2 text-sm font-medium transition ${
-      pathname === href || (href.startsWith("/reports") && pathname.startsWith("/reports"))
+      pathname === href ||
+      (href.startsWith("/reports") && pathname.startsWith("/reports")) ||
+      (href.startsWith("/settings") && pathname.startsWith("/settings"))
         ? "bg-stay-blue text-white shadow-sm"
         : "text-stay-muted hover:bg-stay-blue-light hover:text-stay-blue"
     }`;
@@ -80,6 +94,11 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
           <Link href="/reports/property-financial" className={linkClass("/reports/property-financial")}>
             {t("reports")}
           </Link>
+          {settingsEnabled ? (
+            <Link href="/settings" className={linkClass("/settings")}>
+              {t("settings")}
+            </Link>
+          ) : null}
           <Link href="/whatsapp/overview" className={whatsappLinkClass}>
             {t("whatsapp")}
           </Link>

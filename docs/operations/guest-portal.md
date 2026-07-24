@@ -46,25 +46,25 @@ docker compose --profile test-run run --rm django-run \
 
 ## Distribucija linka nakon web check-ina
 
-Nakon uspješnog `complete_session`, Celery task `reservations.send_guest_portal_link_after_checkin` šalje portal URL na **isti kanal** kojim je pokrenut check-in (`GuestCheckInSession.created_from`):
+Nakon uspješnog `complete_session`, Celery task `reservations.send_guest_portal_link_after_checkin` šalje na **isti kanal** kojim je pokrenut check-in (`GuestCheckInSession.created_from`):
 
-| `created_from` | Kanal |
-|----------------|-------|
-| `channex` | Channex / Booking messaging |
-| `email` | Email (HTML + tipka) |
-| `whatsapp_autocheckin` | WhatsApp session poruka |
-| `reception_manual` | Email ako postoji, inače skip |
+| `created_from` | Kanal | Oblik |
+|----------------|-------|-------|
+| `channex` | Channex / Booking | **Dvije poruke:** (1) CTA + potpis + footer, (2) samo URL s `?lang=` |
+| `whatsapp_autocheckin` | WhatsApp | Isto (dvije poruke) |
+| `email` | Email | Jedna HTML poruka (CTA + tipka) |
+| `reception_manual` | Email ako postoji, inače skip | Kao email |
 
-- Dedup hint: `guest_portal_link` (jednom po rezervaciji).
+- Dedup hint: `guest_portal_link` (jednom po rezervaciji; CTA/prva poruka). Druga BOOKING/WA poruka: hint `guest_portal_link url`.
 - Email/Channex gosti **ne** dobivaju WhatsApp portal link.
 - Meta welcome template se ne mijenja.
 
-Ručno slanje s recepcije: PR-D.
+Ručno slanje s recepcije: Property Settings → Share (PR-D2; [ADR 0008](../architecture/adr/0008-property-settings.md)).
 
 ---
 
 ## Uređivanje sadržaja
 
-Svakodnevne izmjene WiFi / dolazak / parking / doručak / kontakt / self-service: **app.stay.hr** Guest portal settings (PR-D). Do tada: Django admin ili `seed_uzorita_guest_info`.
+Svakodnevne izmjene WiFi / dolazak / parking / doručak / kontakt / self-service: **app.stay.hr/settings** (Property Settings — [ADR 0008](../architecture/adr/0008-property-settings.md)). Guest portal (`/g/{token}`) je samo view.
 
-ADR: [0007-guest-portal.md](../architecture/adr/0007-guest-portal.md).
+ADR: [0007-guest-portal.md](../architecture/adr/0007-guest-portal.md) · [0008-property-settings.md](../architecture/adr/0008-property-settings.md).

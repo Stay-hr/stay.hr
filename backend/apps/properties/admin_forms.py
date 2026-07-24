@@ -82,7 +82,7 @@ class PropertyAdminForm(forms.ModelForm):
 
     class Meta:
         model = Property
-        fields = "__all__"
+        exclude = ("settings_version",)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

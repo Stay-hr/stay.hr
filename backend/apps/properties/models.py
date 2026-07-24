@@ -31,6 +31,10 @@ class Property(TenantScopedModel):
         blank=True,
         help_text="Guest FAQ, localized WhatsApp/check-in texts, maps link, entrance image path.",
     )
+    settings_version = models.PositiveIntegerField(
+        default=1,
+        help_text="Optimistic-concurrency token for Property Settings PATCH (ADR 0008).",
+    )
     timezone = models.CharField(max_length=64, blank=True)
     language = models.CharField(max_length=10, blank=True)
     check_in_time = models.TimeField(default=time(15, 0))
@@ -80,6 +84,58 @@ class Property(TenantScopedModel):
     whatsapp_autocheckin_email_lead_minutes = models.PositiveSmallIntegerField(
         default=30,
         help_text="Intro email this many minutes before whatsapp_autocheckin_time (same day).",
+    )
+    # Messaging orchestration schedules (ADR 0010). Null = inherit Tenant → Platform.
+    pre_arrival_days_before = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Override: days before check-in for CHECKIN_INFO/LINK. Null = inherit.",
+    )
+    pre_arrival_send_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Override: local send clock for pre-arrival. Null = inherit.",
+    )
+    pre_arrival_schedule_strategy = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="Override: FIXED_TIME | FIRST_AFTER | IMMEDIATE. Blank = inherit.",
+    )
+    welcome_days_before = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Override: days before check-in for generic WELCOME schedule. Null = inherit.",
+    )
+    welcome_send_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Override: local send clock for welcome_*. Null = inherit.",
+    )
+    welcome_schedule_strategy = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="Override: FIXED_TIME | FIRST_AFTER | IMMEDIATE. Blank = inherit.",
+    )
+    whatsapp_welcome_days_before = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Override: days before check-in for WhatsApp WELCOME. Null = inherit.",
+    )
+    whatsapp_welcome_send_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Override: local send clock for WhatsApp welcome. Null falls back to "
+            "whatsapp_autocheckin_time then Tenant → Platform."
+        ),
+    )
+    whatsapp_welcome_schedule_strategy = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="Override: FIXED_TIME | FIRST_AFTER | IMMEDIATE. Blank = inherit.",
     )
     guest_checkin_opens_days_before = models.PositiveSmallIntegerField(
         default=7,

@@ -50,6 +50,16 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
 
   const headers: Record<string, string> = { ...authHeaders };
 
+  // Optimistic locking for property settings (and any other callers).
+  const ifMatch = request.headers.get("if-match");
+  if (ifMatch) {
+    headers["If-Match"] = ifMatch;
+  }
+  const ifNoneMatch = request.headers.get("if-none-match");
+  if (ifNoneMatch) {
+    headers["If-None-Match"] = ifNoneMatch;
+  }
+
   const init: RequestInit = {
     method: request.method,
     headers,
@@ -130,6 +140,10 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
   const responseHeaders: Record<string, string> = {
     "Content-Type": contentType,
   };
+  const etag = upstream.headers.get("etag");
+  if (etag) {
+    responseHeaders["ETag"] = etag;
+  }
   if (relativePath.includes("reception/reviews")) {
     responseHeaders["Cache-Control"] = "no-store, no-cache, must-revalidate";
     responseHeaders["Pragma"] = "no-cache";

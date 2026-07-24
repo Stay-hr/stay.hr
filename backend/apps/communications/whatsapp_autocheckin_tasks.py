@@ -98,11 +98,29 @@ def _build_intro_email_context(reservation: Reservation) -> tuple[str, str] | No
     return wa_link, display_phone or business_digits
 
 
+def _orchestration_owns_outbound(reservation: Reservation) -> bool:
+    """Phase 7: True when Messaging Engine owns live WELCOME for this reservation."""
+    from apps.communications.messaging.flags import suppress_legacy_automated_outbound
+
+    return suppress_legacy_automated_outbound(reservation=reservation)
+
+
 def send_autocheckin_intro_email(
     reservation: Reservation,
     *,
     dry_run: bool = False,
 ) -> dict:
+    if _orchestration_owns_outbound(reservation):
+        logger.info(
+            "autocheckin intro email suppressed_by_orchestration reservation_id=%s",
+            reservation.pk,
+        )
+        return {
+            "status": "skipped",
+            "reason": "orchestration_owns_outbound",
+            "reservation_id": reservation.pk,
+        }
+
     if reservation_has_completed_web_checkin(reservation):
         return {
             "status": "skipped",
@@ -401,6 +419,20 @@ def maybe_send_immediate_autocheckin_welcome(reservation_id: int) -> dict:
     if reservation is None:
         return {"status": "missing", "reservation_id": reservation_id}
 
+    # Phase 7: engine TIME/FIXED_TIME owns WELCOME for live allowlisted properties.
+    # Do not call send_welcome_template here — provider adapter still uses it.
+    if _orchestration_owns_outbound(reservation):
+        logger.info(
+            "immediate autocheckin welcome suppressed_by_orchestration "
+            "reservation_id=%s",
+            reservation_id,
+        )
+        return {
+            "status": "skipped",
+            "reason": "orchestration_owns_outbound",
+            "reservation_id": reservation_id,
+        }
+
     if not is_immediate_autocheckin_eligible(reservation):
         return {"status": "skipped", "reason": "not_eligible", "reservation_id": reservation_id}
 
@@ -458,6 +490,13 @@ def run_deferred_guest_document_checkins() -> dict:
 
 @shared_task
 def run_whatsapp_autocheckin_welcome() -> dict:
+    """Legacy WELCOME / intro sweep.
+
+    Phase 7: for live allowlisted properties the Messaging Engine owns WELCOME;
+    those reservations are skipped here (``orchestration_owns_outbound``).
+    ``send_welcome_template_for_reservation`` itself stays callable from the
+    WhatsApp provider adapter.
+    """
     result: dict = {
         "intro_sent": 0,
         "intro_skipped": 0,
@@ -465,10 +504,15 @@ def run_whatsapp_autocheckin_welcome() -> dict:
         "sent": 0,
         "skipped": 0,
         "failed": 0,
+        "suppressed": 0,
         "dry_run": False,
     }
 
     for reservation in iter_due_autocheckin_intro_emails():
+        if _orchestration_owns_outbound(reservation):
+            result["suppressed"] += 1
+            result["intro_skipped"] += 1
+            continue
         outcome = send_autocheckin_intro_email(reservation)
         status = outcome.get("status")
         if status == "sent":
@@ -479,6 +523,10 @@ def run_whatsapp_autocheckin_welcome() -> dict:
             result["intro_skipped"] += 1
 
     for reservation in iter_due_autocheckin_reservations():
+        if _orchestration_owns_outbound(reservation):
+            result["suppressed"] += 1
+            result["skipped"] += 1
+            continue
         outcome = send_welcome_template_for_reservation(reservation)
         status = outcome.get("status")
         if status == "sent":
@@ -494,5 +542,11 @@ def run_whatsapp_autocheckin_welcome() -> dict:
 
     session_lost = mark_autocheckin_session_lost_for_due_reservations()
     result["session_lost_marked"] = session_lost.get("marked", 0)
+
+    if result["suppressed"]:
+        logger.info(
+            "whatsapp_autocheckin_welcome suppressed_by_orchestration count=%s",
+            result["suppressed"],
+        )
 
     return result

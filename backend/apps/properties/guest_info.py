@@ -306,6 +306,16 @@ def normalize_guest_info(raw: Any) -> dict[str, Any]:
     }
     if guide:
         result["guide"] = guide
+    # API/DTO schema version (ADR 0008); optional on storage.
+    schema_version = data.get("schema_version")
+    if schema_version is not None:
+        try:
+            result["schema_version"] = int(schema_version)
+        except (TypeError, ValueError):
+            pass
+    canonical = str(data.get("canonical_language") or "").strip().lower().split("-")[0]
+    if canonical:
+        result["canonical_language"] = canonical
     return result
 
 

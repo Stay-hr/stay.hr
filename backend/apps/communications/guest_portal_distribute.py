@@ -46,6 +46,14 @@ _SESSION_TO_PORTAL_CREATED_FROM = {
     GuestCheckInSessionCreatedFrom.CHANNEX: GuestPortalAccessCreatedFrom.SYSTEM,
 }
 
+VALID_PORTAL_CHANNELS = frozenset(
+    {
+        GuestMessageChannel.BOOKING,
+        GuestMessageChannel.WHATSAPP,
+        GuestMessageChannel.EMAIL,
+    }
+)
+
 
 def portal_link_already_sent(reservation: Reservation) -> bool:
     return GuestMessageDraft.objects.filter(
@@ -69,6 +77,21 @@ def resolve_portal_link_channel(created_from: str) -> str | None:
     if created_from == GuestCheckInSessionCreatedFrom.RECEPTION_MANUAL:
         return GuestMessageChannel.EMAIL
     return None
+
+
+def default_channel_from_completed_checkin(reservation: Reservation) -> str | None:
+    """Channel from the latest completed check-in session, if any."""
+    session = (
+        GuestCheckInSession.objects.filter(
+            reservation=reservation,
+            status=GuestCheckInSessionStatus.COMPLETED,
+        )
+        .order_by("-completed_at", "-id")
+        .first()
+    )
+    if session is None:
+        return None
+    return resolve_portal_link_channel(session.created_from)
 
 
 def _portal_created_from(session_created_from: str) -> str:
@@ -120,61 +143,47 @@ def _create_portal_draft(
     )
 
 
-def send_guest_portal_link_for_session(
+def send_guest_portal_link(
+    reservation: Reservation,
     *,
-    reservation_id: int,
-    session_id: int,
+    channel: str,
+    portal_created_from: str = GuestPortalAccessCreatedFrom.SYSTEM,
+    allow_resend: bool = False,
     dry_run: bool = False,
+    session_id: int | None = None,
+    created_from: str | None = None,
 ) -> dict:
     """
-    Ensure portal access and send the portal URL on the check-in completion channel.
+    Ensure portal access and send the portal URL on ``channel``.
 
-    Dedup: at most one ``GuestMessageDraft`` with hint ``guest_portal_link`` per reservation.
+    Dedup: at most one ``GuestMessageDraft`` with hint ``guest_portal_link`` per
+    reservation unless ``allow_resend`` is True (reception Share).
 
     BOOKING / WHATSAPP: two consecutive sends (CTA+sign-off, then URL-only).
-    EMAIL: single HTML message (unchanged).
+    EMAIL: single HTML message.
     """
     base: dict = {
-        "reservation_id": reservation_id,
-        "session_id": session_id,
+        "reservation_id": reservation.pk,
         "hint": HINT_GUEST_PORTAL_LINK,
+        "channel": channel,
     }
+    if session_id is not None:
+        base["session_id"] = session_id
+    if created_from is not None:
+        base["created_from"] = created_from
 
-    reservation = (
-        Reservation.objects.filter(pk=reservation_id)
-        .select_related("property", "tenant")
-        .first()
-    )
-    if reservation is None:
-        return {**base, "status": "skipped", "reason": "reservation_not_found"}
+    if channel not in VALID_PORTAL_CHANNELS:
+        return {**base, "status": "skipped", "reason": "unknown_channel"}
 
-    session = GuestCheckInSession.objects.filter(
-        pk=session_id,
-        reservation_id=reservation_id,
-    ).first()
-    if session is None:
-        return {**base, "status": "skipped", "reason": "session_not_found"}
-
-    if session.status != GuestCheckInSessionStatus.COMPLETED:
-        return {**base, "status": "skipped", "reason": "session_not_completed"}
-
-    if portal_link_already_sent(reservation):
+    if not allow_resend and portal_link_already_sent(reservation):
         return {**base, "status": "already_sent"}
-
-    created_from = session.created_from
-    channel = resolve_portal_link_channel(created_from)
-    base["created_from"] = created_from
-    base["channel"] = channel
-
-    if channel is None:
-        return {**base, "status": "skipped", "reason": "unknown_created_from"}
 
     if channel == GuestMessageChannel.EMAIL and not _guest_recipient(reservation):
         return {**base, "status": "skipped", "reason": "no_email"}
 
     access = ensure_active_portal_access(
         reservation,
-        created_from=_portal_created_from(created_from),
+        created_from=portal_created_from,
     )
     portal_url = build_guest_portal_url(access, reservation)
     body = render_guest_portal_link_message(reservation, portal_url=portal_url)
@@ -215,7 +224,7 @@ def send_guest_portal_link_for_session(
         except Exception as exc:
             logger.exception(
                 "guest portal link send failed reservation_id=%s channel=%s created_from=%s",
-                reservation_id,
+                reservation.pk,
                 channel,
                 created_from,
             )
@@ -229,7 +238,7 @@ def send_guest_portal_link_for_session(
         sent = _outbound_looks_sent(outbound, draft)
         logger.info(
             "guest portal link sent reservation_id=%s channel=%s created_from=%s",
-            reservation_id,
+            reservation.pk,
             channel,
             created_from,
         )
@@ -253,7 +262,7 @@ def send_guest_portal_link_for_session(
     except Exception as exc:
         logger.exception(
             "guest portal link send failed reservation_id=%s channel=%s created_from=%s",
-            reservation_id,
+            reservation.pk,
             channel,
             created_from,
         )
@@ -286,7 +295,7 @@ def send_guest_portal_link_for_session(
         logger.exception(
             "guest portal link URL send failed reservation_id=%s channel=%s "
             "created_from=%s draft_id=%s url_draft_id=%s",
-            reservation_id,
+            reservation.pk,
             channel,
             created_from,
             draft.pk,
@@ -306,7 +315,7 @@ def send_guest_portal_link_for_session(
     both_sent = sent and url_sent
     logger.info(
         "guest portal link sent reservation_id=%s channel=%s created_from=%s",
-        reservation_id,
+        reservation.pk,
         channel,
         created_from,
     )
@@ -318,3 +327,60 @@ def send_guest_portal_link_for_session(
         "portal_url": portal_url,
         "access_id": access.pk,
     }
+
+
+def send_guest_portal_link_for_session(
+    *,
+    reservation_id: int,
+    session_id: int,
+    dry_run: bool = False,
+) -> dict:
+    """
+    Ensure portal access and send the portal URL on the check-in completion channel.
+
+    Dedup: at most one ``GuestMessageDraft`` with hint ``guest_portal_link`` per reservation.
+
+    BOOKING / WHATSAPP: two consecutive sends (CTA+sign-off, then URL-only).
+    EMAIL: single HTML message (unchanged).
+    """
+    base: dict = {
+        "reservation_id": reservation_id,
+        "session_id": session_id,
+        "hint": HINT_GUEST_PORTAL_LINK,
+    }
+
+    reservation = (
+        Reservation.objects.filter(pk=reservation_id)
+        .select_related("property", "tenant")
+        .first()
+    )
+    if reservation is None:
+        return {**base, "status": "skipped", "reason": "reservation_not_found"}
+
+    session = GuestCheckInSession.objects.filter(
+        pk=session_id,
+        reservation_id=reservation_id,
+    ).first()
+    if session is None:
+        return {**base, "status": "skipped", "reason": "session_not_found"}
+
+    if session.status != GuestCheckInSessionStatus.COMPLETED:
+        return {**base, "status": "skipped", "reason": "session_not_completed"}
+
+    created_from = session.created_from
+    channel = resolve_portal_link_channel(created_from)
+    base["created_from"] = created_from
+    base["channel"] = channel
+
+    if channel is None:
+        return {**base, "status": "skipped", "reason": "unknown_created_from"}
+
+    return send_guest_portal_link(
+        reservation,
+        channel=channel,
+        portal_created_from=_portal_created_from(created_from),
+        allow_resend=False,
+        dry_run=dry_run,
+        session_id=session_id,
+        created_from=created_from,
+    )

@@ -28,7 +28,7 @@ Worker exhaustion from long-lived SSE on Gunicorn sync workers is solved by **Ph
 
 1. **Configurable Gunicorn** via env vars (`GUNICORN_*`) and `scripts/run-gunicorn.sh` (not entrypoint).
 2. **Default production profile:** 8 sync workers, `--timeout 3600` (long-lived SSE; not a normal HTTP timeout), `--max-requests 1000` + jitter, access log to stdout.
-3. **Observability:** in-process SSE connection counters (**per worker process** — not global; reset on worker recycle/restart), structured `sse_stream_opened` / `sse_stream_closed` logs, `GET /api/v1/reception/system/status/` (**reception:read** — `schema_version: 2`, `metrics_scope`, `build.*`, raw `sse`/`event_bus`/`database`, derived `components.*.status` + `reason`).
+3. **Observability:** in-process SSE connection counters (**per worker process** — not global; reset on worker recycle/restart), structured `sse_stream_opened` / `sse_stream_closed` logs, `GET /api/v1/reception/system/status/` (**reception:read** — `schema_version: 3`, `metrics_scope`, `build.*`, raw `sse`/`event_bus`/`database`/`messaging`, derived `components.*.status` + `reason`).
 4. **Load test gate:** `scripts/load-test-gunicorn-sse.sh` must PASS before sign-off after worker changes (`LOAD_TEST_LIGHT=1` for CI smoke).
 5. **Benchmark:** `scripts/benchmark-health-latency.sh` — record p50/p95/p99 before and after changes (`BENCHMARK_LIGHT=1` for CI; artifacts via `OPS_CI_ARTIFACT_DIR`).
 6. **Monitoring:** 3–7 day checklist in [gunicorn-sse-monitoring.md](../../operations/gunicorn-sse-monitoring.md).

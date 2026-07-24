@@ -213,6 +213,19 @@ GUEST_CHECKIN_REMINDER_ENABLED = env.bool("GUEST_CHECKIN_REMINDER_ENABLED", defa
 GUEST_CHECKIN_REMINDER_DAYS_BEFORE = env("GUEST_CHECKIN_REMINDER_DAYS_BEFORE", default="7,0")
 GUEST_CHECKIN_METRICS_DAYS = env.int("GUEST_CHECKIN_METRICS_DAYS", default=30)
 
+# Messaging Orchestration Engine (ADR 0010) — rollout flags.
+# Fail-closed: ENABLED with empty TENANTS and PROPERTIES → no materialize/send.
+MESSAGE_ORCHESTRATION_ENABLED = env.bool("MESSAGE_ORCHESTRATION_ENABLED", default=False)
+MESSAGE_ORCHESTRATION_SHADOW = env.bool("MESSAGE_ORCHESTRATION_SHADOW", default=True)
+MESSAGE_ORCHESTRATION_TENANTS = env.list("MESSAGE_ORCHESTRATION_TENANTS", default=[])
+MESSAGE_ORCHESTRATION_PROPERTIES = env.list("MESSAGE_ORCHESTRATION_PROPERTIES", default=[])
+# Ops alerts when all channel_policy providers fail (comma-separated).
+OPERATIONS_ALERT_EMAILS = env.list("OPERATIONS_ALERT_EMAILS", default=[])
+MESSAGING_ALERT_THROTTLE_SECONDS = env.float("MESSAGING_ALERT_THROTTLE_SECONDS", default=300.0)
+
+# Property Settings shell (ADR 0008). False → all capabilities/tabs off + reception nav hidden.
+RECEPTION_PROPERTY_SETTINGS = env.bool("RECEPTION_PROPERTY_SETTINGS", default=True)
+
 # Fiskal Platform v2 Execution API (guest invoice F1 via pu_cis)
 FISKAL_PLATFORM_URL = env("FISKAL_PLATFORM_URL", default="http://fiskal-api:8000")
 FISKAL_PLATFORM_API_KEY = env("FISKAL_PLATFORM_API_KEY", default="")
@@ -315,6 +328,11 @@ CELERY_BEAT_SCHEDULE = {
     },
     "guest-checkin-pre-arrival-reminders": {
         "task": "communications.send_pre_arrival_checkin_reminders",
+        "schedule": 900.0,
+    },
+    # ADR 0010 — gated by MESSAGE_ORCHESTRATION_* (no-op when disabled).
+    "message-orchestration": {
+        "task": "communications.run_message_orchestration",
         "schedule": 900.0,
     },
     "guest-checkin-metrics-daily": {

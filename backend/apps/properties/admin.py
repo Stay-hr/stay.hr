@@ -146,7 +146,26 @@ class PropertyAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
                 ),
                 "description": (
                     "Dnevna welcome poruka gostima s check-inom danas (property lokalno vrijeme). "
-                    "Intro email s wa.me linkom šalje se lead_minutes prije welcome vremena."
+                    "Intro email s wa.me linkom šalje se lead_minutes prije welcome vremena. "
+                    "Orchestration koristi whatsapp_welcome_* (null = naslijedi / legacy time)."
+                ),
+            },
+        ),
+        (
+            "Messaging schedules (ADR 0010)",
+            {
+                "fields": (
+                    "pre_arrival_days_before",
+                    "pre_arrival_send_time",
+                    "pre_arrival_schedule_strategy",
+                    "whatsapp_welcome_days_before",
+                    "whatsapp_welcome_send_time",
+                    "whatsapp_welcome_schedule_strategy",
+                ),
+                "description": (
+                    "Property override za TIME materialization. Prazno/null = Tenant → Platform. "
+                    "WELCOME SoT: whatsapp_welcome_* (welcome_* columns unread; Korak 2 drop deferred). "
+                    "Strategije: FIXED_TIME, FIRST_AFTER, IMMEDIATE."
                 ),
             },
         ),

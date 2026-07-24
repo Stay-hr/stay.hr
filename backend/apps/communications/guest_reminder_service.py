@@ -1,4 +1,8 @@
-"""Pre-arrival guest web check-in reminders (email / WhatsApp)."""
+"""Pre-arrival / D0 guest web check-in reminders (email / Booking / WhatsApp).
+
+Phase 7: when Messaging Engine owns live allowlisted scope, sends are skipped
+via ``suppress_legacy_automated_outbound`` (CHECKIN_INFO/LINK + day-of).
+"""
 
 from __future__ import annotations
 
@@ -80,6 +84,24 @@ class GuestReminderService:
             "days_before": days_before,
             "hint": hint,
         }
+
+        # Phase 7: engine owns CHECKIN_INFO/LINK (+ D0) for live allowlisted scope.
+        from apps.communications.messaging.flags import (
+            suppress_legacy_automated_outbound,
+        )
+
+        if suppress_legacy_automated_outbound(reservation=reservation):
+            logger.info(
+                "guest checkin reminder suppressed_by_orchestration "
+                "reservation_id=%s days_before=%s",
+                reservation.pk,
+                days_before,
+            )
+            return {
+                **base,
+                "status": "skipped",
+                "reason": "orchestration_owns_outbound",
+            }
 
         if GuestReminderService.reminder_already_sent(reservation, days_before=days_before):
             return {**base, "status": "already_sent"}

@@ -300,3 +300,50 @@ class GuestMessageTranslation(TenantScopedModel):
             f"Translation {self.message_source}:{self.source_id} "
             f"→ {self.target_lang}"
         )
+
+
+# Messaging Orchestration Engine outbox (ADR 0010) — registered on this app.
+from apps.communications.messaging.intents import (  # noqa: E402
+    PRE_ARRIVAL_INTENTS,
+    WELCOME_INTENTS,
+    MessageDefinitionKey,
+)
+from apps.communications.messaging.models import (  # noqa: E402
+    MessageDeliveryAttempt,
+    MessageDispatch,
+    MessageDispatchEvent,
+    MessageDispatchEventType,
+    MessageDispatchStatus,
+    MessageErrorCategory,
+    MessageRecipientType,
+    MessageReplayReason,
+    MessageScheduleStrategy,
+    MessageTriggerKind,
+)
+
+__all__ = [
+    "ConversationLanguageSource",
+    "GuestInboundMessage",
+    "GuestMessageChannel",
+    "GuestMessageDraft",
+    "GuestMessageIntent",
+    "GuestMessageThreadState",
+    "GuestMessageTranslation",
+    "GuestMessageTranslationSource",
+    "GuestOutboundDeliveryStatus",
+    "GuestOutboundMessage",
+    "GuestOutboundMessageStatus",
+    "MessageDefinitionKey",
+    "MessageDeliveryAttempt",
+    "MessageDispatch",
+    "MessageDispatchEvent",
+    "MessageDispatchEventType",
+    "MessageDispatchStatus",
+    "MessageErrorCategory",
+    "MessageRecipientType",
+    "MessageReplayReason",
+    "MessageScheduleStrategy",
+    "MessageTriggerKind",
+    "PRE_ARRIVAL_INTENTS",
+    "WELCOME_INTENTS",
+]

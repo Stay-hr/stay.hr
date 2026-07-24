@@ -105,7 +105,9 @@ Implemented in `apps/api/guest_checkin_views.py`. Authentication: none (`AllowAn
 
 ### Reminders outside domain
 
-`GuestReminderService` (`apps/communications/`) — pre-arrival nudges via email/WhatsApp/Booking.com. Session domain does not know about channels. Idempotency via `GuestMessageDraft` hint `guest web checkin reminder d{N}`.
+Session domain does not know about channels. Automated pre-arrival nudges (`CHECKIN_INFO`, `CHECKIN_LINK`) and day-of WhatsApp welcome (`WELCOME`) are owned by the **Messaging Orchestration Engine** — see [ADR 0010](0010-messaging-orchestration-engine.md).
+
+For live allowlisted scope, legacy `GuestReminderService` is suppressed and CHECKIN_* / WELCOME go through the Messaging Engine only ([ADR 0010](0010-messaging-orchestration-engine.md) Phase 7). Outside that scope (or when flags are off / shadow), legacy may still send pre-arrival nudges (idempotency via `GuestMessageDraft` hint `guest web checkin reminder d{N}`). New automated outbound must not add another specialized sender; use Trigger → MessageDefinition → Dispatcher only.
 
 ### Domain events
 
@@ -122,7 +124,7 @@ Implemented in `apps/api/guest_checkin_views.py`. Authentication: none (`AllowAn
 
 ### Positive
 
-- Clear ownership table (session/validator/orchestrator in `reservations`; public API in `api`; wizard in `web/booking`; reminders in `communications`)
+- Clear ownership table (session/validator/orchestrator in `reservations`; public API in `api`; wizard in `web/booking`; automated outbound via Messaging Engine in `communications` — [ADR 0010](0010-messaging-orchestration-engine.md))
 - Extensible: new channel = new `created_from` + distribution hook; same orchestrator
 - Reception polls `CHECKIN` scope; debounced version on autosave (5 s)
 - Analytics funnel: `created_at` → `ready_at` → `completed_at` without extra tables
@@ -151,7 +153,7 @@ Implemented in `apps/api/guest_checkin_views.py`. Authentication: none (`AllowAn
 
 - **`field_source`** on slot fields (`ocr` | `manual`) for OCR quality metrics
 - Mobile native client using [public API contract](../../api/public-guest-checkin.md)
-- `GuestReminderService` SMS channel when provider exists
+- SMS (or other) check-in nudges only via [Messaging Engine](0010-messaging-orchestration-engine.md) provider adapters when a provider exists — not a new `GuestReminderService` channel
 - Event bus (Redis/Celery) behind same event contract
 
 ---
@@ -161,6 +163,7 @@ Implemented in `apps/api/guest_checkin_views.py`. Authentication: none (`AllowAn
 - Plan: guest web check-in initiative (PR-A … PR-D)
 - [Reservation versioning](0001-reservation-event-versioning.md) — `CHECKIN` scope
 - [Document intake lifecycle](0002-document-intake-lifecycle-gate.md) — `DocumentIntakeJob` reuse
+- [Messaging Orchestration Engine](0010-messaging-orchestration-engine.md) — automated CHECKIN_* / WELCOME distribution; post-v1 = [Rollout & Adoption](../../operations/messaging-orchestration-post-v1.md) (no Phase 9 core)
 - Code: `backend/apps/reservations/guest_checkin_*.py`, `backend/apps/api/guest_checkin_views.py`, `web/booking/app/check-in/`
 - API: [public-guest-checkin.md](../../api/public-guest-checkin.md)
 - Ops: `load_guest_checkin_kpis()`, reception report `/reports/guest-checkin/`

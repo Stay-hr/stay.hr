@@ -67,6 +67,17 @@ from apps.api.reception_document_intake_views import (
     DocumentIntakeJobImageView,
     DocumentIntakeJobProcessView,
 )
+from apps.api.reception_property_settings_views import (
+    ReceptionPropertiesListView,
+    ReceptionPropertySettingsAutomationView,
+    ReceptionPropertySettingsCheckinView,
+    ReceptionPropertySettingsGeneralView,
+    ReceptionPropertySettingsGuestPreviewView,
+    ReceptionPropertySettingsGuestView,
+    ReceptionPropertySettingsSectionStubView,
+    ReceptionPropertySettingsShareView,
+    ReceptionSettingsCapabilitiesView,
+)
 from apps.api.reception_views import (
     BookingPdfImportView,
     DocumentPhotosUploadView,
@@ -89,6 +100,52 @@ from apps.api.reception_views import (
 )
 
 urlpatterns = [
+    path(
+        "settings/",
+        ReceptionSettingsCapabilitiesView.as_view(),
+        name="reception-settings-capabilities",
+    ),
+    path(
+        "properties/",
+        ReceptionPropertiesListView.as_view(),
+        name="reception-properties-list",
+    ),
+    path(
+        "properties/<int:property_id>/settings/guest/preview/",
+        ReceptionPropertySettingsGuestPreviewView.as_view(),
+        name="reception-property-settings-guest-preview",
+    ),
+    path(
+        "properties/<int:property_id>/settings/guest/",
+        ReceptionPropertySettingsGuestView.as_view(),
+        name="reception-property-settings-guest",
+    ),
+    path(
+        "properties/<int:property_id>/settings/general/",
+        ReceptionPropertySettingsGeneralView.as_view(),
+        name="reception-property-settings-general",
+    ),
+    path(
+        "properties/<int:property_id>/settings/checkin/",
+        ReceptionPropertySettingsCheckinView.as_view(),
+        name="reception-property-settings-checkin",
+    ),
+    path(
+        "properties/<int:property_id>/settings/automation/",
+        ReceptionPropertySettingsAutomationView.as_view(),
+        name="reception-property-settings-automation",
+    ),
+    path(
+        "properties/<int:property_id>/settings/share/",
+        ReceptionPropertySettingsShareView.as_view(),
+        name="reception-property-settings-share",
+    ),
+    path(
+        "properties/<int:property_id>/settings/<slug:section>/",
+        ReceptionPropertySettingsSectionStubView.as_view(),
+        name="reception-property-settings-section",
+    ),
+
     path(
         "document-intake/batch/",
         DocumentIntakeBatchView.as_view(),

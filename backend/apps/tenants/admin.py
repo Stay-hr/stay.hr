@@ -45,6 +45,12 @@ class TenantReceptionSettingsInlineForm(forms.ModelForm):
             "guest_contact_name",
             "guest_smtp_password",
             "whatsapp_operator_phones",
+            "pre_arrival_days_before",
+            "pre_arrival_send_time",
+            "pre_arrival_schedule_strategy",
+            "whatsapp_welcome_days_before",
+            "whatsapp_welcome_send_time",
+            "whatsapp_welcome_schedule_strategy",
         )
 
     def save(self, commit=True):
@@ -70,6 +76,12 @@ class TenantReceptionSettingsInline(admin.StackedInline):
         "guest_contact_name",
         "guest_smtp_password",
         "whatsapp_operator_phones",
+        "pre_arrival_days_before",
+        "pre_arrival_send_time",
+        "pre_arrival_schedule_strategy",
+        "whatsapp_welcome_days_before",
+        "whatsapp_welcome_send_time",
+        "whatsapp_welcome_schedule_strategy",
         "has_guest_smtp_password_display",
         "updated_at",
     )

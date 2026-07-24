@@ -15,6 +15,7 @@
     "reception": "Réception",
     "timeline": "Timeline",
     "calendar": "Calendrier",
+    "settings": "Paramètres",
     "logout": "Déconnexion"
   },
   "language": {
@@ -236,6 +237,169 @@
       "propertyRequired": "L'établissement est requis.",
       "compareFailed": "Échec de la comparaison.",
       "applyFailed": "Échec de l'application."
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "property": "Établissement",
+    "propertyPlaceholder": "Sélectionner…",
+    "noProperties": "No properties for this tenant.",
+    "loadFailed": "Failed to load settings.",
+    "disabled": "Property Settings are disabled for this environment.",
+    "noTabs": "No settings sections are available.",
+    "stubTitle": "Coming soon",
+    "stubBody": "This section is reserved and not available yet.",
+    "nav": {
+      "title": "Settings sections",
+      "general": "General",
+      "guest": "Guest",
+      "checkin": "Check-in",
+      "automation": "Automation"
+    },
+    "guest": {
+      "title": "Guest settings",
+      "shellBody": "Guest content editor and preview will appear here (PR-D1).",
+      "unavailable": "Guest settings are not enabled.",
+      "pickProperty": "Select a property to edit guest settings.",
+      "loading": "Loading guest settings…",
+      "loadFailed": "Could not load guest settings.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Guest settings saved.",
+      "saveFailed": "Could not save guest settings.",
+      "conflict": "Someone else saved first. Reloaded latest settings — review and save again.",
+      "wifi": "WiFi",
+      "ssid": "SSID",
+      "password": "Password",
+      "arrival": "Arrival",
+      "mapsUrl": "Maps URL",
+      "arrivalTextEn": "Arrival text (EN)",
+      "breakfast": "Breakfast",
+      "breakfastHours": "Hours",
+      "breakfastTextEn": "Breakfast text (EN)",
+      "contact": "Contact",
+      "phone": "Phone",
+      "whatsapp": "WhatsApp",
+      "selfService": "Self-service key guide",
+      "selfServiceMode": "Mode",
+      "versionLabel": "Settings version {version}",
+      "previewTitle": "Portal preview",
+      "previewUnavailable": "Preview is not enabled.",
+      "previewEmpty": "No preview available.",
+      "previewSections": "Sections",
+      "share": {
+        "title": "Share guest portal",
+        "hint": "Send the portal link for a reservation (Booking / WhatsApp: two messages).",
+        "unavailable": "Share is not enabled.",
+        "reservationId": "Reservation ID",
+        "reservationPlaceholder": "e.g. 82",
+        "reservationRequired": "Enter a valid reservation ID.",
+        "channel": "Channel",
+        "channelAuto": "Auto (from completed check-in)",
+        "channelBooking": "Booking.com",
+        "channelWhatsapp": "WhatsApp",
+        "channelEmail": "Email",
+        "submit": "Send portal link",
+        "sharing": "Sending…",
+        "failed": "Could not share the portal link.",
+        "success": "Shared ({status}) via {channel}.",
+        "portalUrl": "Portal URL"
+      }
+    },
+    "general": {
+      "title": "General",
+      "shellBody": "General property settings will appear here.",
+      "unavailable": "General settings are not enabled yet.",
+      "pickProperty": "Select a property to edit general settings.",
+      "loading": "Loading general settings…",
+      "loadFailed": "Could not load general settings.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "General settings saved.",
+      "saveFailed": "Could not save general settings.",
+      "conflict": "Someone else saved first. Reloaded latest settings — review and save again.",
+      "name": "Name",
+      "nameRequired": "Name is required.",
+      "slug": "Slug",
+      "slugHint": "Slug is read-only here (change in admin if needed).",
+      "address": "Address",
+      "timezone": "Timezone",
+      "timezoneHint": "IANA timezone, e.g. Europe/Zagreb.",
+      "language": "Default language",
+      "languageUnset": "Not set",
+      "versionLabel": "Settings version {version}"
+    },
+    "checkin": {
+      "title": "Check-in",
+      "shellBody": "Check-in settings will appear here.",
+      "unavailable": "Check-in settings are not enabled yet.",
+      "pickProperty": "Select a property to edit check-in settings.",
+      "loading": "Loading check-in settings…",
+      "loadFailed": "Could not load check-in settings.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Check-in settings saved.",
+      "saveFailed": "Could not save check-in settings.",
+      "conflict": "Someone else saved first. Reloaded latest settings — review and save again.",
+      "checkInTime": "Check-in time",
+      "checkOutTime": "Check-out time",
+      "checkInLatestTime": "Latest self-service arrival",
+      "checkInLatestHint": "Leave empty for no upper bound. After-hours policy is under Automation.",
+      "opensDaysBefore": "Web check-in opens (days before)",
+      "opensDaysBeforeHint": "Days before arrival when guest web check-in becomes available.",
+      "versionLabel": "Settings version {version}"
+    },
+    "automation": {
+      "title": "Automation",
+      "shellBody": "Automation settings will appear here.",
+      "unavailable": "Automation settings are not enabled yet.",
+      "pickProperty": "Select a property to edit automation settings.",
+      "loading": "Loading automation settings…",
+      "loadFailed": "Could not load automation settings.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Automation settings saved.",
+      "saveFailed": "Could not save automation settings.",
+      "conflict": "Someone else saved first. Reloaded latest settings — review and save again.",
+      "afterHoursHeading": "After-hours arrival",
+      "afterHoursPolicy": "After-hours policy",
+      "afterHoursPolicyHint": "What happens when a guest arrives after the latest self-service time (see Check-in).",
+      "afterHoursPhone": "After-hours contact phone",
+      "afterHoursPhoneHint": "Shown when policy is “contact phone”. Falls back to property contact if empty.",
+      "policy": {
+        "contact": "Contact phone",
+        "not_allowed": "Entry not allowed after latest time"
+      },
+      "autoRepliesHeading": "Guest auto-replies",
+      "arrivalAutoReply": "Arrival-time auto-reply",
+      "arrivalAutoReplyHint": "Reply automatically when guests ask about arrival / check-in time.",
+      "parkingAutoReply": "Parking auto-reply",
+      "parkingAutoReplyHint": "Reply automatically when guests ask about parking.",
+      "versionLabel": "Settings version {version}"
+    },
+    "reserved": {
+      "body": "This module is reserved in the settings API and will ship in a later release.",
+      "security": {
+        "title": "Security"
+      },
+      "integrations": {
+        "title": "Integrations"
+      },
+      "branding": {
+        "title": "Branding"
+      },
+      "localization": {
+        "title": "Localization"
+      },
+      "payments": {
+        "title": "Payments"
+      },
+      "reviews": {
+        "title": "Reviews"
+      },
+      "users": {
+        "title": "Users"
+      }
     }
   }
 }

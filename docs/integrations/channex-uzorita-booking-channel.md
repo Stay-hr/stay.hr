@@ -91,96 +91,9 @@ Deluxe Triple Room (418195403)   →   Luxury Room Uzorita - R3
 
 Prije spajanja svi tipovi pristupa imali su **Current provider: None** — prvi channel manager na Booking.com extranetu za te kategorije.
 
-### Odobrena prava (Booking.com extranet)
+### Odobrena prava i što Channex može uređivati
 
-| Kategorija | Tko smije (Booking pravilo) | Channex |
-|------------|----------------------------|---------|
-| Rates and availability | One provider | ✅ odobreno |
-| Reservations | One provider | ✅ odobreno |
-| Guest reviews | Multiple providers | ✅ odobreno |
-| Reporting | Multiple providers | ✅ odobreno |
-| Content | One provider | ✅ odobreno |
-| Photos | One provider | ✅ odobreno |
-| Guest messages | One provider | ✅ odobreno |
-| Performance data and insights | Multiple providers | ✅ odobreno |
-
-**Napomena Booking.com:** *Not all providers offer the full functionality associated with a connection type.*
-
----
-
-## Što Channex **može** uređivati na Booking.com
-
-Označeno zelenom u Booking extranetu „What can Channex.io offer?“ (2026-05-26).
-
-### Rezervacije
-
-| Funkcija | Channex |
-|----------|---------|
-| Pregled i ažuriranje rezervacija / otkazivanja | ✅ |
-| Prijava nevažeće kartice | ✅ |
-| Prijava no-show | ✅ |
-| No-show commission waiver | ✅ |
-| Prijava promjene boravka (stay changes) | ❌ (nije u ponudi) |
-| Otkaz zbog nevažeće kartice | ❌ |
-
-### Rates and availability (cijene i raspoloživost)
-
-| Funkcija | Channex |
-|----------|---------|
-| Inventar soba (room inventory) | ✅ |
-| Restrikcije (min stay, stop sell, CTA/CTD, …) | ✅ |
-| Standard pricing | ✅ |
-| Single occupancy pricing | ✅ |
-| Occupancy-based pricing (OBP) | ✅ |
-| Pregled zadnjeg inventara/cijena na Booking.com | ✅ |
-| Length-of-stay pricing | ❌ |
-| Derived pricing | ❌ |
-
-### Content (sadržaj objekta)
-
-| Funkcija | Channex |
-|----------|---------|
-| Dodavanje property/listinga | ✅ |
-| Facilities | ✅ |
-| Kontakt objekta | ✅ |
-| Policies | ✅ |
-| Fotografije | ✅ |
-| House rules | ❌ |
-
-### Room and rate management
-
-| Funkcija | Channex |
-|----------|---------|
-| Kreiranje / ažuriranje soba | ✅ |
-| Kreiranje / ažuriranje rate planova | ✅ |
-| Dodjela rate planova sobama | ✅ |
-| Pregled svih soba i cijena | ✅ |
-
-### Promotions
-
-| Funkcija | Channex |
-|----------|---------|
-| Kreiranje promocija | ✅ |
-| Ažuriranje / deaktivacija | ✅ |
-| Performance promocija | ✅ |
-
-### Guest reviews
-
-| Funkcija | Channex |
-|----------|---------|
-| Odgovor na recenziju | ✅ |
-| Pregled ocjena | ✅ |
-| Pregled recenzija | ✅ |
-
-### Guest messaging
-
-| Funkcija | Channex |
-|----------|---------|
-| Slanje poruke gostu | ✅ |
-| Dohvat jednog razgovora | ✅ |
-| Upload privitka u razgovor | ✅ |
-| Poruka s privitkom | ✅ |
-| Dohvat svih razgovora po propertyju | ❌ |
+Kanonski popis (prava + ✅/❌ funkcije): [channex-booking-editable-settings.md](channex-booking-editable-settings.md).
 
 ---
 
@@ -195,7 +108,7 @@ Označeno zelenom u Booking extranetu „What can Channex.io offer?“ (2026-05-
 | **Rezervacije inbound** | Channex webhook → stay.hr | Tek kad je production Channex config + webhook aktivan |
 | **Poruke gostima (Booking.com)** | Channex webhook `message` + stay.hr API | Inbound u `ChannexMessage`; odgovor: `POST /api/v1/reception/reservations/{id}/channex-messages/` |
 | **Sadržaj, fotke, recenzije** | Channex UI (ili Booking extranet) | stay.hr **recenzije** (inbox + odgovor) — vidi [guest-reviews-channex.md](../operations/guest-reviews-channex.md) |
-| **Promocije Booking.com** | Channex UI | stay.hr nema UI za B.com promocije |
+| **Promocije Booking.com** | Booking Extranet (± Channex UI) danas; budući stay.hr → **`BookingPromotionProvider`** | [ADR 0009](../architecture/adr/0009-channel-promotions.md) — Phase 0: Channex nema Promotions API |
 | **Ručne rezervacije / timeline** | stay.hr recepcija | Outbound u Channex tek kad `channel_manager=channex` |
 
 ---
@@ -346,6 +259,8 @@ docker compose exec django python manage.py channex_ari_flush --tenant-slug uzor
 
 ## Povezana dokumentacija
 
+- [channex-booking-editable-settings.md](channex-booking-editable-settings.md) — što Channex može uređivati na Booking.com
+- [ADR 0009 — Channel Promotions](../architecture/adr/0009-channel-promotions.md) — kanonski model, provider, outbox, drift
 - [channex-uzorita-mapping.md](channex-uzorita-mapping.md) — room types, occupancy, seed naredbe
 - [channel-manager-setup.md](../operations/channel-manager-setup.md) — Channex onboarding
 - [booking-com-konflikt-dvostruka-rezervacija.md](../booking-com-konflikt-dvostruka-rezervacija.md) — hotel ID `4181954`

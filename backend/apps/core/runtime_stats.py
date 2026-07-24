@@ -12,8 +12,8 @@ import socket
 import time
 from datetime import datetime, timezone
 
-# Bumped when adding top-level ``components`` (+ thin ``database`` probe).
-SYSTEM_STATUS_SCHEMA_VERSION = 2
+# Bumped when adding top-level ``messaging`` inventory (ADR 0010 Phase 8).
+SYSTEM_STATUS_SCHEMA_VERSION = 3
 
 _STARTED_AT_MONO = time.monotonic()
 _STARTED_AT_ISO = datetime.now(timezone.utc).isoformat()

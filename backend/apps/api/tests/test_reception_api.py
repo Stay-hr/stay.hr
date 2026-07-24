@@ -96,7 +96,7 @@ class ReceptionAPITests(TestCase):
         response = self.client.get("/api/v1/reception/system/status/", **self.auth)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["schema_version"], 2)
+        self.assertEqual(data["schema_version"], 3)
         self.assertEqual(data["metrics_scope"], "worker_process")
         self.assertIn("build", data)
         self.assertIn("git_sha", data["build"])
@@ -138,6 +138,14 @@ class ReceptionAPITests(TestCase):
         self.assertIn("database", data)
         self.assertTrue(data["database"]["ok"])
         self.assertIsInstance(data["database"]["latency_ms"], (int, float))
+        self.assertIn("messaging", data)
+        self.assertIn("definitions", data["messaging"])
+        self.assertIn("templates", data["messaging"])
+        self.assertIn("providers", data["messaging"])
+        self.assertIn("plans", data["messaging"])
+        self.assertIn("outbox", data["messaging"])
+        self.assertIn("flags", data["messaging"])
+        self.assertGreaterEqual(data["messaging"]["definitions"]["count"], 1)
         self.assertIn("components", data)
         self.assertEqual(
             data["components"]["event_bus"],

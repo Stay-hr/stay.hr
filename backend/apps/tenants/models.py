@@ -106,6 +106,40 @@ class TenantReceptionSettings(models.Model):
         blank=True,
         help_text='WhatsApp operator whitelist, e.g. [{"name": "Toni", "phone": "+385..."}].',
     )
+    # Messaging orchestration schedules (ADR 0010). Null/blank = inherit Platform.
+    pre_arrival_days_before = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Tenant override: pre-arrival days_before. Null = platform default.",
+    )
+    pre_arrival_send_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Tenant override: pre-arrival send_time. Null = platform default.",
+    )
+    pre_arrival_schedule_strategy = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="Tenant override: FIXED_TIME | FIRST_AFTER | IMMEDIATE. Blank = platform.",
+    )
+    welcome_days_before = models.PositiveSmallIntegerField(null=True, blank=True)
+    welcome_send_time = models.TimeField(null=True, blank=True)
+    welcome_schedule_strategy = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+    )
+    whatsapp_welcome_days_before = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+    )
+    whatsapp_welcome_send_time = models.TimeField(null=True, blank=True)
+    whatsapp_welcome_schedule_strategy = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -31,8 +31,20 @@ class Command(BaseCommand):
             action="store_true",
             help="List candidates without sending.",
         )
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help=(
+                "Bypass Phase 7 orchestration suppression "
+                "(MESSAGE_ORCHESTRATION live allowlist)."
+            ),
+        )
 
     def handle(self, *args, **options):
+        from apps.communications.messaging.flags import (
+            suppress_legacy_automated_outbound,
+        )
+
         on_date: date | None = None
         if options["date"]:
             on_date = date.fromisoformat(options["date"])
@@ -40,6 +52,7 @@ class Command(BaseCommand):
         property_id = options["property_id"]
         tenant_slug = (options["tenant_slug"] or "").strip()
         dry_run = bool(options["dry_run"])
+        force = bool(options["force"])
 
         if tenant_slug:
             tenant = Tenant.objects.filter(slug=tenant_slug).first()
@@ -72,11 +85,19 @@ class Command(BaseCommand):
             self.stdout.write("No due reservations.")
             return
 
-        sent = skipped = failed = 0
+        sent = skipped = failed = suppressed = 0
         for reservation in reservations:
+            code = reservation.booking_code or str(reservation.pk)
+            if not force and suppress_legacy_automated_outbound(reservation=reservation):
+                suppressed += 1
+                skipped += 1
+                self.stdout.write(
+                    f"Skipped {code}: orchestration_owns_outbound "
+                    "(use --force to bypass)"
+                )
+                continue
             outcome = send_welcome_template_for_reservation(reservation, dry_run=dry_run)
             status = outcome.get("status")
-            code = reservation.booking_code or str(reservation.pk)
             if status == "sent":
                 sent += 1
                 self.stdout.write(self.style.SUCCESS(f"Sent welcome → {code}"))
@@ -95,7 +116,11 @@ class Command(BaseCommand):
 
         verb = "Would send" if dry_run else "Sent"
         self.stdout.write(
-            self.style.SUCCESS(f"{verb} {sent}, skipped {skipped}, failed {failed}.")
+            self.style.SUCCESS(
+                f"{verb} {sent}, skipped {skipped}, failed {failed}"
+                + (f", suppressed {suppressed}" if suppressed else "")
+                + "."
+            )
         )
 
         if dry_run:

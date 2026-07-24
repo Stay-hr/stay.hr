@@ -18,9 +18,17 @@ def effective_timezone(*, property: Property | None = None, tenant: Tenant | Non
     return DEFAULT_TIMEZONE
 
 
-def property_local_now(property: Property) -> datetime:
+def property_local_now(
+    property: Property,
+    now: datetime | None = None,
+) -> datetime:
+    """Current (or injected) instant expressed in the property's effective TZ."""
     tz = ZoneInfo(effective_timezone(property=property, tenant=property.tenant))
-    return datetime.now(tz)
+    if now is None:
+        return datetime.now(tz)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=ZoneInfo("UTC"))
+    return now.astimezone(tz)
 
 
 def tenant_local_now(tenant: Tenant) -> datetime:

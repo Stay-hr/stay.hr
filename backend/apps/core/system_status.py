@@ -38,6 +38,19 @@ def probe_database_status() -> dict:
         return {"ok": False, "latency_ms": None}
 
 
+def _messaging_status_block() -> dict:
+    """ADR 0010 messaging inventory + outbox depth (fail soft for status)."""
+    try:
+        from apps.communications.messaging.health import messaging_health_snapshot
+
+        return messaging_health_snapshot(include_queue=True)
+    except Exception as exc:  # noqa: BLE001 — status must stay available
+        return {
+            "ok": False,
+            "error": str(exc)[:200],
+        }
+
+
 def build_system_status_payload(*, reporter_process: str | None = None) -> dict:
     gunicorn_config = gunicorn_config_from_env()
     sse = get_sse_connection_stats()
@@ -56,6 +69,7 @@ def build_system_status_payload(*, reporter_process: str | None = None) -> dict:
         "sse": sse,
         "event_bus": event_bus,
         "database": database,
+        "messaging": _messaging_status_block(),
         "components": build_components_status(
             event_bus=event_bus,
             sse=sse,

@@ -120,7 +120,7 @@ Telemetry (OCR-D, write-only): [`docs/development/document-intake-telemetry.md`]
 **Thesis:** event **distribution** (Redis EventBus) is separate from **transport** (Gunicorn vs dedicated Uvicorn SSE). Full Django ASGI is optional (Phase 2c), not required for SSE scaling. See [ADR 0005](docs/architecture/adr/0005-gunicorn-sse-worker-evolution.md).
 
 - Gunicorn env: `GUNICORN_*` in `.env` — launcher `scripts/run-gunicorn.sh` (not entrypoint). After `.env` change: `docker compose up -d django` (no rebuild unless Dockerfile/script changed).
-- Status: `GET /api/v1/reception/system/status/` — **reception:read**; `metrics_scope=worker_process` (not global). Fields: `build.git_sha`, `build.started_at`, `build.hostname`.
+- Status: `GET /api/v1/reception/system/status/` — **reception:read**; `metrics_scope=worker_process` (not global). Fields: `build.git_sha`, `build.started_at`, `build.hostname`; `messaging` inventory/outbox (ADR 0010). Post-v1 work: [Rollout & Adoption](docs/operations/messaging-orchestration-post-v1.md) — no Phase 9 core.
 - Benchmark: `./scripts/benchmark-health-latency.sh` — p50/p95/p99 (`BENCHMARK_LIGHT=1` for CI; `OPS_CI_ARTIFACT_DIR` for artifacts).
 - Load test before sign-off: `./scripts/load-test-gunicorn-sse.sh` (`LOAD_TEST_LIGHT=1` for CI; requires `RECEPTION_API_TOKEN`, `LOAD_TEST_RESERVATION_ID`).
 - **Monitoring checklist:** [gunicorn-sse-monitoring.md](docs/operations/gunicorn-sse-monitoring.md). ADR: [0005](docs/architecture/adr/0005-gunicorn-sse-worker-evolution.md).

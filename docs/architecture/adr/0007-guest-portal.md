@@ -2,14 +2,15 @@
 
 ## Status
 
-**Accepted** (PR-A…PR-C, 2026-07)
+**Accepted** (PR-A…PR-C + PR-msg, 2026-07)
 
 | PR | Scope |
 |----|-------|
 | **PR-A** | `GuestPortalAccess`, frozen `GuestPortalContext`, public GET API + gate, booking `/g/{token}` cards (welcome/arrival/parking/wifi/breakfast/contact), Uzorita `guest_info` seed |
 | **PR-B** | Key guide card + `self_service_mode` / `is_self_service_active` ✅ |
 | **PR-C** | Uzorita Tuesday `schedule`; portal link after check-in on same channel (`created_from`) ✅ |
-| **PR-D** | Reception GET/PATCH guest-portal editor on app.stay.hr |
+| **PR-msg** | BOOKING/WhatsApp: two-message portal send (CTA+sign-off, then URL-only) ✅ |
+| **PR-D** | ~~Reception GET/PATCH guest-portal editor~~ — **superseded by [ADR 0008](0008-property-settings.md)** (Property Settings; portal is a view) |
 
 > Note: ADR number **0006** is already used by booking payout financial source; guest portal is **0007**.
 
@@ -17,7 +18,7 @@
 
 ## Summary
 
-Guests always receive the same link `https://booking.{tenant}/g/{token}`. Backend builds a **frozen** `GuestPortalContext` (`sections` + localized `content`); the booking UI only renders what the API returns. Staff will edit the same data from reception (PR-D). Separated from web check-in (`GuestCheckInSession` on `/check-in/{token}`).
+Guests always receive the same link `https://booking.{tenant}/g/{token}`. Backend builds a **frozen** `GuestPortalContext` (`sections` + localized `content`); the booking UI only renders what the API returns. Staff edit property-level guest content via **Property Settings** ([ADR 0008](0008-property-settings.md)); the portal is a read-only view of that data. Separated from web check-in (`GuestCheckInSession` on `/check-in/{token}`).
 
 ---
 
@@ -63,18 +64,20 @@ Core sections (PR-A): `welcome`, `arrival`, `parking`, `wifi`, `breakfast`, `con
 - Dry-run: `python manage.py compose_key_handover_guide --reservation-id N`.
 - Uzorita seed: `self_service_mode=schedule`, `weekdays=[1]` (Tuesday).
 
-### Portal link after check-in (PR-C)
+### Portal link after check-in (PR-C + PR-msg)
 
-After `GuestCheckInOrchestrator.complete_session`, Celery `reservations.send_guest_portal_link_after_checkin` ensures `GuestPortalAccess` and sends a short localized CTA + URL on the **same channel** as the completed session’s `created_from`:
+After `GuestCheckInOrchestrator.complete_session`, Celery `reservations.send_guest_portal_link_after_checkin` ensures `GuestPortalAccess` and sends on the **same channel** as the completed session’s `created_from`:
 
-| `created_from` | Outbound |
-|----------------|----------|
-| `channex` | Booking / Channex |
-| `email` | Email (HTML CTA) |
-| `whatsapp_autocheckin` | WhatsApp only |
-| `reception_manual` | Email if available, else skip |
+| `created_from` | Outbound | Shape |
+|----------------|----------|-------|
+| `channex` | Booking / Channex | **Two messages:** (1) localized CTA + sign-off + footer, (2) URL only (`?lang=`) |
+| `whatsapp_autocheckin` | WhatsApp only | Same two-message shape |
+| `email` | Email | **One** HTML message (plain CTA + button href; URL not in plain CTA text) |
+| `reception_manual` | Email if available, else skip | Same as email |
 
-Dedup: `GuestMessageDraft.hint = guest_portal_link` (once per reservation). Does not alter Meta welcome templates; does not send WhatsApp when check-in was via Channex/email.
+Compose: `render_guest_portal_link_message` (CTA, no URL) + `render_guest_portal_link_url_only` (URL only). Distribute: `apps/communications/guest_portal_distribute.py`.
+
+Dedup: `GuestMessageDraft.hint = guest_portal_link` (once per reservation; first/CTA draft). Second BOOKING/WA draft uses hint `guest_portal_link url`. If the URL send fails after a successful CTA: `status=partial` with both draft ids. Does not alter Meta welcome templates; does not send WhatsApp when check-in was via Channex/email.
 
 ### Public API
 
@@ -86,8 +89,8 @@ Booking BFF: `/api/g/{token}` → public API; page: `/g/{token}`.
 
 ## Consequences
 
-- Long wifi/entrance blocks in channel messages can be replaced by a single portal CTA without Meta template changes.
-- Reception editor follows in PR-D without changing the guest URL shape.
+- Long wifi/entrance blocks in channel messages can be replaced by a short portal CTA (plus a separate URL message on BOOKING/WhatsApp) without Meta template changes.
+- Property Settings ([ADR 0008](0008-property-settings.md)) edits the same `guest_info` / contact / self-service fields without changing the guest URL shape.
 - Entrance image served under `/api/v1/public/guest-portal/{token}/entrance/` (BFF `/api/g/{token}/entrance`).
 - Key-guide step images under `/steps/{index}/` (BFF `/api/g/{token}/steps/{index}`).
 
@@ -96,6 +99,7 @@ Booking BFF: `/api/g/{token}` → public API; page: `/g/{token}`.
 ## References
 
 - Plan: guest portal one URL / contextual cards
+- Property Settings: [0008-property-settings.md](0008-property-settings.md)
 - Ops: [guest-portal.md](../../operations/guest-portal.md)
 - Check-in ADR: [0004-guest-checkin-session.md](0004-guest-checkin-session.md)
 - Seed: `python manage.py seed_uzorita_guest_info`

@@ -289,7 +289,7 @@ class DailyOpsTaskTests(TestCase):
 class SystemStatusServiceTests(TestCase):
     def test_build_system_status_payload_shape(self):
         payload = build_system_status_payload(reporter_process="test")
-        self.assertEqual(payload["schema_version"], 2)
+        self.assertEqual(payload["schema_version"], 3)
         self.assertIn("gunicorn", payload)
         self.assertIn("sse", payload)
         self.assertIn("event_bus", payload)
@@ -300,6 +300,9 @@ class SystemStatusServiceTests(TestCase):
         self.assertEqual(payload["event_bus"]["dedupe_drop_count"], 0)
         self.assertIn("database", payload)
         self.assertTrue(payload["database"]["ok"])
+        self.assertIn("messaging", payload)
+        self.assertIn("definitions", payload["messaging"])
+        self.assertIn("outbox", payload["messaging"])
         self.assertEqual(
             payload["components"]["event_bus"]["status"],
             "healthy",
