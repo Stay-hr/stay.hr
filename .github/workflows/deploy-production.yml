@@ -52,7 +52,6 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          script_stop: true
           command_timeout: 40m
           script: |
             set -euo pipefail
