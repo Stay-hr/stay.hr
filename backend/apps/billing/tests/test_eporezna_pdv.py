@@ -16,13 +16,17 @@ from apps.billing.models import (
 )
 from apps.billing.services.eporezna.errors import PdvBuildError
 from apps.billing.services.eporezna.filename import build_filename
+from apps.billing.services.eporezna.pdv.amount_mapper import (
+    EU_SERVICES_VAT_RATE,
+    map_invoices_to_pdv_amounts,
+)
 from apps.billing.services.eporezna.pdv.builder import NS, PDVBuilder
 from apps.billing.services.eporezna.pdv.validate import validate_pdv_xml
 from apps.billing.services.eporezna.period import FiscalPeriod
 from apps.tenants.models import Tenant
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-EXPECTED_PDV = FIXTURES / "pdv_zaglavlje_zero_expected.xml"
+EXPECTED_PDV = FIXTURES / "pdv_with_ii10_expected.xml"
 
 FIXED_UUID = UUID("b847a4af-4a12-476d-85ca-ac495d89360c")
 FIXED_NOW = datetime(2026, 7, 28, 9, 39, 37, tzinfo=timezone.utc)
@@ -56,6 +60,28 @@ class FiscalPeriodTests(SimpleTestCase):
             build_filename(form="PDV", oib="07155680871", period=period),
             "PDV_07155680871_20260601-20260630.xml",
         )
+
+
+class PDVAmountMapperTests(SimpleTestCase):
+    def test_vat_rate_and_payable(self):
+        class _Inv:
+            taxable_amount = Decimal("69.48")
+
+        amounts = map_invoices_to_pdv_amounts([_Inv()])
+        self.assertEqual(EU_SERVICES_VAT_RATE, Decimal("0.25"))
+        self.assertEqual(amounts.eu_services_base, Decimal("69.48"))
+        self.assertEqual(amounts.eu_services_vat, Decimal("17.37"))
+        self.assertEqual(amounts.payable, Decimal("17.37"))
+
+    def test_sums_multiple_invoices(self):
+        class _Inv:
+            def __init__(self, amount: str):
+                self.taxable_amount = Decimal(amount)
+
+        amounts = map_invoices_to_pdv_amounts([_Inv("10.00"), _Inv("20.50")])
+        self.assertEqual(amounts.eu_services_base, Decimal("30.50"))
+        self.assertEqual(amounts.eu_services_vat, Decimal("7.63"))
+        self.assertEqual(amounts.payable, Decimal("7.63"))
 
 
 class PDVBuilderTests(TestCase):
@@ -133,14 +159,32 @@ class PDVBuilderTests(TestCase):
                 "string(p:Tijelo/p:Podatak210/p:Vrijednost)",
                 namespaces=ns,
             ),
+            "69.48",
+        )
+        self.assertEqual(
+            root.xpath("string(p:Tijelo/p:Podatak210/p:Porez)", namespaces=ns),
+            "17.37",
+        )
+        self.assertEqual(
+            root.xpath(
+                "string(p:Tijelo/p:Podatak200/p:Vrijednost)",
+                namespaces=ns,
+            ),
+            "69.48",
+        )
+        self.assertEqual(
+            root.xpath("string(p:Tijelo/p:Podatak310/p:Vrijednost)", namespaces=ns),
             "0.00",
+        )
+        self.assertEqual(
+            root.xpath("string(p:Tijelo/p:Podatak400)", namespaces=ns),
+            "17.37",
         )
         self.assertEqual(
             root.xpath("string(p:Tijelo/p:Podatak660)", namespaces=ns),
             "false",
         )
 
-        # Round-trip: parse → serialize must be byte-identical.
         parsed = etree.fromstring(export.xml_bytes)
         roundtrip = etree.tostring(
             parsed,

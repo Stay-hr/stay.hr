@@ -1,8 +1,6 @@
-"""Build ObrazacPDV XML — structure only in PR1 (no tax calculation).
+"""Build ObrazacPDV XML from fiscal settings + PDVAmounts.
 
-PDVBuilder intentionally contains no tax calculation logic. PR1 serializes
-the official v11-0 structure only. Tax computation will be introduced in a
-dedicated mapping layer once an official filled reference export is available.
+Mapping rules live in ``amount_mapper`` — this class only serializes XML.
 """
 
 from __future__ import annotations
@@ -14,10 +12,11 @@ from pathlib import Path
 
 from lxml import etree
 
-from apps.billing.models import TenantFiscalSettings
+from apps.billing.models import ForeignServiceInvoice, TenantFiscalSettings
 from apps.billing.services.eporezna.errors import PdvBuildError
 from apps.billing.services.eporezna.filename import build_filename
 from apps.billing.services.eporezna.metadata import EporeznaMetadataBuilder
+from apps.billing.services.eporezna.pdv.amount_mapper import PDVAmountMapper, PDVAmounts
 from apps.billing.services.eporezna.period import FiscalPeriod
 from apps.billing.services.eporezna.readiness import fiscal_eporezna_readiness
 from apps.billing.services.eporezna.source_data import has_source_fiscal_data
@@ -39,7 +38,6 @@ PDV_TITLE = "Obrazac PDV"
 PDV_CONFORMS_TO = "ObrazacPDV-v11-0"
 ZERO = Decimal("0.00")
 
-# Scalar money tags in Tijelo (reference v11-0 zero export order).
 _SCALAR_000_111 = (
     "Podatak000",
     *(f"Podatak{i}" for i in range(100, 112)),
@@ -77,7 +75,7 @@ def schema_path() -> Path:
 
 
 class PDVBuilder:
-    """Serialize ObrazacPDV Zaglavlje + zero Tijelo (PR1 structure only)."""
+    """Serialize ObrazacPDV Zaglavlje + Tijelo from ``PDVAmounts``."""
 
     def __init__(
         self,
@@ -111,6 +109,16 @@ class PDVBuilder:
         if not has_source_fiscal_data(tenant=tenant, period=fiscal_period.period):
             raise PdvBuildError("No source fiscal data for tax period.")
 
+        invoices = list(
+            ForeignServiceInvoice.objects.filter(
+                tenant=tenant,
+                tax_period=fiscal_period.period,
+            ).order_by("invoice_number", "id")
+        )
+        amounts = PDVAmountMapper().map(invoices)
+        if amounts.eu_services_base <= ZERO:
+            raise PdvBuildError("No source fiscal data for tax period.")
+
         now = self._clock.now()
         ident = self._uuids.new()
         root = self._build_root(
@@ -119,6 +127,7 @@ class PDVBuilder:
             fiscal_period=fiscal_period,
             now=now,
             ident=ident,
+            amounts=amounts,
         )
         xml_bytes = etree.tostring(
             root,
@@ -145,6 +154,7 @@ class PDVBuilder:
         fiscal_period: FiscalPeriod,
         now,
         ident,
+        amounts: PDVAmounts,
     ) -> etree._Element:
         root = etree.Element(
             f"{{{NS}}}ObrazacPDV",
@@ -180,7 +190,6 @@ class PDVBuilder:
         append_text(adresa, "Ulica", settings.issuer_street, ns=NS)
         append_text(adresa, "Broj", settings.issuer_street_number or "", ns=NS)
 
-        # ePorezna v11 reference: ObracunSastavio has Ime + Prezime only (no Email).
         sastavio = etree.SubElement(zaglavlje, f"{{{NS}}}ObracunSastavio")
         append_text(sastavio, "Ime", preparer.first_name, ns=NS)
         append_text(sastavio, "Prezime", preparer.last_name, ns=NS)
@@ -188,26 +197,39 @@ class PDVBuilder:
         append_text(zaglavlje, "Ispostava", settings.tax_office_code, ns=NS)
 
         tijelo = etree.SubElement(root, f"{{{NS}}}Tijelo")
-        self._append_zero_tijelo(tijelo)
+        self._append_tijelo(tijelo, amounts)
         return root
 
-    def _append_zero_tijelo(self, tijelo: etree._Element) -> None:
-        """Emit reference-shaped zero body — no tax mapping in PR1."""
+    def _append_tijelo(self, tijelo: etree._Element, amounts: PDVAmounts) -> None:
+        """Emit v11-0 Tijelo; only II.10 / II UKUPNO / IV carry reverse-charge amounts."""
         for tag in _SCALAR_000_111:
             append_decimal(tijelo, tag, ZERO, ns=NS)
 
         for tag in _PAIR_200_215:
             pair = etree.SubElement(tijelo, f"{{{NS}}}{tag}")
-            append_decimal(pair, "Vrijednost", ZERO, ns=NS)
-            append_decimal(pair, "Porez", ZERO, ns=NS)
+            if tag == "Podatak200":
+                # II UKUPNO — only II.10 is non-zero for current foreign-service invoices.
+                append_decimal(pair, "Vrijednost", amounts.eu_services_base, ns=NS)
+                append_decimal(pair, "Porez", amounts.eu_services_vat, ns=NS)
+            elif tag == "Podatak210":
+                # II.10 Primljene usluge iz EU po stopi 25%.
+                append_decimal(pair, "Vrijednost", amounts.eu_services_base, ns=NS)
+                append_decimal(pair, "Porez", amounts.eu_services_vat, ns=NS)
+            else:
+                append_decimal(pair, "Vrijednost", ZERO, ns=NS)
+                append_decimal(pair, "Porez", ZERO, ns=NS)
 
         for tag in _PAIR_300_314:
+            # III pretporez stays zero for paušalist (no deduction).
             pair = etree.SubElement(tijelo, f"{{{NS}}}{tag}")
             append_decimal(pair, "Vrijednost", ZERO, ns=NS)
             append_decimal(pair, "Porez", ZERO, ns=NS)
 
         for tag in _SCALAR_TAIL:
-            append_decimal(tijelo, tag, ZERO, ns=NS)
+            if tag == "Podatak400":
+                append_decimal(tijelo, tag, amounts.payable, ns=NS)
+            else:
+                append_decimal(tijelo, tag, ZERO, ns=NS)
 
         append_bool(tijelo, "Podatak660", False, ns=NS)
 
