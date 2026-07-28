@@ -548,6 +548,8 @@
       "uploading": "Učitavanje…",
       "export": "Izvezi PDV-S XML",
       "exporting": "Izvoz…",
+      "exportPdv": "Izvezi PDV XML",
+      "exportingPdv": "Izvoz PDV…",
       "listTitle": "Računi za {period}",
       "empty": "Nema uvezenih računa za ovo razdoblje.",
       "loading": "Učitavanje…",
@@ -556,8 +558,10 @@
       "uploadSuccess": "Uvezen račun {number}.",
       "alreadyImported": "Račun je već uvezen {at}.",
       "uploadError": "Uvoz PDF-a nije uspio.",
-      "exportSuccess": "XML preuzet.",
-      "exportError": "Izvoz XML-a nije uspio.",
+      "exportSuccess": "PDV-S XML preuzet.",
+      "exportError": "Izvoz PDV-S XML-a nije uspio.",
+      "exportPdvSuccess": "PDV XML preuzet.",
+      "exportPdvError": "Izvoz PDV XML-a nije uspio.",
       "loadError": "Učitavanje PDV-S podataka nije uspjelo.",
       "importedAt": "Uvezeno {at}"
     }

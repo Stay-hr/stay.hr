@@ -1,1 +1,1 @@
-"""PDV-S (ObrazacPDVS) export — Zaglavlje only in PR1."""
+"""PDV-S (ObrazacPDVS) export."""

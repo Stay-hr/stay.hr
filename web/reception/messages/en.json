@@ -548,6 +548,8 @@
       "uploading": "Uploading…",
       "export": "Export PDV-S XML",
       "exporting": "Exporting…",
+      "exportPdv": "Export PDV XML",
+      "exportingPdv": "Exporting PDV…",
       "listTitle": "Invoices for {period}",
       "empty": "No imported invoices for this period.",
       "loading": "Loading…",
@@ -556,8 +558,10 @@
       "uploadSuccess": "Imported invoice {number}.",
       "alreadyImported": "Invoice already imported on {at}.",
       "uploadError": "PDF import failed.",
-      "exportSuccess": "XML downloaded.",
-      "exportError": "XML export failed.",
+      "exportSuccess": "PDV-S XML downloaded.",
+      "exportError": "PDV-S XML export failed.",
+      "exportPdvSuccess": "PDV XML downloaded.",
+      "exportPdvError": "PDV XML export failed.",
       "loadError": "Failed to load PDV-S data.",
       "importedAt": "Imported {at}"
     }

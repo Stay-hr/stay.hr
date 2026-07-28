@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Stay.hr structural XSD for ObrazacPDV aligned with ePorezna ObrazacPDV-v11-0
+  export shape (PR1 zero Tijelo). Prefer replacing with the official schema later.
+-->
+<xs:schema
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns:pdv="http://e-porezna.porezna-uprava.hr/sheme/zahtjevi/ObrazacPDV/v11-0"
+  xmlns:meta="http://e-porezna.porezna-uprava.hr/sheme/Metapodaci/v2-0"
+  targetNamespace="http://e-porezna.porezna-uprava.hr/sheme/zahtjevi/ObrazacPDV/v11-0"
+  elementFormDefault="qualified"
+  attributeFormDefault="unqualified">
+
+  <xs:import
+    namespace="http://e-porezna.porezna-uprava.hr/sheme/Metapodaci/v2-0"
+    schemaLocation="Metapodaci-v2-0.xsd"/>
+
+  <xs:element name="ObrazacPDV">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="meta:Metapodaci"/>
+        <xs:element name="Zaglavlje" type="pdv:ZaglavljeType"/>
+        <xs:element name="Tijelo" type="pdv:TijeloType"/>
+      </xs:sequence>
+      <xs:attribute name="verzijaSheme" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="ZaglavljeType">
+    <xs:sequence>
+      <xs:element name="Razdoblje" type="pdv:RazdobljeType"/>
+      <xs:element name="Obveznik" type="pdv:ObveznikType"/>
+      <xs:element name="ObracunSastavio" type="pdv:ObracunSastavioType"/>
+      <xs:element name="Ispostava" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="RazdobljeType">
+    <xs:sequence>
+      <xs:element name="DatumOd" type="xs:date"/>
+      <xs:element name="DatumDo" type="xs:date"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ObveznikType">
+    <xs:sequence>
+      <xs:element name="Ime" type="xs:string"/>
+      <xs:element name="Prezime" type="xs:string"/>
+      <xs:element name="OIB" type="xs:string"/>
+      <xs:element name="Adresa" type="pdv:AdresaType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="AdresaType">
+    <xs:sequence>
+      <xs:element name="Mjesto" type="xs:string"/>
+      <xs:element name="Ulica" type="xs:string"/>
+      <xs:element name="Broj" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- v11 ePorezna export: Ime + Prezime only (no Email). -->
+  <xs:complexType name="ObracunSastavioType">
+    <xs:sequence>
+      <xs:element name="Ime" type="xs:string"/>
+      <xs:element name="Prezime" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="VrijednostPorezType">
+    <xs:sequence>
+      <xs:element name="Vrijednost" type="xs:string"/>
+      <xs:element name="Porez" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="NabavnaProdajnaType">
+    <xs:sequence>
+      <xs:element name="NabavnaVrijednost" type="xs:string"/>
+      <xs:element name="ProdajnaVrijednost" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TijeloType">
+    <xs:sequence>
+      <xs:element name="Podatak000" type="xs:string"/>
+      <xs:element name="Podatak100" type="xs:string"/>
+      <xs:element name="Podatak101" type="xs:string"/>
+      <xs:element name="Podatak102" type="xs:string"/>
+      <xs:element name="Podatak103" type="xs:string"/>
+      <xs:element name="Podatak104" type="xs:string"/>
+      <xs:element name="Podatak105" type="xs:string"/>
+      <xs:element name="Podatak106" type="xs:string"/>
+      <xs:element name="Podatak107" type="xs:string"/>
+      <xs:element name="Podatak108" type="xs:string"/>
+      <xs:element name="Podatak109" type="xs:string"/>
+      <xs:element name="Podatak110" type="xs:string"/>
+      <xs:element name="Podatak111" type="xs:string"/>
+      <xs:element name="Podatak200" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak201" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak202" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak203" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak204" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak205" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak206" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak207" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak208" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak209" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak210" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak211" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak212" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak213" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak214" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak215" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak300" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak301" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak302" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak303" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak304" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak305" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak306" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak307" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak308" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak309" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak310" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak311" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak312" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak313" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak314" type="pdv:VrijednostPorezType"/>
+      <xs:element name="Podatak315" type="xs:string"/>
+      <xs:element name="Podatak400" type="xs:string"/>
+      <xs:element name="Podatak500" type="xs:string"/>
+      <xs:element name="Podatak610" type="xs:string"/>
+      <xs:element name="Podatak611" type="xs:string"/>
+      <xs:element name="Podatak612" type="xs:string"/>
+      <xs:element name="Podatak613" type="xs:string"/>
+      <xs:element name="Podatak614" type="xs:string"/>
+      <xs:element name="Podatak615" type="xs:string"/>
+      <xs:element name="Podatak620" type="xs:string"/>
+      <xs:element name="Podatak630" type="xs:string"/>
+      <xs:element name="Podatak640" type="xs:string"/>
+      <xs:element name="Podatak650" type="xs:string"/>
+      <xs:element name="Podatak660" type="xs:string"/>
+      <xs:element name="Podatak701" type="pdv:NabavnaProdajnaType"/>
+      <xs:element name="Podatak702" type="pdv:NabavnaProdajnaType"/>
+      <xs:element name="Podatak703" type="pdv:NabavnaProdajnaType"/>
+      <xs:element name="Podatak704" type="pdv:NabavnaProdajnaType"/>
+      <xs:element name="Povrat" type="xs:string"/>
+      <xs:element name="PodaciZaUstup">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="Predujam" type="xs:string"/>
+      <xs:element name="UstupPovrata" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

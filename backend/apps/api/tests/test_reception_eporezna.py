@@ -7,7 +7,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.billing.models import FiscalPreparer, TaxOffice, TenantFiscalSettings
-from apps.billing.services.eporezna.readiness import fiscal_pdvs_readiness
+from apps.billing.services.eporezna.readiness import fiscal_eporezna_readiness
 from apps.tenants.models import RECEPTION_DEVICE_SCOPES, ApiApplication, Tenant
 
 BOOKING_PDF = (
@@ -32,6 +32,7 @@ class EporeznaReceptionApiTests(TestCase):
         self.status_url = "/api/v1/reception/eporezna/status/"
         self.list_url = "/api/v1/reception/eporezna/foreign-service-invoices/"
         self.export_url = "/api/v1/reception/eporezna/pdvs/"
+        self.pdv_export_url = "/api/v1/reception/eporezna/pdv/"
 
     def _configure_fiscal(self):
         preparer = FiscalPreparer.objects.create(
@@ -62,7 +63,7 @@ class EporeznaReceptionApiTests(TestCase):
 
     def test_status_configured(self):
         self._configure_fiscal()
-        readiness = fiscal_pdvs_readiness(self.tenant)
+        readiness = fiscal_eporezna_readiness(self.tenant)
         self.assertTrue(readiness.configured)
         response = self.client.get(self.status_url, **self.auth)
         self.assertEqual(response.status_code, 200)
@@ -129,7 +130,7 @@ class EporeznaReceptionApiTests(TestCase):
             **self.auth,
         )
         self.assertEqual(empty_period.status_code, 400)
-        self.assertIn("No foreign service invoices", empty_period.json()["detail"])
+        self.assertIn("No source fiscal data", empty_period.json()["detail"])
 
         exported = self.client.get(
             self.export_url,
@@ -148,6 +149,23 @@ class EporeznaReceptionApiTests(TestCase):
         self.assertIn(b"69.48", exported.content)
         self.assertIn(b"<KodDrzave>NL</KodDrzave>", exported.content)
 
+        pdv_exported = self.client.get(
+            self.pdv_export_url,
+            {"period": "2026-06"},
+            **self.auth,
+        )
+        self.assertEqual(pdv_exported.status_code, 200)
+        self.assertEqual(pdv_exported["Content-Type"], "application/xml")
+        self.assertIn(
+            "PDV_07155680871_20260601-20260630.xml",
+            pdv_exported["Content-Disposition"],
+        )
+        self.assertTrue(pdv_exported.content.startswith(b"<?xml"))
+        self.assertIn(b"ObrazacPDV", pdv_exported.content)
+        self.assertIn(b'verzijaSheme="11.0"', pdv_exported.content)
+        self.assertIn(b"<Podatak210>", pdv_exported.content)
+        self.assertIn(b"<Vrijednost>0.00</Vrijednost>", pdv_exported.content)
+
     def test_export_requires_config(self):
         response = self.client.get(
             self.export_url,
@@ -156,3 +174,56 @@ class EporeznaReceptionApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("missing", response.json())
+
+    def test_pdv_and_pdvs_export_from_invoice_row(self):
+        from datetime import date, datetime, timezone
+        from decimal import Decimal
+
+        from apps.billing.models import ForeignServiceInvoice
+
+        self._configure_fiscal()
+        ForeignServiceInvoice.objects.create(
+            tenant=self.tenant,
+            provider=ForeignServiceInvoice.Provider.BOOKING,
+            supplier_name="Booking.com B.V.",
+            supplier_country="NL",
+            supplier_vat_id="805734958B01",
+            invoice_number="api-row-1",
+            invoice_date=date(2026, 7, 3),
+            tax_period="2026-06",
+            period_from=date(2026, 6, 1),
+            period_to=date(2026, 6, 30),
+            taxable_amount=Decimal("69.48"),
+            currency="EUR",
+            document_sha256="c" * 64,
+            parsed_payload={},
+            imported_at=datetime(2026, 7, 28, 9, 39, 37, tzinfo=timezone.utc),
+        )
+
+        empty = self.client.get(
+            self.pdv_export_url,
+            {"period": "2026-05"},
+            **self.auth,
+        )
+        self.assertEqual(empty.status_code, 400)
+        self.assertIn("No source fiscal data", empty.json()["detail"])
+
+        pdvs = self.client.get(self.export_url, {"period": "2026-06"}, **self.auth)
+        self.assertEqual(pdvs.status_code, 200)
+        self.assertIn(
+            "PDV-S_07155680871_20260601-20260630.xml",
+            pdvs["Content-Disposition"],
+        )
+        self.assertIn(b"<Isporuka>", pdvs.content)
+
+        pdv = self.client.get(self.pdv_export_url, {"period": "2026-06"}, **self.auth)
+        self.assertEqual(pdv.status_code, 200)
+        self.assertEqual(pdv["Content-Type"], "application/xml")
+        self.assertIn(
+            "PDV_07155680871_20260601-20260630.xml",
+            pdv["Content-Disposition"],
+        )
+        self.assertIn(b"ObrazacPDV", pdv.content)
+        self.assertIn(b'verzijaSheme="11.0"', pdv.content)
+        self.assertIn(b"<Podatak210>", pdv.content)
+        self.assertIn(b"<Vrijednost>0.00</Vrijednost>", pdv.content)

@@ -63,6 +63,7 @@ from apps.api.reception_booking_reconcile_views import (
 from apps.api.reception_eporezna_views import (
     EporeznaStatusView,
     ForeignServiceInvoiceListCreateView,
+    PdvExportView,
     PdvsExportView,
 )
 from apps.api.reception_document_intake_views import (
@@ -246,6 +247,11 @@ urlpatterns = [
         "eporezna/pdvs/",
         PdvsExportView.as_view(),
         name="reception-eporezna-pdvs",
+    ),
+    path(
+        "eporezna/pdv/",
+        PdvExportView.as_view(),
+        name="reception-eporezna-pdv",
     ),
     path(
         "reservations/",
