@@ -133,7 +133,9 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
   const isBinary =
     contentType.startsWith("image/") ||
     contentType.includes("octet-stream") ||
-    contentType.startsWith("application/pdf");
+    contentType.startsWith("application/pdf") ||
+    contentType.startsWith("application/xml") ||
+    contentType.includes("text/xml");
 
   const body = isBinary ? await upstream.arrayBuffer() : await upstream.text();
 
@@ -143,6 +145,10 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
   const etag = upstream.headers.get("etag");
   if (etag) {
     responseHeaders["ETag"] = etag;
+  }
+  const contentDisposition = upstream.headers.get("content-disposition");
+  if (contentDisposition) {
+    responseHeaders["Content-Disposition"] = contentDisposition;
   }
   if (relativePath.includes("reception/reviews")) {
     responseHeaders["Cache-Control"] = "no-store, no-cache, must-revalidate";

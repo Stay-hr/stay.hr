@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 
 from apps.core.models import TenantScopedModel
@@ -19,6 +20,39 @@ def invoice_pdf_upload_to(instance, filename: str) -> str:
     return f"invoices/{tenant_slug}/{instance.pk or 'draft'}/{filename}"
 
 
+def foreign_service_invoice_upload_to(instance, filename: str) -> str:
+    tenant_slug = instance.tenant.slug if instance.tenant_id else "unknown"
+    return f"foreign_service_invoices/{tenant_slug}/{filename}"
+
+
+class TaxOffice(models.TextChoices):
+    """Porezna ispostava codes used on ePorezna forms (Ispostava)."""
+
+    SIBENIK = "3566", "Šibenik"
+    ZADAR = "3500", "Zadar"
+    SPLIT = "3400", "Split"
+    DUBROVNIK = "3600", "Dubrovnik"
+    ZAGREB = "1000", "Zagreb"
+
+
+class FiscalPreparer(TenantScopedModel):
+    """Person who prepares/submits tax forms (ObracunSastavio) for a tenant."""
+
+    first_name = models.CharField(max_length=128)
+    last_name = models.CharField(max_length=128)
+    email = models.EmailField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["last_name", "first_name", "id"]
+        verbose_name = "Fiscal preparer"
+        verbose_name_plural = "Fiscal preparers"
+
+    def __str__(self) -> str:
+        return f"{self.first_name} {self.last_name} <{self.email}>"
+
+
 class TenantFiscalSettings(models.Model):
     tenant = models.OneToOneField(
         "tenants.Tenant",
@@ -33,6 +67,25 @@ class TenantFiscalSettings(models.Model):
     issuer_name = models.CharField(max_length=255, blank=True, default="")
     issuer_address = models.TextField(blank=True, default="")
     issuer_iban = models.CharField(max_length=34, blank=True, default="")
+    issuer_first_name = models.CharField(max_length=128, blank=True, default="")
+    issuer_last_name = models.CharField(max_length=128, blank=True, default="")
+    issuer_place = models.CharField(max_length=128, blank=True, default="")
+    issuer_street = models.CharField(max_length=128, blank=True, default="")
+    issuer_street_number = models.CharField(max_length=32, blank=True, default="")
+    tax_office_code = models.CharField(
+        max_length=8,
+        blank=True,
+        default="",
+        choices=TaxOffice.choices,
+        help_text="Porezna ispostava code for ePorezna forms (Ispostava).",
+    )
+    default_preparer = models.ForeignKey(
+        FiscalPreparer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_for_fiscal_settings",
+    )
     business_premise_code = models.CharField(max_length=20, blank=True, default="")
     payment_device_code = models.CharField(max_length=20, blank=True, default="")
     operator_code = models.CharField(
@@ -93,6 +146,87 @@ class TenantFiscalSettings(models.Model):
             and self.has_certificate
             and self.has_certificate_password
         )
+
+
+class ForeignServiceInvoice(TenantScopedModel):
+    """EU reverse-charge inbound service invoice (Booking, Airbnb, …).
+
+    Provider-specific extras belong in ``parsed_payload`` only — keep columns generic.
+    ``parsed_payload`` is write-once at import (immutable thereafter).
+    """
+
+    class Provider(models.TextChoices):
+        BOOKING = "booking", "Booking.com"
+        AIRBNB = "airbnb", "Airbnb"
+        EXPEDIA = "expedia", "Expedia"
+        OTHER = "other", "Other"
+
+    provider = models.CharField(max_length=32, choices=Provider.choices)
+    supplier_name = models.CharField(max_length=255)
+    supplier_country = models.CharField(max_length=2, help_text="ISO 3166-1 alpha-2")
+    supplier_vat_id = models.CharField(
+        max_length=32,
+        help_text="VAT ID without country prefix (e.g. 805734958B01).",
+    )
+    invoice_number = models.CharField(max_length=64)
+    invoice_date = models.DateField()
+    tax_period = models.CharField(max_length=7, help_text="YYYY-MM")
+    period_from = models.DateField()
+    period_to = models.DateField()
+    taxable_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3, default="EUR")
+    source_document = models.FileField(
+        upload_to=foreign_service_invoice_upload_to,
+        blank=True,
+    )
+    document_sha256 = models.CharField(
+        max_length=64,
+        help_text="SHA-256 of original PDF bytes (not extracted text).",
+    )
+    parsed_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Immutable parser snapshot; do not mutate after import.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="foreign_service_invoices_created",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="foreign_service_invoices_updated",
+    )
+    imported_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-tax_period", "-invoice_date", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "document_sha256"],
+                name="billing_fsi_unique_tenant_sha256",
+            ),
+            models.UniqueConstraint(
+                fields=["tenant", "provider", "invoice_number"],
+                name="billing_fsi_unique_tenant_provider_number",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["tenant", "tax_period"],
+                name="billing_fsi_tenant_period",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider}:{self.invoice_number} ({self.tax_period})"
 
 
 class Invoice(TenantScopedModel):

@@ -538,6 +538,28 @@
       "emailSendFailed": "Failed to send email.",
       "emailNoSmtp": "SMTP is not configured on the server.",
       "emailNoFrom": "No sender address (DEFAULT_FROM_EMAIL)."
+    },
+    "pdvs": {
+      "title": "PDV-S (EU services)",
+      "subtitle": "Import Booking.com commission invoices and export PDV-S for the invoice tax period (not the report checkout period).",
+      "badge": "{period} · {count} invoices",
+      "period": "Tax period",
+      "upload": "Upload Booking PDF",
+      "uploading": "Uploading…",
+      "export": "Export PDV-S XML",
+      "exporting": "Exporting…",
+      "listTitle": "Invoices for {period}",
+      "empty": "No imported invoices for this period.",
+      "loading": "Loading…",
+      "notConfigured": "Fiscal settings are incomplete — configure them in Django admin (tenant → Fiscal settings).",
+      "missing": "Missing: {fields}",
+      "uploadSuccess": "Imported invoice {number}.",
+      "alreadyImported": "Invoice already imported on {at}.",
+      "uploadError": "PDF import failed.",
+      "exportSuccess": "XML downloaded.",
+      "exportError": "XML export failed.",
+      "loadError": "Failed to load PDV-S data.",
+      "importedAt": "Imported {at}"
     }
   },
   "reportsNav": {

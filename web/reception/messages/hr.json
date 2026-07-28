@@ -538,6 +538,28 @@
       "emailSendFailed": "Slanje e-maila nije uspjelo.",
       "emailNoSmtp": "SMTP nije konfiguriran na poslužitelju.",
       "emailNoFrom": "Nema adrese pošiljatelja (DEFAULT_FROM_EMAIL)."
+    },
+    "pdvs": {
+      "title": "PDV-S (EU usluge)",
+      "subtitle": "Uvoz Booking.com računa za proviziju i izvoz obrasca PDV-S za porezno razdoblje računa (nije checkout period izvještaja).",
+      "badge": "{period} · {count} računa",
+      "period": "Porezno razdoblje",
+      "upload": "Učitaj Booking PDF",
+      "uploading": "Učitavanje…",
+      "export": "Izvezi PDV-S XML",
+      "exporting": "Izvoz…",
+      "listTitle": "Računi za {period}",
+      "empty": "Nema uvezenih računa za ovo razdoblje.",
+      "loading": "Učitavanje…",
+      "notConfigured": "Fiscal settings nisu potpuni — postavite ih u Django adminu (tenant → Fiscal settings).",
+      "missing": "Nedostaje: {fields}",
+      "uploadSuccess": "Uvezen račun {number}.",
+      "alreadyImported": "Račun je već uvezen {at}.",
+      "uploadError": "Uvoz PDF-a nije uspio.",
+      "exportSuccess": "XML preuzet.",
+      "exportError": "Izvoz XML-a nije uspio.",
+      "loadError": "Učitavanje PDV-S podataka nije uspjelo.",
+      "importedAt": "Uvezeno {at}"
     }
   },
   "reportsNav": {

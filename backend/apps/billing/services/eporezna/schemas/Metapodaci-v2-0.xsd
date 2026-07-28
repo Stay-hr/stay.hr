@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns:meta="http://e-porezna.porezna-uprava.hr/sheme/Metapodaci/v2-0"
+  targetNamespace="http://e-porezna.porezna-uprava.hr/sheme/Metapodaci/v2-0"
+  elementFormDefault="qualified"
+  attributeFormDefault="unqualified">
+
+  <xs:element name="Metapodaci">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Naslov" type="meta:DcString"/>
+        <xs:element name="Autor" type="meta:DcString"/>
+        <xs:element name="Datum" type="meta:DcString"/>
+        <xs:element name="Format" type="meta:DcString"/>
+        <xs:element name="Jezik" type="meta:DcString"/>
+        <xs:element name="Identifikator" type="meta:DcString"/>
+        <xs:element name="Uskladjenost" type="meta:DcString"/>
+        <xs:element name="Tip" type="meta:DcString"/>
+        <xs:element name="Adresant" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="DcString">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="dc" type="xs:string" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+</xs:schema>

@@ -1,9 +1,24 @@
+from __future__ import annotations
+
+import json
+
 from django import forms
 from django.contrib import admin, messages
 from django.utils.html import format_html
 
-from apps.billing.models import FiscalizationAttempt, Invoice, InvoiceLine, TenantFiscalSettings
-from apps.billing.services.issue import get_fiscal_settings_for_reservation, refresh_invoice_buyer_from_reservation
+from apps.billing.models import (
+    FiscalizationAttempt,
+    FiscalPreparer,
+    ForeignServiceInvoice,
+    Invoice,
+    InvoiceLine,
+    TaxOffice,
+    TenantFiscalSettings,
+)
+from apps.billing.services.issue import (
+    get_fiscal_settings_for_reservation,
+    refresh_invoice_buyer_from_reservation,
+)
 from apps.billing.services.pdf import render_invoice_pdf
 from apps.billing.tasks import fiscalize_invoice
 from apps.core.admin import SuperuserOnlyAdminMixin
@@ -23,9 +38,16 @@ class TenantFiscalSettingsInlineForm(forms.ModelForm):
         fields = (
             "is_vat_registered",
             "issuer_oib",
+            "issuer_first_name",
+            "issuer_last_name",
             "issuer_name",
+            "issuer_place",
+            "issuer_street",
+            "issuer_street_number",
             "issuer_address",
             "issuer_iban",
+            "tax_office_code",
+            "default_preparer",
             "business_premise_code",
             "payment_device_code",
             "operator_code",
@@ -35,6 +57,29 @@ class TenantFiscalSettingsInlineForm(forms.ModelForm):
             "certificate_expires_at",
             "use_test_endpoint",
         )
+        widgets = {
+            "tax_office_code": forms.Select(
+                choices=[("", "---------")]
+                + [(c.value, f"{c.value} — {c.label}") for c in TaxOffice]
+            ),
+        }
+        help_texts = {
+            "default_preparer": "Must belong to the same tenant.",
+            "tax_office_code": "Porezna ispostava (Ispostava) for ePorezna forms.",
+        }
+
+    def clean_default_preparer(self):
+        preparer = self.cleaned_data.get("default_preparer")
+        if preparer is None:
+            return preparer
+        tenant_id = getattr(self.instance, "tenant_id", None)
+        if tenant_id is None:
+            return preparer
+        if preparer.tenant_id != tenant_id:
+            raise forms.ValidationError(
+                "Default preparer must belong to the same tenant."
+            )
+        return preparer
 
     def save(self, commit=True):
         instance = super().save(commit=False)
@@ -53,31 +98,98 @@ class TenantFiscalSettingsInline(admin.StackedInline):
     extra = 0
     max_num = 1
     can_delete = False
+    verbose_name = "Fiscal settings"
+    verbose_name_plural = "Fiscal settings (PDV-S / guest invoices)"
     readonly_fields = (
         "invoice_sequence",
         "has_certificate_display",
         "has_certificate_password_display",
         "updated_at",
     )
-    fields = (
-        "is_vat_registered",
-        "issuer_oib",
-        "issuer_name",
-        "issuer_address",
-        "issuer_iban",
-        "business_premise_code",
-        "payment_device_code",
-        "operator_code",
-        "accommodation_vat_rate",
-        "invoice_sequence",
-        "certificate_file",
-        "certificate_password",
-        "has_certificate_display",
-        "has_certificate_password_display",
-        "certificate_expires_at",
-        "use_test_endpoint",
-        "updated_at",
+    fieldsets = (
+        (
+            "Fiscal identity",
+            {
+                "fields": (
+                    "issuer_oib",
+                    "issuer_first_name",
+                    "issuer_last_name",
+                    "issuer_name",
+                ),
+            },
+        ),
+        (
+            "Address",
+            {
+                "fields": (
+                    "issuer_place",
+                    "issuer_street",
+                    "issuer_street_number",
+                    "issuer_address",
+                    "issuer_iban",
+                ),
+            },
+        ),
+        (
+            "Tax (PDV-S)",
+            {
+                "fields": (
+                    "tax_office_code",
+                    "default_preparer",
+                ),
+                "description": (
+                    "PDV-S Zaglavlje. Default preparer must belong to the same tenant."
+                ),
+            },
+        ),
+        (
+            "Guest invoice / CIS",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "is_vat_registered",
+                    "business_premise_code",
+                    "payment_device_code",
+                    "operator_code",
+                    "accommodation_vat_rate",
+                    "invoice_sequence",
+                ),
+            },
+        ),
+        (
+            "Certificate",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "certificate_file",
+                    "certificate_password",
+                    "has_certificate_display",
+                    "has_certificate_password_display",
+                    "certificate_expires_at",
+                    "use_test_endpoint",
+                    "updated_at",
+                ),
+            },
+        ),
     )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "default_preparer":
+            parent_id = getattr(self, "_parent_tenant_id", None)
+            if parent_id is None:
+                object_id = request.resolver_match.kwargs.get("object_id") if request.resolver_match else None
+                parent_id = object_id
+            qs = FiscalPreparer.objects.all().order_by("last_name", "first_name")
+            if parent_id:
+                qs = qs.filter(tenant_id=parent_id)
+            else:
+                qs = qs.none()
+            kwargs["queryset"] = qs
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_formset(self, request, obj=None, **kwargs):
+        self._parent_tenant_id = obj.pk if obj is not None else None
+        return super().get_formset(request, obj, **kwargs)
 
     @admin.display(description="Certificate uploaded", boolean=True)
     def has_certificate_display(self, obj: TenantFiscalSettings | None) -> bool:
@@ -213,13 +325,169 @@ class FiscalizationAttemptAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return False
 
 
+@admin.register(FiscalPreparer)
+class FiscalPreparerAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ("last_name", "first_name", "email", "tenant", "created_at")
+    list_filter = ("tenant",)
+    search_fields = ("first_name", "last_name", "email", "tenant__name", "tenant__slug")
+    ordering = ("last_name", "first_name")
+    autocomplete_fields = ("tenant",)
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ForeignServiceInvoice)
+class ForeignServiceInvoiceAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = (
+        "invoice_number",
+        "provider_label",
+        "supplier_name",
+        "supplier_country",
+        "tax_period",
+        "amount_display",
+        "document_link",
+        "tenant",
+        "imported_at",
+    )
+    list_display_links = ("invoice_number",)
+    list_filter = ("provider", "supplier_country", "tax_period", "tenant")
+    search_fields = (
+        "invoice_number",
+        "supplier_name",
+        "supplier_vat_id",
+        "document_sha256",
+        "tenant__slug",
+        "tenant__name",
+    )
+    ordering = ("-imported_at",)
+    readonly_fields = (
+        "tenant",
+        "provider",
+        "supplier_name",
+        "supplier_country",
+        "supplier_vat_id",
+        "invoice_number",
+        "invoice_date",
+        "tax_period",
+        "period_from",
+        "period_to",
+        "taxable_amount",
+        "currency",
+        "source_document",
+        "document_sha256",
+        "parsed_payload_pretty",
+        "created_by",
+        "updated_by",
+        "imported_at",
+        "created_at",
+        "updated_at",
+    )
+    fieldsets = (
+        (
+            "General",
+            {"fields": ("tenant", "source_document")},
+        ),
+        (
+            "Provider",
+            {"fields": ("provider",)},
+        ),
+        (
+            "Invoice",
+            {
+                "fields": (
+                    "invoice_number",
+                    "invoice_date",
+                    "taxable_amount",
+                    "currency",
+                ),
+            },
+        ),
+        (
+            "Supplier",
+            {
+                "fields": (
+                    "supplier_name",
+                    "supplier_country",
+                    "supplier_vat_id",
+                ),
+            },
+        ),
+        (
+            "Tax period",
+            {
+                "fields": (
+                    "tax_period",
+                    "period_from",
+                    "period_to",
+                ),
+            },
+        ),
+        (
+            "Import metadata",
+            {
+                "fields": (
+                    "document_sha256",
+                    "created_by",
+                    "updated_by",
+                    "imported_at",
+                    "created_at",
+                    "updated_at",
+                ),
+            },
+        ),
+        (
+            "Raw payload",
+            {
+                "classes": ("collapse",),
+                "fields": ("parsed_payload_pretty",),
+            },
+        ),
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    @admin.display(description="Provider", ordering="provider")
+    def provider_label(self, obj: ForeignServiceInvoice) -> str:
+        return obj.get_provider_display()
+
+    @admin.display(description="Amount", ordering="taxable_amount")
+    def amount_display(self, obj: ForeignServiceInvoice) -> str:
+        return f"{obj.taxable_amount} {obj.currency}"
+
+    @admin.display(description="Document")
+    def document_link(self, obj: ForeignServiceInvoice) -> str:
+        if not obj.source_document:
+            return "—"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener">PDF</a>',
+            obj.source_document.url,
+        )
+
+    @admin.display(description="Parsed payload")
+    def parsed_payload_pretty(self, obj: ForeignServiceInvoice | None) -> str:
+        if obj is None or not obj.pk:
+            return "—"
+        text = json.dumps(obj.parsed_payload or {}, indent=2, ensure_ascii=False)
+        return format_html(
+            "<details><summary>Show JSON ({} bytes)</summary>"
+            "<pre style=\"max-width:80ch;white-space:pre-wrap;word-break:break-word;"
+            "background:#f6f8fa;padding:0.75rem;border-radius:4px;\">{}</pre>"
+            "</details>",
+            len(text.encode("utf-8")),
+            text,
+        )
+
+
 def register_tenant_fiscal_inline():
+    """Attach fiscal settings first on the Tenant change page (PDV-S config)."""
     try:
         tenant_admin = admin.site._registry[Tenant]
     except KeyError:
         return
-    if TenantFiscalSettingsInline not in tenant_admin.inlines:
-        tenant_admin.inlines = list(tenant_admin.inlines) + [TenantFiscalSettingsInline]
+    inlines = list(tenant_admin.inlines)
+    if TenantFiscalSettingsInline in inlines:
+        inlines.remove(TenantFiscalSettingsInline)
+    tenant_admin.inlines = [TenantFiscalSettingsInline, *inlines]
 
 
 register_tenant_fiscal_inline()

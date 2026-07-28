@@ -60,6 +60,11 @@ from apps.api.reception_booking_reconcile_views import (
     BookingReconcileCompareView,
     BookingReconcileRecompareView,
 )
+from apps.api.reception_eporezna_views import (
+    EporeznaStatusView,
+    ForeignServiceInvoiceListCreateView,
+    PdvsExportView,
+)
 from apps.api.reception_document_intake_views import (
     DocumentIntakeBatchView,
     DocumentIntakeJobApplyView,
@@ -226,6 +231,21 @@ urlpatterns = [
         "reports/booking-reconcile/recompare/",
         BookingReconcileRecompareView.as_view(),
         name="reception-reports-booking-reconcile-recompare",
+    ),
+    path(
+        "eporezna/status/",
+        EporeznaStatusView.as_view(),
+        name="reception-eporezna-status",
+    ),
+    path(
+        "eporezna/foreign-service-invoices/",
+        ForeignServiceInvoiceListCreateView.as_view(),
+        name="reception-eporezna-foreign-service-invoices",
+    ),
+    path(
+        "eporezna/pdvs/",
+        PdvsExportView.as_view(),
+        name="reception-eporezna-pdvs",
     ),
     path(
         "reservations/",

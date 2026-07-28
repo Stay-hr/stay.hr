@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { ReceptionNav } from "@/app/_components/ReceptionNav";
 import { ReportsSubNav } from "@/app/_components/ReportsSubNav";
+import { PdvsSection } from "@/app/reports/property-financial/_components/PdvsSection";
 import { singlePropertySlug } from "@/lib/app-config";
 import {
   displayBookingReference,
@@ -466,6 +467,8 @@ export default function PropertyFinancialReportPage() {
             )}
           </section>
         ) : null}
+
+        <PdvsSection />
       </main>
     </div>
   );
