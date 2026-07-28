@@ -1,4 +1,4 @@
-"""Reception API for PDV-S foreign-service invoices (ADR 0012 / PR1.1)."""
+"""Reception API for ePorezna foreign-service invoices (ADR 0012 / 0013)."""
 
 from __future__ import annotations
 
@@ -14,9 +14,12 @@ from apps.api.reception_views import ReceptionReadView
 from apps.billing.models import ForeignServiceInvoice
 from apps.billing.services.eporezna.errors import EporeznaError
 from apps.billing.services.eporezna.import_service import import_foreign_service_invoice
+from apps.billing.services.eporezna.pdv.builder import PDVBuilder
+from apps.billing.services.eporezna.pdv.validate import validate_pdv_xml
 from apps.billing.services.eporezna.pdvs.builder import PDVSBuilder
 from apps.billing.services.eporezna.pdvs.validate import validate_pdvs_xml
-from apps.billing.services.eporezna.readiness import fiscal_pdvs_readiness
+from apps.billing.services.eporezna.readiness import fiscal_eporezna_readiness
+from apps.billing.services.eporezna.source_data import has_source_fiscal_data
 
 MAX_PDF_BYTES = 8 * 1024 * 1024
 _PERIOD_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
@@ -74,7 +77,7 @@ class ForeignServiceInvoiceUploadSerializer(serializers.Serializer):
 
 class EporeznaStatusView(ReceptionReadView, APIView):
     def get(self, request):
-        return Response(fiscal_pdvs_readiness(request.tenant).as_dict())
+        return Response(fiscal_eporezna_readiness(request.tenant).as_dict())
 
 
 class ForeignServiceInvoiceListCreateView(ReceptionReadView, APIView):
@@ -94,7 +97,7 @@ class ForeignServiceInvoiceListCreateView(ReceptionReadView, APIView):
                 {"detail": "Query parameter period=YYYY-MM is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        readiness = fiscal_pdvs_readiness(request.tenant)
+        readiness = fiscal_eporezna_readiness(request.tenant)
         qs = ForeignServiceInvoice.objects.filter(
             tenant=request.tenant,
             tax_period=period,
@@ -146,7 +149,7 @@ class PdvsExportView(ReceptionReadView, APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        readiness = fiscal_pdvs_readiness(request.tenant)
+        readiness = fiscal_eporezna_readiness(request.tenant)
         if not readiness.configured:
             return Response(
                 {
@@ -156,19 +159,51 @@ class PdvsExportView(ReceptionReadView, APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        has_invoices = ForeignServiceInvoice.objects.filter(
-            tenant=request.tenant,
-            tax_period=period,
-        ).exists()
-        if not has_invoices:
+        if not has_source_fiscal_data(tenant=request.tenant, period=period):
             return Response(
-                {"detail": "No foreign service invoices for period."},
+                {"detail": "No source fiscal data for period."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
             export = PDVSBuilder().build(tenant=request.tenant, period=period)
             validate_pdvs_xml(export.xml_bytes)
+        except EporeznaError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        response = HttpResponse(export.xml_bytes, content_type="application/xml")
+        response["Content-Disposition"] = f'attachment; filename="{export.filename}"'
+        return response
+
+
+class PdvExportView(ReceptionReadView, APIView):
+    def get(self, request):
+        period = _parse_period(request.query_params.get("period"))
+        if period is None:
+            return Response(
+                {"detail": "Query parameter period=YYYY-MM is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        readiness = fiscal_eporezna_readiness(request.tenant)
+        if not readiness.configured:
+            return Response(
+                {
+                    "detail": "PDV fiscal settings incomplete.",
+                    "missing": list(readiness.missing),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not has_source_fiscal_data(tenant=request.tenant, period=period):
+            return Response(
+                {"detail": "No source fiscal data for period."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            export = PDVBuilder().build(tenant=request.tenant, period=period)
+            validate_pdv_xml(export.xml_bytes)
         except EporeznaError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 

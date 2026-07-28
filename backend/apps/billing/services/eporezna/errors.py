@@ -1,4 +1,4 @@
-"""Domain errors for foreign-service invoice import and PDV-S export."""
+"""Domain errors for foreign-service invoice import and ePorezna export."""
 
 from __future__ import annotations
 
@@ -28,4 +28,12 @@ class PdvsBuildError(EporeznaError):
 
 
 class PdvsValidationError(EporeznaError):
-    """Generated or uploaded XML failed XSD / structural validation."""
+    """Generated or uploaded PDV-S XML failed XSD / structural validation."""
+
+
+class PdvBuildError(EporeznaError):
+    """Cannot build Obrazac PDV XML (missing fiscal settings, source data, etc.)."""
+
+
+class PdvValidationError(EporeznaError):
+    """Generated or uploaded Obrazac PDV XML failed XSD / structural validation."""

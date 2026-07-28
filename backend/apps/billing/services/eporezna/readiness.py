@@ -1,4 +1,4 @@
-"""PDV-S fiscal readiness — single source of truth for required TenantFiscalSettings."""
+"""ePorezna fiscal readiness — single source of truth for required TenantFiscalSettings."""
 
 from __future__ import annotations
 
@@ -32,8 +32,8 @@ class ReadinessResult:
         }
 
 
-def fiscal_pdvs_readiness(tenant: Tenant) -> ReadinessResult:
-    """Return whether the tenant can export Obrazac PDV-S Zaglavlje."""
+def fiscal_eporezna_readiness(tenant: Tenant) -> ReadinessResult:
+    """Return whether the tenant can export ePorezna Zaglavlje (PDV and PDV-S)."""
     settings = (
         TenantFiscalSettings.objects.filter(tenant=tenant)
         .select_related("default_preparer")
@@ -62,3 +62,7 @@ def fiscal_pdvs_readiness(tenant: Tenant) -> ReadinessResult:
         configured=not missing,
         missing=tuple(missing),
     )
+
+
+# Back-compat alias (prefer fiscal_eporezna_readiness).
+fiscal_pdvs_readiness = fiscal_eporezna_readiness

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   defaultPdvsPeriod,
+  downloadPdvXml,
   downloadPdvsXml,
   fetchPdvsInvoices,
   uploadPdvsInvoice,
@@ -48,6 +49,7 @@ export function PdvsSection() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingPdv, setExportingPdv] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -113,6 +115,20 @@ export function PdvsSection() {
     }
   }
 
+  async function onExportPdv() {
+    setExportingPdv(true);
+    setError("");
+    setMessage("");
+    try {
+      await downloadPdvXml(period);
+      setMessage(t("exportPdvSuccess"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("exportPdvError"));
+    } finally {
+      setExportingPdv(false);
+    }
+  }
+
   const periodLabel = formatPeriodLabel(period, locale);
   const actionsDisabled = !configured || loading;
 
@@ -159,6 +175,14 @@ export function PdvsSection() {
             onClick={() => void onExport()}
           >
             {exporting ? t("exporting") : t("export")}
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-stay-border px-3 py-2 text-sm font-medium disabled:opacity-50"
+            disabled={actionsDisabled || exportingPdv || invoices.length === 0}
+            onClick={() => void onExportPdv()}
+          >
+            {exportingPdv ? t("exportingPdv") : t("exportPdv")}
           </button>
         </div>
       </div>

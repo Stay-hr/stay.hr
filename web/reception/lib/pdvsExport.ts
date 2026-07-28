@@ -51,6 +51,11 @@ export function pdvsExportPath(period: string): string {
   return `/api/stay/reception/eporezna/pdvs/?${q}`;
 }
 
+export function pdvExportPath(period: string): string {
+  const q = new URLSearchParams({ period });
+  return `/api/stay/reception/eporezna/pdv/?${q}`;
+}
+
 export async function fetchPdvsStatus(): Promise<PdvsReadiness> {
   const res = await fetch(pdvsStatusPath());
   const data = await res.json().catch(() => null);
@@ -89,9 +94,11 @@ export async function uploadPdvsInvoice(file: File): Promise<PdvsInvoice> {
   return data as PdvsInvoice;
 }
 
-/** Download XML using backend Content-Disposition filename (do not invent names). */
-export async function downloadPdvsXml(period: string): Promise<void> {
-  const res = await fetch(pdvsExportPath(period));
+async function downloadXmlAttachment(
+  url: string,
+  fallbackFilename: string,
+): Promise<void> {
+  const res = await fetch(url);
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     throw new Error(
@@ -101,18 +108,27 @@ export async function downloadPdvsXml(period: string): Promise<void> {
   const blob = await res.blob();
   const disposition = res.headers.get("Content-Disposition") || "";
   const match = /filename="([^"]+)"/i.exec(disposition);
-  const filename = match?.[1] || `PDV-S_${period}.xml`;
-  const url = URL.createObjectURL(blob);
+  const filename = match?.[1] || fallbackFilename;
+  const objectUrl = URL.createObjectURL(blob);
   try {
     const a = document.createElement("a");
-    a.href = url;
+    a.href = objectUrl;
     a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
   } finally {
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(objectUrl);
   }
+}
+
+/** Download XML using backend Content-Disposition filename (do not invent names). */
+export async function downloadPdvsXml(period: string): Promise<void> {
+  await downloadXmlAttachment(pdvsExportPath(period), `PDV-S_${period}.xml`);
+}
+
+export async function downloadPdvXml(period: string): Promise<void> {
+  await downloadXmlAttachment(pdvExportPath(period), `PDV_${period}.xml`);
 }
 
 export function upsertInvoiceById(

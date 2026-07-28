@@ -250,7 +250,7 @@ class PDVSBuilderTests(TestCase):
                 tenant=self.tenant,
                 period="2026-05",
             )
-        self.assertIn("No invoices for tax period", str(ctx.exception))
+        self.assertIn("No source fiscal data", str(ctx.exception))
 
     def test_builder_snapshot_xpath_and_xsd(self):
         export = PDVSBuilder(clock=_FixedClock(), uuids=_FixedUuid()).build(

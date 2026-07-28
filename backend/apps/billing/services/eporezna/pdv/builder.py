@@ -1,16 +1,23 @@
+"""Build ObrazacPDV XML — structure only in PR1 (no tax calculation).
+
+PDVBuilder intentionally contains no tax calculation logic. PR1 serializes
+the official v11-0 structure only. Tax computation will be introduced in a
+dedicated mapping layer once an official filled reference export is available.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 from lxml import etree
 
-from apps.billing.models import ForeignServiceInvoice, TenantFiscalSettings
-from apps.billing.services.eporezna.errors import PdvsBuildError
+from apps.billing.models import TenantFiscalSettings
+from apps.billing.services.eporezna.errors import PdvBuildError
 from apps.billing.services.eporezna.filename import build_filename
 from apps.billing.services.eporezna.metadata import EporeznaMetadataBuilder
-from apps.billing.services.eporezna.pdvs.line_mapper import PDVSLine, PDVSLineMapper
 from apps.billing.services.eporezna.period import FiscalPeriod
 from apps.billing.services.eporezna.readiness import fiscal_eporezna_readiness
 from apps.billing.services.eporezna.source_data import has_source_fiscal_data
@@ -20,37 +27,57 @@ from apps.billing.services.eporezna.time_providers import (
     SystemUuidProvider,
     UuidProvider,
 )
-from apps.billing.services.eporezna.xml_helpers import append_decimal, append_text, money
+from apps.billing.services.eporezna.xml_helpers import (
+    append_bool,
+    append_decimal,
+    append_text,
+)
 from apps.tenants.models import Tenant
 
-NS = "http://e-porezna.porezna-uprava.hr/sheme/zahtjevi/ObrazacPDVS/v1-0"
-PDVS_TITLE = (
-    "Prijava za stjecanje dobara i primljene usluge "
-    "iz drugih država članica Europske unije"
+NS = "http://e-porezna.porezna-uprava.hr/sheme/zahtjevi/ObrazacPDV/v11-0"
+PDV_TITLE = "Obrazac PDV"
+PDV_CONFORMS_TO = "ObrazacPDV-v11-0"
+ZERO = Decimal("0.00")
+
+# Scalar money tags in Tijelo (reference v11-0 zero export order).
+_SCALAR_000_111 = (
+    "Podatak000",
+    *(f"Podatak{i}" for i in range(100, 112)),
 )
-PDVS_CONFORMS_TO = "ObrazacPDVS-v1-0"
+_PAIR_200_215 = tuple(f"Podatak{i}" for i in range(200, 216))
+_PAIR_300_314 = tuple(f"Podatak{i}" for i in range(300, 315))
+_SCALAR_TAIL = (
+    "Podatak315",
+    "Podatak400",
+    "Podatak500",
+    "Podatak610",
+    "Podatak611",
+    "Podatak612",
+    "Podatak613",
+    "Podatak614",
+    "Podatak615",
+    "Podatak620",
+    "Podatak630",
+    "Podatak640",
+    "Podatak650",
+)
+_PAIR_701_704 = tuple(f"Podatak{i}" for i in range(701, 705))
 
 
 @dataclass(frozen=True)
-class PDVSExport:
+class PDVExport:
     xml_bytes: bytes
     filename: str
     period_from: date
     period_to: date
-    invoice_count: int
 
 
 def schema_path() -> Path:
-    return Path(__file__).resolve().parent.parent / "schemas" / "ObrazacPDVS-v1-0.xsd"
+    return Path(__file__).resolve().parent.parent / "schemas" / "ObrazacPDV-v11-0.xsd"
 
 
-class PDVSBuilder:
-    """Build ObrazacPDVS XML from fiscal settings + PDVSLine list.
-
-    Deterministic for a given tenant + period + clock/uuid providers.
-    Only Metapodaci Datum / Identifikator vary when clock/uuid change.
-    Mapping rules live in ``line_mapper`` — this class only serializes XML.
-    """
+class PDVBuilder:
+    """Serialize ObrazacPDV Zaglavlje + zero Tijelo (PR1 structure only)."""
 
     def __init__(
         self,
@@ -61,18 +88,17 @@ class PDVSBuilder:
         self._clock = clock or SystemClock()
         self._uuids = uuids or SystemUuidProvider()
 
-    def build(self, *, tenant: Tenant, period: str) -> PDVSExport:
+    def build(self, *, tenant: Tenant, period: str) -> PDVExport:
         readiness = fiscal_eporezna_readiness(tenant)
         if not readiness.configured:
-            raise PdvsBuildError(
-                "PDV-S fiscal settings incomplete: "
-                + ", ".join(readiness.missing)
+            raise PdvBuildError(
+                "PDV fiscal settings incomplete: " + ", ".join(readiness.missing)
             )
 
         try:
             fiscal_period = FiscalPeriod.from_year_month(period)
         except ValueError as exc:
-            raise PdvsBuildError(str(exc)) from exc
+            raise PdvBuildError(str(exc)) from exc
 
         settings = (
             TenantFiscalSettings.objects.filter(tenant=tenant)
@@ -80,19 +106,10 @@ class PDVSBuilder:
             .get()
         )
         preparer = settings.default_preparer
-        assert preparer is not None  # guaranteed by readiness
+        assert preparer is not None
 
         if not has_source_fiscal_data(tenant=tenant, period=fiscal_period.period):
-            raise PdvsBuildError("No source fiscal data for tax period.")
-
-        invoices = list(
-            ForeignServiceInvoice.objects.filter(
-                tenant=tenant, tax_period=fiscal_period.period
-            ).order_by("invoice_number", "id")
-        )
-        lines = PDVSLineMapper().map(invoices)
-        if not lines:
-            raise PdvsBuildError("No source fiscal data for tax period.")
+            raise PdvBuildError("No source fiscal data for tax period.")
 
         now = self._clock.now()
         ident = self._uuids.new()
@@ -102,7 +119,6 @@ class PDVSBuilder:
             fiscal_period=fiscal_period,
             now=now,
             ident=ident,
-            lines=lines,
         )
         xml_bytes = etree.tostring(
             root,
@@ -110,16 +126,15 @@ class PDVSBuilder:
             encoding="UTF-8",
             pretty_print=False,
         )
-        return PDVSExport(
+        return PDVExport(
             xml_bytes=xml_bytes,
             filename=build_filename(
-                form="PDV-S",
+                form="PDV",
                 oib=settings.issuer_oib,
                 period=fiscal_period,
             ),
             period_from=fiscal_period.date_from,
             period_to=fiscal_period.date_to,
-            invoice_count=len(invoices),
         )
 
     def _build_root(
@@ -130,19 +145,18 @@ class PDVSBuilder:
         fiscal_period: FiscalPeriod,
         now,
         ident,
-        lines: list[PDVSLine],
     ) -> etree._Element:
         root = etree.Element(
-            f"{{{NS}}}ObrazacPDVS",
+            f"{{{NS}}}ObrazacPDV",
             nsmap={None: NS},
-            verzijaSheme="1.0",
+            verzijaSheme="11.0",
         )
 
         autor = f"{preparer.first_name} {preparer.last_name}".strip()
         EporeznaMetadataBuilder().append(
             root,
-            title=PDVS_TITLE,
-            conforms_to=PDVS_CONFORMS_TO,
+            title=PDV_TITLE,
+            conforms_to=PDV_CONFORMS_TO,
             autor=autor,
             now=now,
             ident=ident,
@@ -166,26 +180,43 @@ class PDVSBuilder:
         append_text(adresa, "Ulica", settings.issuer_street, ns=NS)
         append_text(adresa, "Broj", settings.issuer_street_number or "", ns=NS)
 
+        # ePorezna v11 reference: ObracunSastavio has Ime + Prezime only (no Email).
         sastavio = etree.SubElement(zaglavlje, f"{{{NS}}}ObracunSastavio")
         append_text(sastavio, "Ime", preparer.first_name, ns=NS)
         append_text(sastavio, "Prezime", preparer.last_name, ns=NS)
-        append_text(sastavio, "Email", preparer.email, ns=NS)
 
         append_text(zaglavlje, "Ispostava", settings.tax_office_code, ns=NS)
 
         tijelo = etree.SubElement(root, f"{{{NS}}}Tijelo")
-        isporuke = etree.SubElement(tijelo, f"{{{NS}}}Isporuke")
-        for red_br, line in enumerate(lines, start=1):
-            isporuka = etree.SubElement(isporuke, f"{{{NS}}}Isporuka")
-            append_text(isporuka, "RedBr", str(red_br), ns=NS)
-            append_text(isporuka, "KodDrzave", line.country_code, ns=NS)
-            append_text(isporuka, "PDVID", line.vat_id, ns=NS)
-            append_text(isporuka, "I1", money(line.goods_amount), ns=NS)
-            append_text(isporuka, "I2", money(line.services_amount), ns=NS)
-
-        goods_total, services_total = PDVSLineMapper().totals(lines)
-        ukupno = etree.SubElement(tijelo, f"{{{NS}}}IsporukeUkupno")
-        append_decimal(ukupno, "I1", goods_total, ns=NS)
-        append_decimal(ukupno, "I2", services_total, ns=NS)
-
+        self._append_zero_tijelo(tijelo)
         return root
+
+    def _append_zero_tijelo(self, tijelo: etree._Element) -> None:
+        """Emit reference-shaped zero body — no tax mapping in PR1."""
+        for tag in _SCALAR_000_111:
+            append_decimal(tijelo, tag, ZERO, ns=NS)
+
+        for tag in _PAIR_200_215:
+            pair = etree.SubElement(tijelo, f"{{{NS}}}{tag}")
+            append_decimal(pair, "Vrijednost", ZERO, ns=NS)
+            append_decimal(pair, "Porez", ZERO, ns=NS)
+
+        for tag in _PAIR_300_314:
+            pair = etree.SubElement(tijelo, f"{{{NS}}}{tag}")
+            append_decimal(pair, "Vrijednost", ZERO, ns=NS)
+            append_decimal(pair, "Porez", ZERO, ns=NS)
+
+        for tag in _SCALAR_TAIL:
+            append_decimal(tijelo, tag, ZERO, ns=NS)
+
+        append_bool(tijelo, "Podatak660", False, ns=NS)
+
+        for tag in _PAIR_701_704:
+            pair = etree.SubElement(tijelo, f"{{{NS}}}{tag}")
+            append_decimal(pair, "NabavnaVrijednost", ZERO, ns=NS)
+            append_decimal(pair, "ProdajnaVrijednost", ZERO, ns=NS)
+
+        append_decimal(tijelo, "Povrat", ZERO, ns=NS)
+        etree.SubElement(tijelo, f"{{{NS}}}PodaciZaUstup")
+        append_decimal(tijelo, "Predujam", ZERO, ns=NS)
+        append_decimal(tijelo, "UstupPovrata", ZERO, ns=NS)
