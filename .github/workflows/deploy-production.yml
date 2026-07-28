@@ -1,0 +1,69 @@
+name: Deploy production
+
+# On every push to main (and manual dispatch), SSH to dedicated-hel1 and run
+# git pull + ./scripts/deploy.sh (rebuilds django/frontends when sources changed).
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST     — e.g. 65.108.196.92 or dedicated-hel1 hostname
+#   DEPLOY_USER     — SSH user on the server
+#   DEPLOY_SSH_KEY  — private key (PEM) authorized for that user
+# Optional:
+#   DEPLOY_SSH_PORT — default 22
+#   DEPLOY_PATH     — default /opt/stacks/stay.hr
+#
+# See docs/operations/deploy-ci.md
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Verify deploy secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          missing=0
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Configure secrets per docs/operations/deploy-ci.md"
+            exit 1
+          fi
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script_stop: true
+          command_timeout: 40m
+          script: |
+            set -euo pipefail
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            DEPLOY_PATH="${DEPLOY_PATH:-/opt/stacks/stay.hr}"
+            cd "$DEPLOY_PATH"
+            echo "==> Remote $(hostname) $(pwd)"
+            echo "==> Before: $(git rev-parse --short HEAD) ($(git branch --show-current))"
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+            echo "==> After pull: $(git rev-parse --short HEAD)"
+            ./scripts/deploy.sh
+            echo "==> Deploy finished"
