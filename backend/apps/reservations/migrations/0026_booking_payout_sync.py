@@ -7,6 +7,8 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("reservations", "0025_booking_payout_import"),
+        # Tables come from 0028 on fresh DBs (0025_booking_payout_import is a no-op leaf).
+        ("reservations", "0028_booking_payout_import"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
