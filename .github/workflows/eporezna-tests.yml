@@ -1,0 +1,102 @@
+name: ePorezna tests
+
+# Focused Django suite for Obrazac PDV / PDV-S (ADR 0012 / 0013).
+# Uses PostGIS service + config.settings.test_postgis (same settings as local
+# ./scripts/run-tests-postgis.sh).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "backend/apps/billing/**"
+      - "backend/apps/api/reception_eporezna_views.py"
+      - "backend/apps/api/reception_urls.py"
+      - "backend/apps/api/tests/test_reception_eporezna.py"
+      - "backend/config/settings/test_postgis.py"
+      - "docs/architecture/adr/0012-foreign-service-invoice-pdvs.md"
+      - "docs/architecture/adr/0013-obrazac-pdv-export.md"
+      - ".github/workflows/eporezna-tests.yml"
+  pull_request:
+    paths:
+      - "backend/apps/billing/**"
+      - "backend/apps/api/reception_eporezna_views.py"
+      - "backend/apps/api/reception_urls.py"
+      - "backend/apps/api/tests/test_reception_eporezna.py"
+      - "backend/config/settings/test_postgis.py"
+      - "docs/architecture/adr/0012-foreign-service-invoice-pdvs.md"
+      - "docs/architecture/adr/0013-obrazac-pdv-export.md"
+      - ".github/workflows/eporezna-tests.yml"
+
+jobs:
+  eporezna:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: stay
+          POSTGRES_PASSWORD: stay
+          POSTGRES_DB: stay_platform_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U stay -d stay_platform_test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test_postgis
+      DJANGO_SECRET_KEY: ci-secret-key-not-for-production
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: stay_platform_test_db
+      DB_USER: stay
+      DB_PASSWORD: stay
+      TEST_DB_NAME: stay_platform_test_db
+      FCM_PUSH_ENABLED: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        working-directory: .
+        run: pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Ensure media dir writable
+        run: mkdir -p media
+
+      - name: Enable PostGIS extension
+        run: |
+          python - <<'PY'
+          import psycopg
+          with psycopg.connect(
+              host="localhost",
+              port=5432,
+              dbname="stay_platform_test_db",
+              user="stay",
+              password="stay",
+              autocommit=True,
+          ) as conn:
+              conn.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
+          print("postgis ok")
+          PY
+
+      - name: Run ePorezna tests
+        run: >
+          python manage.py test
+          apps.billing.tests.test_eporezna_pdv
+          apps.billing.tests.test_eporezna_pdvs
+          apps.api.tests.test_reception_eporezna
+          -v 2 --keepdb
