@@ -21,6 +21,18 @@ Povijest popravaka i PR po PR: [integrations-test-triage.md](integrations-test-t
 
 **Quality gate:** svaka nova funkcionalnost u integracijskom sloju mora zadržati **335/335** na PostGIS smoke-u (`./scripts/run-tests-postgis.sh`).
 
+### GitHub Actions — ePorezna
+
+Workflow [`.github/workflows/eporezna-tests.yml`](../../.github/workflows/eporezna-tests.yml) na `push`/`pull_request` (path-filter) pokreće:
+
+```text
+apps.billing.tests.test_eporezna_pdv
+apps.billing.tests.test_eporezna_pdvs
+apps.api.tests.test_reception_eporezna
+```
+
+protiv PostGIS service containera (`config.settings.test_postgis`). Ručno: **Actions → ePorezna tests → Run workflow**.
+
 ---
 
 ## Recommended workflow
