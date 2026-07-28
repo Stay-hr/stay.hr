@@ -16,6 +16,10 @@ Artifacts: `data/ops/sse-lifecycle-observation/`
 |-----|----------------|---------|--------|--------|--------|-----------------|--------|-------|
 | 2026-07-23 | 2026-07-23T14:54:25Z | **PASS** | 2 | 2 | 0 | 0 | pass | Day 0 baseline — rise/fall canary closed in ~50s (`close_reason=client_disconnect`); invariant_delta=0; no breach |
 | 2026-07-24 | 2026-07-24T09:50:01Z | **PASS** | 26 | 21 | 0 | 0 | skipped | — |
+| 2026-07-25 | 2026-07-25T09:50:01Z | **PASS** | 11 | 11 | 0 | 0 | skipped | — |
+| 2026-07-26 | 2026-07-26T09:50:01Z | **PASS** | 34 | 34 | 0 | 0 | skipped | — |
+| 2026-07-27 | 2026-07-27T09:50:01Z | **PASS** | 0 | 0 | 0 | 0 | skipped | — |
+| 2026-07-28 | 2026-07-28T09:50:01Z | **PASS** | 0 | 0 | 0 | 0 | skipped | — |
 
 ## Status
 

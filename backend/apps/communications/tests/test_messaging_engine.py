@@ -376,16 +376,29 @@ class MessagingDispatcherTests(TestCase):
         self.assertEqual(first.error_code, "invalid_delivery_result")
 
     def test_alert_throttle_dedupes_burst(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
         from apps.communications.messaging.alerts import alert_all_providers_failed
         from django.test import override_settings
 
         self._register_channel_providers(
             _FailProvider("booking"),
             _FailProvider("email"),
+            _FailProvider("whatsapp"),
         )
         dispatch = self._make_dispatch()
+        # Daytime so WhatsApp quiet-hours policy does not DEFER mid-chain.
+        day = datetime(2026, 7, 27, 10, 0, tzinfo=ZoneInfo("Europe/Zagreb"))
+        ctx = TriggerContext(
+            reservation_id=self.reservation.pk,
+            tenant_id=self.tenant.pk,
+            property_id=self.property.pk,
+            trigger=Trigger.time(source="test"),
+            now=day.astimezone(ZoneInfo("UTC")),
+        )
         with override_settings(MESSAGING_ALERT_THROTTLE_SECONDS=60):
-            outcome = dispatch_one(dispatch)
+            outcome = dispatch_one(dispatch, ctx=ctx)
             self.assertEqual(outcome.status, MessageDispatchStatus.FAILED)
             # Second alert with same key should be throttled.
             emitted = alert_all_providers_failed(dispatch, outcome.results)

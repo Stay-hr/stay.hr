@@ -193,7 +193,7 @@ def _whatsapp_template_compose_fields(
 ) -> dict:
     from apps.integrations.whatsapp.welcome_template import (
         build_welcome_template_parameters,
-        welcome_template_name,
+        resolve_welcome_template,
     )
 
     template_name: str | None = None
@@ -209,14 +209,15 @@ def _whatsapp_template_compose_fields(
 
     config = integration.get_config_dict()
     lang, _params = build_welcome_template_parameters(reservation)
-    computed_name = welcome_template_name(config=config, lang=lang)
+    resolved = resolve_welcome_template(language=lang, platform_config=config)
+    computed_name = resolved.template_name
     if intent in (GuestMessageIntent.CHECKIN, GuestMessageIntent.WELCOME_TEMPLATE):
         template_name = computed_name
         template_available = _welcome_template_available(
             integration=integration,
             runtime=runtime,
             template_name=computed_name,
-            language_code=lang,
+            language_code=resolved.meta_language,
         )
     return {"template_name": template_name, "template_available": template_available}
 

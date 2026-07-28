@@ -19,6 +19,26 @@ from apps.communications.messaging.providers.registry import provider_registry
 from apps.communications.messaging.templates import template_registry
 
 
+def _welcome_templates_status_block() -> dict[str, Any]:
+    """Welcome template registry/config health (ADR 0011 Phase 4)."""
+    try:
+        from apps.integrations.whatsapp.welcome_template_config import (
+            welcome_templates_health_snapshot,
+        )
+
+        return welcome_templates_health_snapshot()
+    except Exception as exc:  # noqa: BLE001 — status must stay available
+        return {
+            "registry_count": 0,
+            "configured": 0,
+            "missing_in_config": [],
+            "status": "warning",
+            "configs_checked": 0,
+            "error": str(exc)[:200],
+            "reason": "snapshot_failed",
+        }
+
+
 def messaging_health_snapshot(*, include_queue: bool = True) -> dict[str, Any]:
     """In-memory catalog inventory + optional outbox queue depth."""
     providers = []
@@ -54,6 +74,7 @@ def messaging_health_snapshot(*, include_queue: bool = True) -> dict[str, Any]:
             "count": len(plan_registry),
             "keys": list(plan_registry.keys()),
         },
+        "welcome_templates": _welcome_templates_status_block(),
         "generated_at": timezone.now().isoformat(),
     }
 

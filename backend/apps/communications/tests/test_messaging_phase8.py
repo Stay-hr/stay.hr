@@ -468,6 +468,12 @@ class MessagingHealthTests(_MessagingFixturesMixin, TestCase):
         self.assertIsNotNone(snap["last_failure_at"])
         self.assertTrue(snap["flags"]["enabled"])
         self.assertFalse(snap["flags"]["shadow"])
+        self.assertIn("welcome_templates", snap)
+        wt = snap["welcome_templates"]
+        self.assertIn("configured", wt)
+        self.assertIn("missing_in_config", wt)
+        self.assertIn("status", wt)
+        self.assertIn(wt["status"], ("healthy", "warning", "critical"))
 
     def test_system_status_includes_messaging_block(self):
         self._make_dispatch(status=MessageDispatchStatus.PLANNED)
@@ -476,6 +482,7 @@ class MessagingHealthTests(_MessagingFixturesMixin, TestCase):
         messaging = payload["messaging"]
         self.assertIn("definitions", messaging)
         self.assertIn("outbox", messaging)
+        self.assertIn("welcome_templates", messaging)
         self.assertGreaterEqual(messaging["outbox"]["planned"], 1)
 
 

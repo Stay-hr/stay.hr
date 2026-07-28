@@ -119,6 +119,85 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
 
     @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
+    def test_send_welcome_pl_payload_with_incomplete_config(self, mock_send):
+        """Phase 5 E2E: incomplete map still sends stay_welcome_pl + language pl (#1020)."""
+        # Config omits pl — old bug chose stay_welcome_en while keeping meta language pl.
+        self.integration.set_config_dict(
+            {
+                "provider": "360dialog",
+                "phone_number_id": "1068791909660300",
+                "access_token": TEST_D360_KEY,
+                "api_base_url": "https://waba-v2.360dialog.io",
+                "display_phone_number": "+385911111111",
+                "auto_reply": False,
+                "whatsapp_templates": {
+                    "header_image_url": "https://stay.hr/static/whatsapp-header.png",
+                    "welcome": {
+                        "hr": "stay_welcome_hr",
+                        "en": "stay_welcome_en",
+                        "de": "stay_welcome_de",
+                        "es": "stay_welcome_es",
+                        "fr": "stay_welcome_fr",
+                        "it": "stay_welcome_it",
+                    },
+                },
+            }
+        )
+        self.integration.save()
+        self.reservation.booker_country = "PL"
+        self.reservation.booker_name = "Jan Kowalski"
+        self.reservation.save(
+            update_fields=["booker_country", "booker_name", "updated_at"]
+        )
+        mock_send.return_value = {"messages": [{"id": "wamid.welcome.pl.1"}]}
+
+        result = send_welcome_template_for_reservation(self.reservation)
+
+        self.assertEqual(result["status"], "sent")
+        mock_send.assert_called_once()
+        kwargs = mock_send.call_args.kwargs
+        self.assertEqual(kwargs["template_name"], "stay_welcome_pl")
+        self.assertEqual(kwargs["language_code"], "pl")
+        self.assertEqual(kwargs["body_parameters"][0], "Jan")
+
+    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
+    def test_dry_run_welcome_pl_payload_with_incomplete_config(self, mock_send):
+        """Dry-run also resolves pl via registry when config map omits pl."""
+        self.integration.set_config_dict(
+            {
+                "provider": "360dialog",
+                "phone_number_id": "1068791909660300",
+                "access_token": TEST_D360_KEY,
+                "api_base_url": "https://waba-v2.360dialog.io",
+                "auto_reply": False,
+                "whatsapp_templates": {
+                    "welcome": {
+                        "hr": "stay_welcome_hr",
+                        "en": "stay_welcome_en",
+                        "de": "stay_welcome_de",
+                        "es": "stay_welcome_es",
+                        "fr": "stay_welcome_fr",
+                        "it": "stay_welcome_it",
+                    },
+                },
+            }
+        )
+        self.integration.save()
+        self.reservation.booker_country = "PL"
+        self.reservation.save(update_fields=["booker_country", "updated_at"])
+
+        result = send_welcome_template_for_reservation(self.reservation, dry_run=True)
+
+        self.assertEqual(result["status"], "dry_run")
+        self.assertEqual(result["template_name"], "stay_welcome_pl")
+        self.assertEqual(result["meta_language"], "pl")
+        self.assertEqual(result["language"], "pl")
+        mock_send.assert_not_called()
+        self.reservation.refresh_from_db()
+        self.assertIsNone(self.reservation.whatsapp_welcome_sent_at)
+    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     @patch("apps.communications.whatsapp_autocheckin_tasks.property_local_now")
     def test_idempotent_second_run(self, mock_now, mock_send):
         mock_now.return_value = datetime(2026, 6, 7, 9, 0, tzinfo=ZAGREB)

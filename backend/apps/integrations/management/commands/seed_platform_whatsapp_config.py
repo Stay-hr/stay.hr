@@ -3,12 +3,19 @@ import os
 from django.core.management.base import BaseCommand
 
 from apps.integrations.models import IntegrationConfig
+from apps.integrations.whatsapp.welcome_template_config import (
+    default_whatsapp_templates_block,
+    merge_welcome_templates_into_config,
+)
 from apps.tenants.constants import PLATFORM_TENANT_SLUG
 from apps.tenants.models import Tenant
 
 
 class Command(BaseCommand):
-    help = "Create or update platform default WhatsApp IntegrationConfig (Meta Cloud API)."
+    help = (
+        "Create or update platform default WhatsApp IntegrationConfig "
+        "(Meta Cloud API). Welcome template map is merge-only."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -62,47 +69,45 @@ class Command(BaseCommand):
         auto_reply_raw = str(options["auto_reply"] or "false").strip().lower()
         auto_reply = auto_reply_raw not in ("0", "false", "no", "off")
 
-        config = {
-            "phone_number_id": phone_number_id,
-            "display_phone_number": display_phone_number,
-            "waba_id": waba_id,
-            "auto_reply": auto_reply,
-            "whatsapp_templates": {
-                "header_image_url": "https://stay.hr/static/whatsapp-header.png",
-                "welcome": {
-                    "hr": "stay_welcome_hr",
-                    "en": "stay_welcome_en",
-                    "de": "stay_welcome_de",
-                    "es": "stay_welcome_es",
-                    "fr": "stay_welcome_fr",
-                    "it": "stay_welcome_it",
-                },
-            },
-        }
-
-        row, created = IntegrationConfig.objects.update_or_create(
+        row = IntegrationConfig.objects.filter(
             tenant=tenant,
             provider=IntegrationConfig.Provider.WHATSAPP,
             property=None,
-            defaults={
-                "is_active": True,
-                "is_platform_default": True,
-                "routing_key": phone_number_id,
-            },
-        )
+        ).first()
+        created = row is None
+        if created:
+            row = IntegrationConfig(
+                tenant=tenant,
+                provider=IntegrationConfig.Provider.WHATSAPP,
+                property=None,
+                is_active=True,
+                is_platform_default=True,
+                routing_key=phone_number_id,
+            )
+            config: dict = {
+                "phone_number_id": phone_number_id,
+                "display_phone_number": display_phone_number,
+                "waba_id": waba_id,
+                "auto_reply": auto_reply,
+                "whatsapp_templates": default_whatsapp_templates_block(),
+            }
+            added = sorted(config["whatsapp_templates"]["welcome"].keys())
+        else:
+            config = dict(row.get_config_dict())
+            # Identity / routing fields update from CLI; welcome map is merge-only.
+            config["phone_number_id"] = phone_number_id
+            if display_phone_number:
+                config["display_phone_number"] = display_phone_number
+            if waba_id:
+                config["waba_id"] = waba_id
+            config["auto_reply"] = auto_reply
+            config, added = merge_welcome_templates_into_config(config)
+
         row.routing_key = phone_number_id
         row.is_platform_default = True
+        row.is_active = True
         row.set_config_dict(config)
-        row.save(
-            update_fields=[
-                "routing_key",
-                "config_encrypted",
-                "config",
-                "is_active",
-                "is_platform_default",
-                "updated_at",
-            ]
-        )
+        row.save()
 
         IntegrationConfig.objects.filter(
             provider=IntegrationConfig.Provider.WHATSAPP,
@@ -111,10 +116,15 @@ class Command(BaseCommand):
         ).exclude(pk=row.pk).update(is_active=False)
 
         verb = "Created" if created else "Updated"
+        welcome_keys = sorted(
+            (config.get("whatsapp_templates") or {}).get("welcome") or {}
+        )
         self.stdout.write(
             self.style.SUCCESS(
                 f"{verb} platform WhatsApp IntegrationConfig id={row.pk} "
                 f"(routing_key={phone_number_id}, display={display_phone_number}). "
-                f"Token: WHATSAPP_ACCESS_TOKEN in .env (not stored in DB)."
+                f"Welcome langs={len(welcome_keys)}"
+                + (f" added={','.join(added)}" if added else " (no welcome keys added)")
+                + ". Token: WHATSAPP_ACCESS_TOKEN in .env (not stored in DB)."
             )
         )

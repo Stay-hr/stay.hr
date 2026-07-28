@@ -65,6 +65,7 @@ class MessageDispatchEventType(models.TextChoices):
     RENDERED = "RENDERED", "Rendered"
     CHANNEL_SELECTED = "CHANNEL_SELECTED", "Channel selected"
     FALLBACK = "FALLBACK", "Fallback"
+    DEFERRED = "DEFERRED", "Deferred"
     DELIVERED = "DELIVERED", "Delivered"
     FAILED = "FAILED", "Failed"
     CANCELLED = "CANCELLED", "Cancelled"

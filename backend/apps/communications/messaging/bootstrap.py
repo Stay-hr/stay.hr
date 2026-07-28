@@ -100,7 +100,9 @@ def _register_definitions(*, force: bool) -> None:
         MessageDefinition(
             key=MessageDefinitionKey.CHECKIN_INFO,
             template_version=TEMPLATE_CHECKIN_INFO,
-            channel_policy=ChannelPolicy(providers=("booking", "email")),
+            channel_policy=ChannelPolicy(
+                providers=("booking", "email", "whatsapp")
+            ),
             skip_rule_names=("expired", "archived"),
             audience=MessageRecipientType.BOOKER,
             dedupe=DedupePolicy(enabled=True),
@@ -112,7 +114,9 @@ def _register_definitions(*, force: bool) -> None:
         MessageDefinition(
             key=MessageDefinitionKey.CHECKIN_LINK,
             template_version=TEMPLATE_CHECKIN_LINK,
-            channel_policy=ChannelPolicy(providers=("booking", "email")),
+            channel_policy=ChannelPolicy(
+                providers=("booking", "email", "whatsapp")
+            ),
             skip_rule_names=("expired", "archived"),
             audience=MessageRecipientType.BOOKER,
             dedupe=DedupePolicy(enabled=True),

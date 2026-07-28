@@ -13,8 +13,9 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from django.db import transaction
 from django.utils import timezone
@@ -25,6 +26,10 @@ from apps.communications.messaging.context import TriggerContext
 from apps.communications.messaging.definitions import (
     MessageDefinition,
     definition_registry,
+)
+from apps.communications.messaging.dispatch_policy import (
+    PolicyDecisionKind,
+    dispatch_policy,
 )
 from apps.communications.messaging.middleware import middleware_registry
 from apps.communications.messaging.models import (
@@ -55,6 +60,7 @@ class DispatchOutcome:
     status: str
     results: tuple[DeliveryResult, ...] = ()
     skip_reason: str = ""
+    defer_reason: str = ""
 
 
 def context_from_dispatch(
@@ -420,6 +426,74 @@ def _next_attempt_number(dispatch_id: int) -> int:
     return int(last or 0) + 1
 
 
+def _failed_channels(dispatch_id: int) -> set[str]:
+    """Channels that already failed on this dispatch — skip on resume after DEFER."""
+    rows = MessageDeliveryAttempt.objects.filter(
+        dispatch_id=dispatch_id,
+        success=False,
+    ).values_list("channel", flat=True)
+    return {str(c).strip().lower() for c in rows if c}
+
+
+@transaction.atomic
+def _defer_dispatch(
+    *,
+    dispatch_id: int,
+    channel: str,
+    provider_name: str,
+    reason: str,
+    next_attempt_at: datetime,
+    iana_timezone: str,
+) -> MessageDispatch:
+    """Bump due_at, restore planned, emit non-terminal DEFERRED audit event."""
+    locked = MessageDispatch.objects.select_for_update().get(pk=dispatch_id)
+    tz_name = (iana_timezone or locked.timezone or "UTC").strip() or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:  # noqa: BLE001
+        tz = ZoneInfo("UTC")
+        tz_name = "UTC"
+
+    if timezone.is_naive(next_attempt_at):
+        next_utc = timezone.make_aware(next_attempt_at, timezone=ZoneInfo("UTC"))
+    else:
+        next_utc = next_attempt_at.astimezone(ZoneInfo("UTC"))
+    next_local = next_utc.astimezone(tz)
+
+    locked.due_at = next_utc
+    locked.local_due_at = next_local
+    locked.status = MessageDispatchStatus.PLANNED
+    locked.save(update_fields=["due_at", "local_due_at", "status", "updated_at"])
+
+    _record_event(
+        locked,
+        MessageDispatchEventType.DEFERRED,
+        payload={
+            "reason": reason,
+            "channel": channel,
+            "provider": provider_name,
+            "next_attempt_at": next_local.isoformat(),
+            "timezone": tz_name,
+        },
+    )
+    metrics.incr(
+        "messaging_dispatch_deferred",
+        definition=locked.definition_key,
+        reason=reason,
+        channel=channel,
+    )
+    logger.info(
+        "messaging_dispatch_deferred dispatch_id=%s channel=%s reason=%s "
+        "next_attempt_at=%s timezone=%s",
+        locked.pk,
+        channel,
+        reason,
+        next_local.isoformat(),
+        tz_name,
+    )
+    return locked
+
+
 def dispatch_one(
     dispatch: MessageDispatch,
     *,
@@ -430,6 +504,9 @@ def dispatch_one(
     Flow: prepare (atomic, COMMIT) → middleware → provider calls (no txn) →
     short atomic attempt/status writes. Claim must already be committed (or
     prepare will promote planned/queued → dispatching inside its short txn).
+
+    Channel ``DispatchPolicy`` may DEFER (bump ``due_at``, status stays planned)
+    without marking FAILED while later channels remain.
     """
     if dispatch.status in (
         MessageDispatchStatus.DELIVERED,
@@ -452,15 +529,69 @@ def dispatch_one(
     results: list[DeliveryResult] = []
     attempt_number = _next_attempt_number(locked.pk)
     providers = definition.channel_policy.providers
+    exhausted = _failed_channels(locked.pk)
     outcome: DispatchOutcome | None = None
+    tried_any = False
 
     try:
         for index, provider_name in enumerate(providers):
             provider = provider_registry.get(provider_name)
+            channel_key = str(provider.channel or "").strip().lower()
+
+            # Resume after DEFER: do not replay channels that already failed.
+            if channel_key in exhausted:
+                continue
+
+            decision = dispatch_policy.evaluate(
+                locked,
+                channel_key,
+                now=trigger_ctx.now,
+            )
+            if decision.kind is PolicyDecisionKind.DEFER:
+                next_at = decision.next_attempt_at or (
+                    timezone.now() + timedelta(hours=1)
+                )
+                if decision.next_attempt_at is None:
+                    logger.error(
+                        "messaging_dispatch_defer_missing_until dispatch_id=%s "
+                        "channel=%s",
+                        locked.pk,
+                        channel_key,
+                    )
+                locked = _defer_dispatch(
+                    dispatch_id=locked.pk,
+                    channel=channel_key,
+                    provider_name=provider_name,
+                    reason=decision.reason or "quiet_hours",
+                    next_attempt_at=next_at,
+                    iana_timezone=decision.timezone or locked.timezone,
+                )
+                outcome = DispatchOutcome(
+                    dispatch_id=locked.pk,
+                    status=MessageDispatchStatus.PLANNED,
+                    results=tuple(results),
+                    defer_reason=decision.reason or "quiet_hours",
+                )
+                return outcome
+
+            if decision.kind is PolicyDecisionKind.BLOCK:
+                _record_event(
+                    locked,
+                    MessageDispatchEventType.SKIPPED,
+                    payload={
+                        "reason": decision.reason or "policy_block",
+                        "channel": channel_key,
+                        "provider": provider_name,
+                    },
+                )
+                exhausted.add(channel_key)
+                continue
+
+            tried_any = True
             event_type = (
-                MessageDispatchEventType.CHANNEL_SELECTED
-                if index == 0
-                else MessageDispatchEventType.FALLBACK
+                MessageDispatchEventType.FALLBACK
+                if results or exhausted
+                else MessageDispatchEventType.CHANNEL_SELECTED
             )
             # Event write is a short implicit autocommit (no surrounding atomic).
             _record_event(
@@ -480,7 +611,7 @@ def dispatch_one(
                 dispatch_id=locked.pk,
                 attempt_number=attempt_number,
                 result=result,
-                is_fallback=index > 0,
+                is_fallback=bool(results) or bool(exhausted),
             )
             results.append(result)
             attempt_number += 1
@@ -492,6 +623,19 @@ def dispatch_one(
                     results=tuple(results),
                 )
                 return outcome
+
+            exhausted.add(channel_key)
+
+        # No success. If we never tried a provider (all deferred/blocked/skipped
+        # earlier), do not mark FAILED — status should already be planned.
+        if not tried_any and not results:
+            locked.refresh_from_db()
+            outcome = DispatchOutcome(
+                dispatch_id=locked.pk,
+                status=locked.status,
+                results=tuple(results),
+            )
+            return outcome
 
         locked = _mark_failed(locked.pk, results=tuple(results))
         alert_all_providers_failed(locked, results)

@@ -38,6 +38,8 @@ MESSAGE_ORCHESTRATION_SHADOW=true
 MESSAGE_ORCHESTRATION_TENANTS=uzorita
 MESSAGE_ORCHESTRATION_PROPERTIES=
 OPERATIONS_ALERT_EMAILS=…   # mora biti postavljen prije LIVE
+# Stop legacy midnight WA D0 until LIVE+suppress (ADR 0010 §11):
+GUEST_CHECKIN_REMINDER_DAYS_BEFORE=7
 ```
 
 □ Beat schedule ima `message-orchestration` (~15 min)  

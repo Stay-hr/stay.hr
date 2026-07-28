@@ -7,11 +7,14 @@ import logging
 from typing import Any
 
 from django.core.files.base import ContentFile
-from PIL import Image
+from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 
 OUTPUT_SIZE = 256
+# Reject Haar boxes whose center sits too far below the card (table / wood grain).
+# Czech TD1 portraits on upright phone photos often sit at cy ≈ 0.72–0.74 (res #861).
+_MAX_FACE_CENTER_Y_RATIO = 0.78
 # Generic bbox copied from LLM prompt examples — ignore when detected.
 _LLM_PLACEHOLDER_BBOXES = frozenset(
     {
@@ -21,6 +24,14 @@ _LLM_PLACEHOLDER_BBOXES = frozenset(
         (0.1, 0.2, 0.3, 0.4),
     }
 )
+
+
+def _load_rgb_image(image_path: str) -> Image.Image:
+    """Open image and apply EXIF orientation so Haar sees the display-correct pixels."""
+    with Image.open(image_path) as im:
+        # copy(): exif_transpose may return the same object; closing the file must not
+        # invalidate pixels used by OpenCV.
+        return ImageOps.exif_transpose(im).convert("RGB").copy()
 
 
 def _coerce_bbox_dict(bbox: Any) -> dict[str, Any] | None:
@@ -86,7 +97,7 @@ def _face_box_is_plausible(
 ) -> bool:
     """Reject Haar boxes that sit on table edges / wood grain below the card."""
     cy_ratio = (y + fh / 2) / image_h
-    if cy_ratio > 0.72:
+    if cy_ratio > _MAX_FACE_CENTER_Y_RATIO:
         return False
 
     min_side = int(min(image_w, image_h) * 0.08)
@@ -210,14 +221,14 @@ def detect_face_bbox_pixels(image_path: str) -> tuple[int, int, int, int] | None
     """Detect face bounding box in pixel coordinates using OpenCV."""
     try:
         import cv2
+        import numpy as np
     except ImportError:
         logger.debug("opencv not installed; skipping face detection")
         return None
 
     try:
-        img = cv2.imread(image_path)
-        if img is None:
-            return None
+        im = _load_rgb_image(image_path)
+        img = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
         return _detect_faces_in_bgr(img)
     except Exception:
         logger.exception("opencv face detection failed", extra={"path": image_path})
@@ -393,28 +404,27 @@ def crop_face_jpeg(
 ) -> ContentFile | None:
     """Crop portrait from document image. Prefers OpenCV face detection over LLM bbox."""
     try:
-        with Image.open(image_path) as im:
-            im = im.convert("RGB")
-            crop: Image.Image | None = None
+        im = _load_rgb_image(image_path)
+        crop: Image.Image | None = None
 
-            bbox_dict = _coerce_bbox_dict(bbox)
-            face_px, rotate_angle = _detect_face_with_portrait_rotation(im)
-            working = im if rotate_angle == 0 else im.rotate(rotate_angle, expand=True)
-            if face_px is not None:
-                x, y, fw, fh = face_px
-                crop = _square_crop_around_face(working, x=x, y=y, fw=fw, fh=fh)
-            elif bbox_dict and not _is_placeholder_llm_bbox(bbox_dict):
-                crop = _crop_from_normalized_bbox(working, bbox_dict)
-            else:
-                crop = _crop_from_eu_fallback(working)
+        bbox_dict = _coerce_bbox_dict(bbox)
+        face_px, rotate_angle = _detect_face_with_portrait_rotation(im)
+        working = im if rotate_angle == 0 else im.rotate(rotate_angle, expand=True)
+        if face_px is not None:
+            x, y, fw, fh = face_px
+            crop = _square_crop_around_face(working, x=x, y=y, fw=fw, fh=fh)
+        elif bbox_dict and not _is_placeholder_llm_bbox(bbox_dict):
+            crop = _crop_from_normalized_bbox(working, bbox_dict)
+        else:
+            crop = _crop_from_eu_fallback(working)
 
-            if crop is None:
-                return None
+        if crop is None:
+            return None
 
-            buf = io.BytesIO()
-            crop.save(buf, format="JPEG", quality=92)
-            buf.seek(0)
-            return ContentFile(buf.read(), name="face.jpg")
+        buf = io.BytesIO()
+        crop.save(buf, format="JPEG", quality=92)
+        buf.seek(0)
+        return ContentFile(buf.read(), name="face.jpg")
     except Exception:
         logger.exception("face crop failed", extra={"path": image_path})
         return None

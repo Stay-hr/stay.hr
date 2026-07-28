@@ -145,6 +145,12 @@ class ReceptionAPITests(TestCase):
         self.assertIn("plans", data["messaging"])
         self.assertIn("outbox", data["messaging"])
         self.assertIn("flags", data["messaging"])
+        self.assertIn("welcome_templates", data["messaging"])
+        wt = data["messaging"]["welcome_templates"]
+        self.assertIn("configured", wt)
+        self.assertIn("missing_in_config", wt)
+        self.assertIn("status", wt)
+        self.assertIn(wt["status"], ("healthy", "warning", "critical"))
         self.assertGreaterEqual(data["messaging"]["definitions"]["count"], 1)
         self.assertIn("components", data)
         self.assertEqual(

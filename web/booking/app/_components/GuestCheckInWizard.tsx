@@ -56,6 +56,33 @@ function confidenceClass(level: string | undefined): string {
   return "";
 }
 
+function hasText(value: string | null | undefined): boolean {
+  return Boolean((value || "").trim());
+}
+
+function hasGender(sex: string | null | undefined): boolean {
+  const raw = (sex || "").trim().toLowerCase();
+  return raw === "male" || raw === "female" || raw === "m" || raw === "f";
+}
+
+/** Mirrors backend GuestValidator required fields for slot readiness. */
+function localMissingFields(form: GuestCheckInGuestFields): string[] {
+  const missing: string[] = [];
+  if (!hasText(form.first_name)) missing.push("first_name");
+  if (!hasText(form.last_name)) missing.push("last_name");
+  if (!form.date_of_birth) missing.push("date_of_birth");
+  if (!hasText(form.nationality)) missing.push("nationality");
+  if (!hasGender(form.sex)) missing.push("sex");
+  if (!hasText(form.document_number)) missing.push("document_number");
+  if (!hasText(form.document_type)) missing.push("document_type");
+  if (!hasText(form.address)) missing.push("address");
+  return missing;
+}
+
+function isFormReady(form: GuestCheckInGuestFields): boolean {
+  return localMissingFields(form).length === 0;
+}
+
 export function GuestCheckInWizard({ token }: Props) {
   const t = useTranslations("checkIn");
   const tc = useTranslations("common");
@@ -119,6 +146,9 @@ export function GuestCheckInWizard({ token }: Props) {
 
   const currentSlot = session?.slots[step] ?? null;
   const isSlotReady = currentSlot?.status === "ready";
+  const formReady = isFormReady(form);
+  const canProceed = formReady || isSlotReady;
+  const missingForHint = formReady ? [] : localMissingFields(form);
 
   const resetSlotUi = useCallback((slot: GuestCheckInSlot) => {
     setForm(guestFromSlot(slot));
@@ -131,7 +161,10 @@ export function GuestCheckInWizard({ token }: Props) {
   }, []);
 
   const patchSlot = useCallback(
-    async (position: number, fields: GuestCheckInGuestFields) => {
+    async (
+      position: number,
+      fields: GuestCheckInGuestFields,
+    ): Promise<{ ok: boolean; slot: GuestCheckInSlot | null; canComplete: boolean }> => {
       setSaving(true);
       try {
         const res = await fetch(
@@ -146,9 +179,10 @@ export function GuestCheckInWizard({ token }: Props) {
         if (!res.ok) {
           throw new Error((data.error as string) || t("saveFailed"));
         }
+        const slot = data.slot as GuestCheckInSlot;
+        const canComplete = Boolean(data.can_complete);
         setSession((prev) => {
           if (!prev) return prev;
-          const slot = data.slot as GuestCheckInSlot;
           const slots = prev.slots.map((s) => (s.position === slot.position ? { ...s, ...slot } : s));
           return {
             ...prev,
@@ -156,7 +190,7 @@ export function GuestCheckInWizard({ token }: Props) {
             effective_status: data.effective_status as string,
             required_slots: data.required_slots as number,
             ready_slots: data.ready_slots as number,
-            can_complete: data.can_complete as boolean,
+            can_complete: canComplete,
             slots,
           };
         });
@@ -164,8 +198,10 @@ export function GuestCheckInWizard({ token }: Props) {
           setFieldConfidence(data.slot.field_confidence as FieldConfidence);
         }
         setError("");
+        return { ok: true, slot, canComplete };
       } catch (err) {
         setError(err instanceof Error ? err.message : t("saveFailed"));
+        return { ok: false, slot: null, canComplete: false };
       } finally {
         setSaving(false);
       }
@@ -278,15 +314,59 @@ export function GuestCheckInWizard({ token }: Props) {
   function updateField<K extends keyof GuestCheckInGuestFields>(key: K, value: GuestCheckInGuestFields[K]) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      if (currentSlot && entryMode === "form") scheduleAutosave(currentSlot.position);
+      // Manual and post-OCR form modes both need autosave so the slot can become "ready".
+      if (currentSlot && (entryMode === "form" || entryMode === "manual")) {
+        scheduleAutosave(currentSlot.position);
+      }
       return next;
     });
+  }
+
+  function formatMissingFields(fields: string[]): string {
+    return fields
+      .map((key) => {
+        try {
+          return t(`fieldLabels.${key}` as "fieldLabels.first_name");
+        } catch {
+          return key;
+        }
+      })
+      .join(", ");
   }
 
   async function onNext(e: FormEvent) {
     e.preventDefault();
     if (!session || !currentSlot) return;
-    await patchSlot(currentSlot.position, form);
+
+    const missing = localMissingFields(form);
+    if (missing.length > 0) {
+      setError(
+        `${t("validationHint")} ${t("validationSummary", { fields: formatMissingFields(missing) })}`,
+      );
+      return;
+    }
+
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+
+    const result = await patchSlot(currentSlot.position, form);
+    if (!result.ok) return;
+
+    const slotReady = result.slot?.status === "ready";
+    if (!slotReady) {
+      const serverMissing = result.slot?.missing_fields?.length
+        ? result.slot.missing_fields
+        : localMissingFields(form);
+      setError(
+        `${t("validationHint")} ${t("validationSummary", {
+          fields: formatMissingFields(serverMissing),
+        })}`,
+      );
+      return;
+    }
+
     if (step < session.slots.length - 1) {
       const nextStep = step + 1;
       setStep(nextStep);
@@ -581,6 +661,12 @@ export function GuestCheckInWizard({ token }: Props) {
           ) : null}
 
           {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+          {!error && missingForHint.length > 0 ? (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {t("validationHint")}{" "}
+              {t("validationSummary", { fields: formatMissingFields(missingForHint) })}
+            </p>
+          ) : null}
           {saving ? <p className="text-xs text-muted">{t("saving")}</p> : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -737,7 +823,7 @@ export function GuestCheckInWizard({ token }: Props) {
               </button>
             ) : null}
             {step < session.slots.length - 1 ? (
-              <button type="submit" className="btn" disabled={!isSlotReady || saving}>
+              <button type="submit" className="btn" disabled={!canProceed || saving}>
                 {t("next")}
               </button>
             ) : session.can_complete ? (
@@ -750,7 +836,7 @@ export function GuestCheckInWizard({ token }: Props) {
                 {completing ? t("completing") : t("finish")}
               </button>
             ) : (
-              <button type="submit" className="btn" disabled={!isSlotReady || saving}>
+              <button type="submit" className="btn" disabled={!canProceed || saving}>
                 {t("save")}
               </button>
             )}

@@ -303,6 +303,11 @@ class SystemStatusServiceTests(TestCase):
         self.assertIn("messaging", payload)
         self.assertIn("definitions", payload["messaging"])
         self.assertIn("outbox", payload["messaging"])
+        self.assertIn("welcome_templates", payload["messaging"])
+        wt = payload["messaging"]["welcome_templates"]
+        self.assertIn("configured", wt)
+        self.assertIn("missing_in_config", wt)
+        self.assertIn("status", wt)
         self.assertEqual(
             payload["components"]["event_bus"]["status"],
             "healthy",

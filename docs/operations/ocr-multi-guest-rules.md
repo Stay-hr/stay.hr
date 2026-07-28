@@ -179,7 +179,7 @@ Spol iz MRZ-a (kad postoji M/F) i normalizacija adrese rade automatski pri novom
 
 ### Avatar (face crop)
 
-Automatski crop koristi **OpenCV face detection** na prednjoj strani osobne; LLM `face_bbox` se ignorira ako je generički placeholder.
+Automatski crop koristi **OpenCV face detection** na prednjoj strani osobne; LLM `face_bbox` se ignorira ako je generički placeholder. Ulazne fotke prolaze kroz **EXIF orientation** prije detekcije (phone JPEG s Orientation=6 inače daje krivi crop).
 
 Ponovni crop postojećih gostiju:
 

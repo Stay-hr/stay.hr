@@ -39,9 +39,8 @@ from apps.integrations.whatsapp.integration_lookup import resolve_whatsapp_integ
 from apps.integrations.whatsapp.phone import normalize_phone
 from apps.integrations.whatsapp.welcome_template import (
     build_welcome_template_parameters,
+    resolve_welcome_template,
     welcome_header_image_url,
-    welcome_meta_language_code,
-    welcome_template_name,
 )
 from apps.properties.models import Property
 from apps.reservations.guest_checkin_session import reservation_has_completed_web_checkin
@@ -283,8 +282,9 @@ def send_welcome_template_for_reservation(
 
     config = integration_row.get_config_dict()
     lang, body_params = build_welcome_template_parameters(reservation)
-    template_name = welcome_template_name(config=config, lang=lang)
-    meta_lang = welcome_meta_language_code(lang)
+    resolved = resolve_welcome_template(language=lang, platform_config=config)
+    template_name = resolved.template_name
+    meta_lang = resolved.meta_language
     header_url = welcome_header_image_url(config)
 
     if dry_run:

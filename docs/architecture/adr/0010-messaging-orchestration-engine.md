@@ -299,13 +299,25 @@ Rollback: flags off / shadow → old reminder + autocheckin tasks remain for all
 | Middleware | Interface + no-op |
 | RateLimiter | No-op |
 | Attachments | `[]` typed |
-| DeliveryWindow | `always` |
+| DeliveryWindow / DispatchPolicy | Channel-keyed quiet hours via `DispatchPolicy` (see below); stub `DeliveryWindow.allows` remains always-allow and must **not** map quiet hours to SKIP |
 | DLQ | Retry-count threshold + metric (no UI) |
 | `IMMEDIATE` / `FIRST_AFTER` | Enum + scheduler support; `IMMEDIATE` for MANUAL |
 
 ### 10. Health
 
 Messaging health reports definitions, templates, providers (+ capabilities), plans, outbox depth (`planned`/`queued`), and last success/failure timestamps when available. Wired into reception `GET …/system/status/` as the top-level ``messaging`` block (`schema_version` ≥ 3).
+
+### 11. Channel DispatchPolicy (quiet hours)
+
+Business sendability is evaluated **per delivery channel** (not provider brand) via `DispatchPolicy.evaluate(dispatch, channel)` → `ALLOW` | `DEFER(until)` | `BLOCK`.
+
+- **v1 `DeliveryWindowPolicy`:** WhatsApp quiet hours **21:00–08:00** property-local (`dispatch.timezone`). Booking and email always `ALLOW`.
+- **DEFER:** bump `due_at` / `local_due_at` only; status stays **`planned`**. Emit non-terminal `MessageDispatchEventType.DEFERRED` with `reason`, `channel`, `next_attempt_at`, `timezone`. Claimer (`due_at <= now`) is the only wake-up — no sleep / secondary scheduler.
+- Mid-chain defer (booking fail → email fail → WA quiet) is **not** `FAILED`.
+- After reclaim, resume from WhatsApp — do not replay channels with prior failed attempts.
+- `CHECKIN_INFO` / `CHECKIN_LINK` channel policy: `booking → email → whatsapp`. `WELCOME`: `whatsapp` only (same policy).
+
+Implementation: `apps.communications.messaging.dispatch_policy`, wired in `dispatcher.dispatch_one`.
 
 ---
 
@@ -314,7 +326,7 @@ Messaging health reports definitions, templates, providers (+ capabilities), pla
 - Migrating manual compose, AI reply, invoice, portal
 - Reception UI for editing plans/policies/templates; DB-stored ReminderPlan DSL
 - New providers (SMS, Push) beyond registry extensibility
-- Full DLQ UI, RateLimiter enforcement, Quiet Hours beyond defaults
+- Full DLQ UI, RateLimiter enforcement
 - Event Bus / Kafka / RabbitMQ / BPMN / workflow engine
 - Changing Meta WhatsApp welcome template copy
 

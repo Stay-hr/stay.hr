@@ -78,6 +78,16 @@ class FaceCropHeuristicsTests(SimpleTestCase):
         best = _select_best_face(faces, image_w=w, image_h=h)
         self.assertEqual(best, (789, 296, 104, 104))
 
+    def test_select_best_face_czech_id_lower_left_portrait(self):
+        """Upright phone photo of CZ ID — portrait sits at cy ≈ 0.73 (res #861)."""
+        w, h = 3000, 4000
+        faces = [
+            (1794, 973, 252, 252),  # mid-card hologram / text
+            (45, 2616, 632, 632),  # real portrait (lower left)
+        ]
+        best = _select_best_face(faces, image_w=w, image_h=h)
+        self.assertEqual(best, (45, 2616, 632, 632))
+
     def test_select_best_face_ukrainian_passport_open_book(self):
         """Header false positive above biodata portrait (res #925 Tetyana Nykolyn)."""
         w, h = 1126, 1280
@@ -91,6 +101,19 @@ class FaceCropHeuristicsTests(SimpleTestCase):
 
     def test_rejects_list_placeholder_bbox(self):
         self.assertTrue(_is_placeholder_llm_bbox([0.1, 0.2, 0.3, 0.4]))
+
+    def test_load_rgb_image_applies_exif_orientation(self):
+        from apps.reservations.document_intake_face import _load_rgb_image
+
+        path = "/tmp/stay_test_face_exif.jpg"
+        im = Image.new("RGB", (80, 40), color=(200, 180, 160))
+        # Orientation 6 = rotate 90° CW for display → 40×80
+        exif = im.getexif()
+        exif[274] = 6
+        im.save(path, format="JPEG", exif=exif)
+
+        loaded = _load_rgb_image(path)
+        self.assertEqual(loaded.size, (40, 80))
 
     @patch("apps.reservations.document_intake_face._detect_faces_in_bgr_all")
     def test_portrait_rotation_prefers_angle_zero_over_oversized_box(self, mock_faces):

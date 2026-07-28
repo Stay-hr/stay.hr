@@ -37,8 +37,8 @@ from apps.integrations.whatsapp.meta_templates import MetaTemplateApiError, find
 from apps.integrations.whatsapp.phone import normalize_phone
 from apps.integrations.whatsapp.welcome_template import (
     build_welcome_template_parameters,
+    resolve_welcome_template,
     welcome_header_image_url,
-    welcome_template_name,
 )
 from apps.integrations.whatsapp.whatsapp_errors import (
     is_transient_whatsapp_error,
@@ -106,7 +106,9 @@ def _can_send_welcome_template(
         return None
     config = integration.get_config_dict()
     lang, _params = build_welcome_template_parameters(draft.reservation)
-    template_name = welcome_template_name(config=config, lang=lang)
+    resolved = resolve_welcome_template(language=lang, platform_config=config)
+    template_name = resolved.template_name
+    meta_lang = resolved.meta_language
     waba_id = runtime.effective_waba_id()
     if not waba_id or not runtime.access_token:
         return None
@@ -115,14 +117,14 @@ def _can_send_welcome_template(
             waba_id=waba_id,
             access_token=runtime.access_token,
             name=template_name,
-            language=lang,
+            language=meta_lang,
         )
     except MetaTemplateApiError as exc:
         logger.warning("welcome template lookup failed: %s", exc)
         return None
     if not existing or str(existing.get("status") or "").upper() != "APPROVED":
         return None
-    return template_name, lang
+    return template_name, meta_lang
 
 
 def _mark_outbound_sent(

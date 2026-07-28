@@ -343,8 +343,8 @@ def _send_operator_template_reengagement(
     from apps.integrations.whatsapp.client import send_template_message
     from apps.integrations.whatsapp.welcome_template import (
         build_welcome_template_parameters,
+        resolve_welcome_template,
         welcome_header_image_url,
-        welcome_template_name,
     )
 
     config = integration_row.get_config_dict()
@@ -352,14 +352,15 @@ def _send_operator_template_reengagement(
     operator_name = (operator.get("name") or "").strip()
     if operator_name:
         params[0] = operator_name.split()[0]
-    template_name = welcome_template_name(config=config, lang=lang)
+    resolved = resolve_welcome_template(language=lang, platform_config=config)
+    template_name = resolved.template_name
     try:
         response = send_template_message(
             phone_number_id=runtime.phone_number_id,
             access_token=runtime.access_token,
             to_wa_id=operator_wa_id,
             template_name=template_name,
-            language_code=lang,
+            language_code=resolved.meta_language,
             body_parameters=params,
             header_image_url=welcome_header_image_url(config),
         )

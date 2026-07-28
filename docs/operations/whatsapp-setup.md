@@ -59,7 +59,14 @@ Token remains global `WHATSAPP_ACCESS_TOKEN` until multi-WABA credentials are ad
 
 ## Template operations
 
-Require `waba_id` in config or `WHATSAPP_WABA_ID` in `.env`:
+Welcome name + Meta language are resolved together via `resolve_welcome_template` — see [ADR 0011](../architecture/adr/0011-whatsapp-welcome-template-resolution.md). Verify config maps:
+
+```bash
+docker compose exec django python manage.py verify_whatsapp_templates
+docker compose exec django python manage.py merge_whatsapp_welcome_templates --dry-run
+```
+
+Require `waba_id` in config or `WHATSAPP_WABA_ID` in `.env` to create templates on Meta:
 
 ```bash
 docker compose exec django python manage.py whatsapp_create_welcome_templates --tenant-slug platform

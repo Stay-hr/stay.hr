@@ -35,6 +35,18 @@ Operate the existing live intents (`CHECKIN_INFO`, `CHECKIN_LINK`, `WELCOME`) sa
 Step-by-step Shadow → LIVE → suppression → expand allowlist:  
 [messaging-orchestration-rollout-checklist.md](messaging-orchestration-rollout-checklist.md)
 
+### Midnight WhatsApp / quiet hours
+
+WhatsApp must not send **21:00–08:00** property-local. Policy lives in the engine (`DispatchPolicy` / ADR 0010 §11), not in legacy Celery tasks.
+
+Safe interim + cutover order:
+
+1. **Legacy D0 OFF** — `GUEST_CHECKIN_REMINDER_DAYS_BEFORE=7` (recreate django + celery-worker + celery-beat)
+2. Engine Shadow → **LIVE** for Uzorita
+3. Legacy **suppress** (`suppress_legacy_automated_outbound`)
+4. Observe several days
+5. Legacy retirement
+
 ### Rollback
 
 ```env

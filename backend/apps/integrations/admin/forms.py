@@ -5,8 +5,14 @@ from typing import Any
 
 from django import forms
 
+from django.contrib import messages
+
 from apps.integrations.config_secrets import PROVIDER_SECRET_KEYS
 from apps.integrations.models import IntegrationConfig
+from apps.integrations.whatsapp.welcome_template_config import (
+    default_whatsapp_templates_block,
+    inspect_welcome_map,
+)
 
 SECRET_KEEP_HELP = "Leave blank to keep the current value."
 
@@ -112,13 +118,15 @@ class IntegrationConfigAdminForm(forms.ModelForm):
         label: str,
         config_key: str,
         initial_value: Any = None,
+        help_text: str = "",
     ) -> None:
+        default_help = f"Stored as config.{config_key} (JSON array/object)."
         self.fields[name] = forms.CharField(
             label=label,
             required=False,
             widget=forms.Textarea(attrs={"rows": 8, "class": "vLargeTextField"}),
             initial=_json_dumps(initial_value),
-            help_text=f"Stored as config.{config_key} (JSON array/object).",
+            help_text=help_text or default_help,
         )
         self.fields[name].config_key = config_key  # type: ignore[attr-defined]
         self._provider_config_fields.append(name)
@@ -222,16 +230,11 @@ class IntegrationConfigAdminForm(forms.ModelForm):
             label="WhatsApp templates (JSON)",
             config_key="whatsapp_templates",
             initial_value=config.get("whatsapp_templates")
-            or {
-                "header_image_url": "https://stay.hr/static/whatsapp-header.png",
-                "welcome": {
-                    "hr": "stay_welcome_hr",
-                    "en": "stay_welcome_en",
-                    "de": "stay_welcome_de",
-                    "es": "stay_welcome_es",
-                    "fr": "stay_welcome_fr",
-                },
-            },
+            or default_whatsapp_templates_block(),
+            help_text=(
+                "welcome map is merge-filled from the registry on seed. "
+                "Non-empty custom values are kept; names should start with stay_welcome_."
+            ),
         )
 
     def _build_evisitor_fields(self, config: dict[str, Any]) -> None:
@@ -328,6 +331,16 @@ class IntegrationConfigAdminForm(forms.ModelForm):
                     raise forms.ValidationError(
                         {field_name: "WhatsApp templates must be a JSON object."}
                     )
+                elif parsed is not None:
+                    welcome = parsed.get("welcome")
+                    inspection = inspect_welcome_map(welcome, label="welcome")
+                    if inspection.errors:
+                        raise forms.ValidationError(
+                            {field_name: inspection.errors}
+                        )
+                    if inspection.warnings and self._admin_request is not None:
+                        for warning in inspection.warnings:
+                            messages.warning(self._admin_request, warning)
             if self.instance.pk:
                 existing = self._existing_config()
                 existing_phone = str(existing.get("phone_number_id") or "").strip()
