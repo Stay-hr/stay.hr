@@ -164,7 +164,9 @@ class EporeznaReceptionApiTests(TestCase):
         self.assertIn(b"ObrazacPDV", pdv_exported.content)
         self.assertIn(b'verzijaSheme="11.0"', pdv_exported.content)
         self.assertIn(b"<Podatak210>", pdv_exported.content)
-        self.assertIn(b"<Vrijednost>0.00</Vrijednost>", pdv_exported.content)
+        self.assertIn(b"<Vrijednost>69.48</Vrijednost>", pdv_exported.content)
+        self.assertIn(b"<Porez>17.37</Porez>", pdv_exported.content)
+        self.assertIn(b"<Podatak400>17.37</Podatak400>", pdv_exported.content)
 
     def test_export_requires_config(self):
         response = self.client.get(
@@ -226,4 +228,6 @@ class EporeznaReceptionApiTests(TestCase):
         self.assertIn(b"ObrazacPDV", pdv.content)
         self.assertIn(b'verzijaSheme="11.0"', pdv.content)
         self.assertIn(b"<Podatak210>", pdv.content)
-        self.assertIn(b"<Vrijednost>0.00</Vrijednost>", pdv.content)
+        self.assertIn(b"<Vrijednost>69.48</Vrijednost>", pdv.content)
+        self.assertIn(b"<Porez>17.37</Porez>", pdv.content)
+        self.assertIn(b"<Podatak400>17.37</Podatak400>", pdv.content)

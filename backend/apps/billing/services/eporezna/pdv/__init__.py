@@ -1,1 +1,1 @@
-"""PDV (ObrazacPDV v11-0) export — structure / zero Tijelo in PR1."""
+"""PDV (ObrazacPDV v11-0) export — II.10 / IV amounts from foreign service invoices."""
