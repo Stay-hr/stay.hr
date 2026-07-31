@@ -3,7 +3,15 @@ from django.utils.html import format_html
 
 from apps.core.admin import TenantScopedAdminMixin
 from apps.properties.admin_forms import PropertyAdminForm
-from apps.properties.models import Property, Unit, UnitBed, UnitBathroom
+from apps.properties.models import (
+    PhotoOutbox,
+    Property,
+    Unit,
+    UnitBed,
+    UnitBathroom,
+    UnitPhoto,
+    UnitPhotoLink,
+)
 
 
 class UnitBedInline(admin.TabularInline):
@@ -197,6 +205,26 @@ class PropertyAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
         return obj.units.count()
 
 
+class UnitPhotoInline(admin.TabularInline):
+    model = UnitPhoto
+    extra = 0
+    show_change_link = True
+    fields = (
+        "status",
+        "is_primary",
+        "sort_order",
+        "original_filename",
+        "content_checksum",
+        "storage_ref",
+    )
+    readonly_fields = fields
+    ordering = ("sort_order", "id")
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(Unit)
 class UnitAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
     list_display = (
@@ -217,7 +245,7 @@ class UnitAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
     search_fields = ("code", "name", "property__name", "property__slug")
     raw_id_fields = ("tenant", "property")
     readonly_fields = ("beds_summary_display", "bathrooms_summary_display", "created_at", "updated_at")
-    inlines = [UnitBedInline, UnitBathroomInline]
+    inlines = [UnitBedInline, UnitBathroomInline, UnitPhotoInline]
     fieldsets = (
         (
             None,
@@ -374,3 +402,51 @@ class UnitBedAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
     @admin.display(description="Bed type")
     def bed_type_label(self, obj):
         return obj.get_bed_type_display()
+
+
+@admin.register(UnitPhoto)
+class UnitPhotoAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "unit",
+        "status",
+        "is_primary",
+        "sort_order",
+        "original_filename",
+        "content_checksum",
+        "tenant",
+    )
+    list_filter = ("tenant", "status", "is_primary")
+    search_fields = ("unit__code", "original_filename", "content_checksum", "storage_ref")
+    raw_id_fields = ("tenant", "unit")
+    readonly_fields = (
+        "storage_ref",
+        "content_checksum",
+        "created_at",
+        "updated_at",
+        "deleted_at",
+    )
+
+
+@admin.register(PhotoOutbox)
+class PhotoOutboxAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("id", "kind", "status", "unit_photo", "tenant", "created_at", "sent_at")
+    list_filter = ("tenant", "kind", "status")
+    raw_id_fields = ("tenant", "unit_photo")
+    readonly_fields = ("created_at", "updated_at", "sent_at")
+
+
+@admin.register(UnitPhotoLink)
+class UnitPhotoLinkAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "provider",
+        "external_id",
+        "unit_photo",
+        "content_checksum_pushed",
+        "last_sync_at",
+        "tenant",
+    )
+    list_filter = ("tenant", "provider")
+    raw_id_fields = ("tenant", "unit_photo")
+    readonly_fields = ("created_at", "updated_at")

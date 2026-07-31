@@ -345,3 +345,11 @@ class UnitBathroom(TenantScopedModel):
         privacy = "private" if self.is_private else "shared"
         location = "in room" if self.is_inside_room else "outside room"
         return f"{self.unit.code} — Bathroom {self.sort_order + 1} ({privacy}, {location})"
+
+
+# ADR 0015 — unit listing photos (discovered by Django via this import)
+from apps.properties.unit_photos.models import (  # noqa: E402,F401
+    PhotoOutbox,
+    UnitPhoto,
+    UnitPhotoLink,
+)

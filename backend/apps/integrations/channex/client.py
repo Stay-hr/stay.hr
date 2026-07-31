@@ -6,7 +6,11 @@ from typing import Any
 import httpx
 
 from apps.integrations.channex.config import ChannexRuntimeConfig
-from apps.integrations.channex.exceptions import ChannexApiError
+from apps.integrations.channex.exceptions import ChannexApiError, ChannexWriteDisabled
+from apps.integrations.channex.outbound_guard import (
+    can_write_to_channex,
+    record_channex_write_blocked,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +39,17 @@ class ChannexClient:
         return f"{self._config.base_url}{path}"
 
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        method_upper = method.upper()
+        if method_upper != "GET" and not can_write_to_channex():
+            record_channex_write_blocked(
+                method=method_upper, path=path, reason="feature_flag"
+            )
+            raise ChannexWriteDisabled(
+                method=method_upper,
+                path=path,
+                reason="feature_flag",
+            )
+
         try:
             response = self._session.request(method, self._url(path), **kwargs)
         except httpx.HTTPError as exc:
@@ -43,7 +58,8 @@ class ChannexClient:
         if response.status_code >= 400:
             body = response.text[:500]
             raise ChannexApiError(
-                f"Channex {method} {path} failed ({response.status_code}): {body}"
+                f"Channex {method} {path} failed ({response.status_code}): {body}",
+                status_code=response.status_code,
             )
 
         if not response.content:
@@ -238,6 +254,116 @@ class ChannexClient:
     def cancel_booking(self, booking_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Cancel via Booking CRS API (requires Booking CRS app on property)."""
         return self._request("PUT", f"/bookings/{booking_id}", json=payload)
+
+    # --- Photos Collection (ADR 0015 Phase B) ---
+
+    def upload_photo_file(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        *,
+        content_type: str = "image/jpeg",
+    ) -> str:
+        """POST /photos/upload (multipart) → temporary URL for create_photo."""
+        name = (filename or "photo.jpg").strip() or "photo.jpg"
+        payload = self._request(
+            "POST",
+            "/photos/upload",
+            files={"photo": (name, file_bytes, content_type)},
+        )
+        url = payload.get("url")
+        if not url:
+            raise ChannexApiError("Channex photo upload missing url")
+        return str(url)
+
+    def create_photo(
+        self,
+        *,
+        property_id: str,
+        url: str,
+        room_type_id: str | None = None,
+        position: int | None = None,
+        description: str = "",
+        kind: str = "photo",
+        author: str = "",
+    ) -> dict[str, Any]:
+        """POST /photos — associate uploaded URL with property / room type."""
+        photo_body: dict[str, Any] = {
+            "property_id": property_id,
+            "url": url,
+            "kind": kind or "photo",
+        }
+        if room_type_id:
+            photo_body["room_type_id"] = room_type_id
+        if position is not None:
+            photo_body["position"] = int(position)
+        if description:
+            photo_body["description"] = description
+        if author:
+            photo_body["author"] = author
+        return self._request("POST", "/photos", json={"photo": photo_body})
+
+    def get_photo(self, photo_id: str) -> dict[str, Any]:
+        """GET /photos/:id — read capability (smoke / verify / drift)."""
+        payload = self._request("GET", f"/photos/{photo_id}")
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise ChannexApiError(f"Photo {photo_id} not found in response")
+        return data
+
+    def list_photos(
+        self,
+        *,
+        property_id: str,
+        room_type_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /photos — read capability only (smoke / drift / admin; not upload path)."""
+        params: dict[str, Any] = {"filter[property_id]": property_id}
+        if room_type_id:
+            params["filter[room_type_id]"] = room_type_id
+        payload = self._request("GET", "/photos", params=params)
+        data = payload.get("data")
+        if data is None:
+            return []
+        if not isinstance(data, list):
+            raise ChannexApiError("Unexpected Channex photos list response shape")
+        return [row for row in data if isinstance(row, dict)]
+
+    def update_photo(self, photo_id: str, **attrs: Any) -> dict[str, Any]:
+        """PUT /photos/:id — position / metadata (not byte replace)."""
+        return self._request(
+            "PUT",
+            f"/photos/{photo_id}",
+            json={"photo": attrs},
+        )
+
+    def delete_photo(self, photo_id: str) -> dict[str, Any]:
+        return self._request("DELETE", f"/photos/{photo_id}")
+
+    @staticmethod
+    def extract_photo_id(response: dict[str, Any]) -> str:
+        data = response.get("data")
+        if isinstance(data, dict):
+            photo_id = data.get("id")
+            if photo_id:
+                return str(photo_id)
+            attrs = data.get("attributes")
+            if isinstance(attrs, dict) and attrs.get("id"):
+                return str(attrs["id"])
+        raise ChannexApiError("Channex create photo response missing id")
+
+    @staticmethod
+    def photo_attributes(photo_obj: dict[str, Any]) -> dict[str, Any]:
+        """Normalize JSON:API photo resource to a flat attributes dict."""
+        if not isinstance(photo_obj, dict):
+            return {}
+        attrs = photo_obj.get("attributes")
+        if isinstance(attrs, dict):
+            merged = dict(attrs)
+            if photo_obj.get("id") and "id" not in merged:
+                merged["id"] = photo_obj["id"]
+            return merged
+        return photo_obj
 
     @staticmethod
     def extract_task_ids(response: dict[str, Any]) -> list[str]:

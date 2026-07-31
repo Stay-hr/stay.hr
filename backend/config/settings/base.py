@@ -148,6 +148,19 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DOCUMENT_PHOTO_MAX_BYTES = 8 * 1024 * 1024
+
+# Unit listing photos (ADR 0015) — validation gate before UnitPhoto insert
+UNIT_PHOTO_MAX_BYTES = env.int("UNIT_PHOTO_MAX_BYTES", default=8 * 1024 * 1024)
+UNIT_PHOTO_MAX_EDGE = env.int("UNIT_PHOTO_MAX_EDGE", default=8000)
+UNIT_PHOTO_MIN_EDGE = env.int("UNIT_PHOTO_MIN_EDGE", default=100)
+
+# Channex write capability (single-writer / concurrency control). Default True so hel1
+# is unchanged without .env. WSL sets false via docker-compose.dev.yml.
+CHANNEX_OUTBOUND_ENABLED = env.bool("CHANNEX_OUTBOUND_ENABLED", default=True)
+
+# After create_photo, GET /photos/:id to confirm id/position/room_type (Phase B rollout).
+UNIT_PHOTO_VERIFY_AFTER_UPLOAD = env.bool("UNIT_PHOTO_VERIFY_AFTER_UPLOAD", default=True)
+
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
