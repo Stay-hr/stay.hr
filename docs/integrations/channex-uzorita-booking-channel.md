@@ -255,6 +255,13 @@ Channex push = normal
 | **R4** (−10% od R1/R2) | 2 | **106,70** | 101,70 (−5) | 106,70 | — | 108,70 |
 | **R3/R6** | 3 | **157,00** | 147 (−10) | 152 (−5) | 157 | 159,00 |
 
+**R4 baza:** nema samostalne sezone — `RatePlanDay` = **90%** R1 (fallback R2) istog datuma, zaokruženo na cent. OBP ista kao R1 (primary **2**, Δ **€5**). Seed / refresh:
+
+```bash
+docker compose exec django python manage.py seed_uzorita_r4_rates
+# optional: --dry-run · --no-push · --date-from YYYY-MM-DD · --date-to YYYY-MM-DD
+```
+
 Ponovni push iz stay.hr:
 
 ```bash
