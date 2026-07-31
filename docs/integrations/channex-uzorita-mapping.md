@@ -1,6 +1,6 @@
 # Channex — Uzorita room type mapping
 
-Four physical units on Channex (each room type has **Count Of Rooms = 1**).
+Four physical units on Channex historically; production now has **five** (each room type has **Count Of Rooms = 1**), including R4.
 
 **Booking.com kanal:** vidi [channex-uzorita-booking-channel.md](channex-uzorita-booking-channel.md) (provider Active 2026-05-26, hotel ID `4181954`).
 
@@ -13,9 +13,10 @@ Booking.com occupancy (max guests, adults, children, infants) mapira se na stay.
 | R1 | 2 | 2 | 1 | 1 | Luxury Room Uzorita - R1 |
 | R2 | 3 | 2 | 2 | 1 | Luxury Room Uzorita - R2 |
 | R3 | 4 | 3 | 3 | 3 | Luxury Room Uzorita - R3 |
+| R4 | 2 | 2 | 1 | 1 | Standard King Room R4 |
 | R6 | 4 | 3 | 3 | 3 | Deluxe Double Room → R6 |
 
-**Booking.com → Channex channel mapping:** vidi [channex-uzorita-booking-channel.md](channex-uzorita-booking-channel.md) (room ID `418195401`→R1, `418195404`→R2, `418195403`→R3, `418195405`→R6).
+**Booking.com → Channex channel mapping:** vidi [channex-uzorita-booking-channel.md](channex-uzorita-booking-channel.md) (room ID `418195401`→R1, `418195404`→R2, `418195403`→R3, `418195405`→R6, `418195406`→R4).
 
 Seed occupancy (idempotent):
 
@@ -30,6 +31,7 @@ Booking.com **Standard Arrangement** (tip kreveta + broj) mapira se na **`UnitBe
 | R1 | — | Queen x1, Sofa bed x1 |
 | R2 | — | Queen x1, Sofa bed x1 |
 | R3 | — | Queen x1, Sofa bed x1 |
+| R4 | Booking listing `418195406` | King x1 |
 | R6 | Booking listing R6 | Queen x1, Sofa bed x1 |
 
 Seed kreveta:
@@ -47,6 +49,7 @@ Booking.com **bathrooms** (broj, private, inside room) mapira se na **`UnitBathr
 | R1 | 1× private, en-suite |
 | R2 | 1× private, en-suite |
 | R3 | 1× private, en-suite |
+| R4 | 1× private, en-suite |
 | R6 | 1× private, en-suite |
 
 Seed kupaonica:
@@ -61,6 +64,7 @@ docker compose exec django python manage.py seed_uzorita_unit_bathrooms
 | R2 | Luxury Room Uzorita - R2 | `0d852a5e-41d5-4801-9bf1-679deabcfbec` |
 | R6 | Luxury Room Uzorita - R6 | *(production UUID — see below)* |
 | R3 | Luxury Room Uzorita - R3 | `6058e4da-0ed4-48a1-a877-fec38685589a` |
+| R4 | Standard King Room R4 | `158d11e2-dcba-4c0d-b0aa-4d89073866ea` (production) |
 
 Booking.com listing names may differ; map each channel listing to the matching Channex room type UUID in [staging channels](https://staging.channex.io/channels).
 

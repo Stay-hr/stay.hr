@@ -12,6 +12,10 @@ class UnitCodeFromRoomNameTests(TestCase):
     def test_deluxe_king_room_maps_to_r1(self):
         self.assertEqual(unit_code_from_room_name("Deluxe King Room"), "R1")
 
+    def test_standard_king_room_maps_to_r4(self):
+        self.assertEqual(unit_code_from_room_name("Standard King Room"), "R4")
+        self.assertEqual(unit_code_from_room_name("Standard King Room R4"), "R4")
+
     def test_explicit_room_code_takes_precedence(self):
         self.assertEqual(unit_code_from_room_name("Deluxe Triple Room R1"), "R1")
 

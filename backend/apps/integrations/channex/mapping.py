@@ -77,7 +77,7 @@ UZORITA_PRODUCTION_ROOM_TYPES: tuple[ChannexRoomTypeMapping, ...] = (
     {
         "unit_code": "R4",
         "channex_room_type_id": "158d11e2-dcba-4c0d-b0aa-4d89073866ea",
-        "channex_title": "Luxury Room Uzorita - R4",
+        "channex_title": "Standard King Room R4",
     },
 )
 
