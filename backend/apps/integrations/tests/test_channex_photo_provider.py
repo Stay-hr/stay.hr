@@ -279,12 +279,40 @@ class ChannexPhotoProviderTests(TestCase):
             "id": "new-ext",
             "attributes": {
                 "id": "new-ext",
-                "position": 99,
-                "room_type_id": "rt-r4",
+                "position": 0,
+                "room_type_id": "wrong-room",
             },
         }
         with self.assertRaises(PhotoSyncRetryableError):
             self.provider.apply(entry)
+
+    def test_verify_position_mismatch_is_soft(self):
+        """Channex may renumber until REORDER — position mismatch must not fail upload."""
+        photo = self.service.add_photo(
+            self.unit, _jpeg_bytes(), original_filename="a.jpg"
+        )
+        entry = PhotoOutbox.objects.get(unit_photo=photo, kind=PhotoOutbox.Kind.UPLOAD)
+        from apps.integrations.channex.client import ChannexClient
+
+        self.client.upload_photo_file.return_value = "https://tmp/photo.jpg"
+        self.client.create_photo.return_value = {
+            "data": {"id": "new-ext", "type": "photo"}
+        }
+        self.client.extract_photo_id.side_effect = ChannexClient.extract_photo_id
+        self.client.photo_attributes.side_effect = ChannexClient.photo_attributes
+        self.client.get_photo.return_value = {
+            "id": "new-ext",
+            "attributes": {
+                "id": "new-ext",
+                "position": 99,
+                "room_type_id": "rt-r4",
+            },
+        }
+        self.provider.apply(entry)
+        link = UnitPhotoLink.objects.get(unit_photo=photo, provider="channex")
+        self.assertEqual(link.external_id, "new-ext")
+        photo.refresh_from_db()
+        self.assertEqual(photo.status, UnitPhoto.Status.ACTIVE)
 
 
 class FlushPhotoOutboxTests(TestCase):

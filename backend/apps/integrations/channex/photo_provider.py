@@ -313,6 +313,11 @@ class ChannexPhotoProvider:
         expected_position: int,
         expected_room_type_id: str,
     ) -> None:
+        """Confirm create landed. Position is soft: Channex may renumber until REORDER.
+
+        Hard checks: photo exists and room_type_id matches. Position mismatches are
+        logged only — SET_PRIMARY / coalesced REORDER finalize cover order.
+        """
         remote = self.client.get_photo(external_id)
         attrs = self.client.photo_attributes(remote)
         remote_id = str(attrs.get("id") or remote.get("id") or "")
@@ -320,15 +325,25 @@ class ChannexPhotoProvider:
             raise PhotoSyncRetryableError(
                 f"Post-upload verify id mismatch: got {remote_id} want {external_id}"
             )
-        pos = attrs.get("position")
-        if pos is not None and int(pos) != int(expected_position):
-            raise PhotoSyncRetryableError(
-                f"Post-upload verify position mismatch: got {pos} want {expected_position}"
-            )
         rt = attrs.get("room_type_id")
         if rt is not None and str(rt) != str(expected_room_type_id):
             raise PhotoSyncRetryableError(
                 f"Post-upload verify room_type mismatch: got {rt} want {expected_room_type_id}"
+            )
+        pos = attrs.get("position")
+        if pos is not None and int(pos) != int(expected_position):
+            logger.warning(
+                "post-upload position deferred photo=%s got=%s want=%s "
+                "(will finalize via REORDER/SET_PRIMARY)",
+                external_id,
+                pos,
+                expected_position,
+                extra={
+                    "event": "photo_upload_position_deferred",
+                    "external_id": external_id,
+                    "got_position": pos,
+                    "want_position": expected_position,
+                },
             )
 
     def _apply_delete(self, entry: PhotoOutbox) -> None:
