@@ -9,9 +9,22 @@
 | **0** | This ADR — SoT, ownership, MediaStorage, validation, state machine, outbox, provider, capabilities, audit | **done** |
 | **A** | `UnitPhoto`, `PhotoOutbox`, `UnitPhotoLink`, `MediaStorage` interface, `MockPhotoProvider`, state-machine tests, `import_unit_photos` | **done** |
 | **B** | `ChannexPhotoProvider` + worker flush (hel1 write; respect Channex write guard) | **done** — production-validated to Channex (Gate B3 automated 2026-07-31); Booking observe pending ops |
-| **C** | Reception API + UI (capability-gated) | pending |
+| **C** | Reception API + UI (capability-gated) | **blocked** until Booking observational confirm |
 | **D** | Drift detect → `OUT_OF_SYNC` | pending |
 | **E** | Explicit staff resolve (overwrite remote / adopt remote) — only if product wants | pending |
+
+### Production status (Gate B3)
+
+| Status | State |
+|--------|-------|
+| ADR 0015 | Accepted |
+| Phase A | Complete |
+| Phase B | Code complete |
+| Phase B | Production validated to Channex |
+| Booking propagation | Final observational check |
+| Phase C | Blocked until Booking confirmation |
+
+Booking is a projection only (not a writer). After SoT → outbox → provider → Channex is consistent, Booking spot-check (21 photos, cover `r4-19.jpeg`, no duplicates) closes **Production Proven**. Then open Phase C as a separate PR — thin Reception API/UI over `UnitPhotoService` only; no domain/provider/worker changes.
 
 ---
 
