@@ -116,6 +116,20 @@ with ChannexClient(cfg) as c:
 
 Wait for channel Photos sync; visual spot-check. Do **not** edit the OTA gallery.
 
+Confirm:
+
+- all **21** photos visible
+- cover / main photo is **`r4-19.jpeg`**
+- no obvious duplicates or wrong order
+
+When that passes, mark Gate B3 fully closed and ADR 0015 **Production Proven** (see result log).
+
+## Lessons learned — post-upload verify
+
+Channex may renumber `position` on create. **Do not** hard-fail upload verify on position alone.
+
+Provider verification validates object identity and target (`external_id`, `room_type_id`); gallery ordering is eventually established by explicit `SET_PRIMARY` / `REORDER`. See ADR 0015 Phase B lessons learned.
+
 ## WSL
 
 Do **not** flush with write enabled against live Channex. If hel1 is offline and you must force:

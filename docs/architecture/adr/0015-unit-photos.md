@@ -8,7 +8,7 @@
 |-------|-------|-------|
 | **0** | This ADR — SoT, ownership, MediaStorage, validation, state machine, outbox, provider, capabilities, audit | **done** |
 | **A** | `UnitPhoto`, `PhotoOutbox`, `UnitPhotoLink`, `MediaStorage` interface, `MockPhotoProvider`, state-machine tests, `import_unit_photos` | **done** |
-| **B** | `ChannexPhotoProvider` + worker flush (hel1 write; respect Channex write guard) | **done** (Gate B3 hel1 automated PASS 2026-07-31; Booking visual confirm by ops) |
+| **B** | `ChannexPhotoProvider` + worker flush (hel1 write; respect Channex write guard) | **done** — production-validated to Channex (Gate B3 automated 2026-07-31); Booking observe pending ops |
 | **C** | Reception API + UI (capability-gated) | pending |
 | **D** | Drift detect → `OUT_OF_SYNC` | pending |
 | **E** | Explicit staff resolve (overwrite remote / adopt remote) — only if product wants | pending |
@@ -198,6 +198,12 @@ Normally one active link per photo per provider (`deleted_at IS NULL`). Channex 
 - **Worker:** per-unit `select_for_update`; order DELETE → UPLOAD → coalesced REORDER/SET_PRIMARY; retry classification (429/5xx/timeout vs permanent 4xx); metrics `photo_*_total`.
 - **CLI:** `python manage.py flush_photo_outbox --tenant-slug uzorita` (+ `--force-channex-outbound` when WSL write-off).
 - **Ops smoke:** [unit-photos-hel1-smoke.md](../../operations/unit-photos-hel1-smoke.md).
+
+### Lessons learned (Gate B3 / Channex Photos API)
+
+**Provider verification validates object identity and target (`external_id`, `room_type_id`), while gallery ordering is eventually established by explicit reorder/primary operations.**
+
+Channex may normalize or renumber `position` on `POST /photos` create. A hard fail on immediate post-create `position` mismatch is incorrect: cover order is finalized by `SET_PRIMARY` / coalesced `REORDER` (PUT). Post-upload `GET` still hard-fails on id / `room_type_id` mismatch; position drift is logged as deferred. This is documented API behaviour discovered on hel1, not a temporary workaround.
 
 ### 11. PhotoProvider and capabilities
 
