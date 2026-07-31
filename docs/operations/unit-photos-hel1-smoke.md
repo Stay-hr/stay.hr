@@ -132,3 +132,11 @@ python manage.py flush_photo_outbox --tenant-slug uzorita --force-channex-outbou
 
 - Phase 0 ADR ✅ · Phase A domain ✅ · Phase B Channex projection ✅
 - Close this vertical; open **Phase C** (Reception upload/reorder/delete UI) as a separate stream on the same pipeline.
+
+---
+
+## Gate B3 result log
+
+| Date | Result | Notes |
+|------|--------|-------|
+| 2026-07-31 | **PASS (automated)** — Booking visual still ops-confirm | hel1 `7403b01`. Import 21 OK. Flush 21 links / all `ACTIVE` / 0 pending\|failed. Channex LIST=21; primary `r4-19.jpeg` remote `position=0`. Idempotent re-enqueue: 21× `photo_upload_skipped_total`, `external_id` unchanged. Soft position verify (hard-fail only id/room_type). **Booking.com gallery: confirm visually before calling ADR production-proven closed.** |

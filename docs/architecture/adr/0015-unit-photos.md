@@ -8,7 +8,7 @@
 |-------|-------|-------|
 | **0** | This ADR — SoT, ownership, MediaStorage, validation, state machine, outbox, provider, capabilities, audit | **done** |
 | **A** | `UnitPhoto`, `PhotoOutbox`, `UnitPhotoLink`, `MediaStorage` interface, `MockPhotoProvider`, state-machine tests, `import_unit_photos` | **done** |
-| **B** | `ChannexPhotoProvider` + worker flush (hel1 write; respect Channex write guard) | **done** |
+| **B** | `ChannexPhotoProvider` + worker flush (hel1 write; respect Channex write guard) | **done** (Gate B3 hel1 automated PASS 2026-07-31; Booking visual confirm by ops) |
 | **C** | Reception API + UI (capability-gated) | pending |
 | **D** | Drift detect → `OUT_OF_SYNC` | pending |
 | **E** | Explicit staff resolve (overwrite remote / adopt remote) — only if product wants | pending |
