@@ -38,7 +38,7 @@ class ChannexMappingTests(TestCase):
         codes = {row["unit_code"] for row in UZORITA_PRODUCTION_ROOM_TYPES}
         self.assertIn("R4", codes)
         r4 = next(row for row in UZORITA_PRODUCTION_ROOM_TYPES if row["unit_code"] == "R4")
-        self.assertEqual(r4["channex_title"], "Luxury Room Uzorita - R4")
+        self.assertEqual(r4["channex_title"], "Standard King Room R4")
 
     def test_channex_push_rate_reduction_model(self):
         self.assertEqual(channex_push_rate_for_unit("R3", Decimal("147.00")), Decimal("157.00"))

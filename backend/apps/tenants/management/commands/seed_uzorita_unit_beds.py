@@ -1,15 +1,15 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from apps.properties.beds import UZORITA_BED_SEED_UNIT_CODES, UZORITA_STANDARD_BEDS
+from apps.properties.beds import UZORITA_BED_SEED_UNIT_CODES, beds_for_unit
 from apps.properties.models import Property, Unit, UnitBed
 from apps.tenants.models import Tenant
 
 
 class Command(BaseCommand):
     help = (
-        "Seed Booking.com standard bed arrangement (Queen x1 + Sofa bed x1) "
-        "for Uzorita units R1, R2, R3, R6."
+        "Seed Booking.com standard bed arrangement for Uzorita units "
+        "(R1/R2/R3/R6: Queen x1 + Sofa bed x1; R4: King x1)."
     )
 
     def add_arguments(self, parser):
@@ -19,7 +19,7 @@ class Command(BaseCommand):
             "--unit-codes",
             nargs="+",
             default=list(UZORITA_BED_SEED_UNIT_CODES),
-            help="Unit codes to seed (default: R1 R2 R3 R6).",
+            help="Unit codes to seed (default: R1 R2 R3 R4 R6).",
         )
 
     @transaction.atomic
@@ -56,7 +56,7 @@ class Command(BaseCommand):
 
             deleted, _ = UnitBed.objects.filter(tenant=tenant, unit=unit).delete()
             created = 0
-            for spec in UZORITA_STANDARD_BEDS:
+            for spec in beds_for_unit(code):
                 UnitBed.objects.create(
                     tenant=tenant,
                     unit=unit,

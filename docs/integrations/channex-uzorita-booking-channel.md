@@ -38,18 +38,19 @@ Booking.com extranet veza **Channex.io** za objekt **Luxury Room Uzorita B&B**.
 | Deluxe King Room | `418195404` | Standard Rate `12846654` | **R2** | Luxury Room Uzorita - **R2** |
 | Deluxe Triple Room | `418195403` | Standard Rate `12846654` | **R3** | Luxury Room Uzorita - **R3** |
 | Deluxe Double Room | `418195405` | Standard Rate `12846654` | **R6** | Luxury Room Uzorita - **R6** |
+| Standard King Room | `418195406` | Standard Rate `12846654` | **R4** | Standard King Room **R4** |
 
 U Channex Mapping tabu za **svaki** Booking red odaberi odgovarajući **Channel Manager** room type (desna strana). Svi koriste isti rate plan ID `12846654`.
 
 ### Kako smo potvrdili mapiranje
 
-| Dokaz | R1 | R2 | R3 | R6 |
-|-------|----|----|----|-----|
-| Booking PDF / XLS nazivi | `… - R1` / generic King→R1 | `… - R2` | Deluxe Triple | Deluxe Double |
-| Channex room type ID (Booking) | 418195401 | 418195404 | 418195403 | 418195405 |
-| Rezervacije u bazi (`ReservationUnit`) | Uzorita R1, Deluxe King | Uzorita R2, `… - R2` | Deluxe Triple | Uzorita R6, Deluxe Double |
+| Dokaz | R1 | R2 | R3 | R6 | R4 |
+|-------|----|----|----|-----|-----|
+| Booking PDF / XLS nazivi | `… - R1` / generic King→R1 | `… - R2` | Deluxe Triple | Deluxe Double | Standard King Room |
+| Channex room type ID (Booking) | 418195401 | 418195404 | 418195403 | 418195405 | 418195406 |
+| Rezervacije u bazi (`ReservationUnit`) | Uzorita R1, Deluxe King | Uzorita R2, `… - R2` | Deluxe Triple | Uzorita R6, Deluxe Double | Standard King Room R4 |
 
-**Pažnja — dva Deluxe King Room:** Booking.com ima **dva** odvojena listinga (401 i 404). Generic `Deluxe King Room` bez sufiksa stay.hr povijesno mapira na **R1** (`unit_mapping.py`); u Channexu ih **ne smiješ** oba mapirati na isti room type.
+**Pažnja — dva Deluxe King Room:** Booking.com ima **dva** odvojena listinga (401 i 404). Generic `Deluxe King Room` bez sufiksa stay.hr povijesno mapira na **R1** (`unit_mapping.py`); u Channexu ih **ne smiješ** oba mapirati na isti room type. **Standard King Room** (`418195406`) mapira na **R4**.
 
 ### Occupancy (Booking ikona / Channex / stay.hr)
 
@@ -59,6 +60,7 @@ U Channex Mapping tabu za **svaki** Booking red odaberi odgovarajući **Channel 
 | R2 | King, max 3 | 3 / 2 / 2 / 1 |
 | R3 | Triple, max 4 gostiju (**max 3 odrasla**) | 4 / 3 / 3 / 3 |
 | R6 | Double, max 4 gostiju (**max 3 odrasla**) | 4 / 3 / 3 / 3 |
+| R4 | Standard King, max 2 | 2 / 2 / 1 / 1 |
 
 OBP pricing na kanalu — cijene po occupancy moraju biti usklađene u Channex rate planu i stay.hr syncu.
 
@@ -77,6 +79,9 @@ Deluxe King Room (418195404)     →   Luxury Room Uzorita - R2
   Standard Rate (12846654)
 
 Deluxe Triple Room (418195403)   →   Luxury Room Uzorita - R3
+  Standard Rate (12846654)
+
+Standard King Room (418195406)   →   Standard King Room R4
   Standard Rate (12846654)
 ```
 
@@ -213,7 +218,7 @@ docker compose build django && docker compose up -d django celery-worker
 |--------|--------|
 | Rate plan R3/R6 | Primary occupancy **3**, `rate_mode: auto`, `±5 €` |
 | Rate plan R1/R2 | Primary occupancy **2** |
-| Channel mapping | R3 `418195403` **OBP occ=3** · R6 `418195405` **OBP occ=3** · R1/R2 **OBP occ=2** |
+| Channel mapping | R3 `418195403` **OBP occ=3** · R6 `418195405` **OBP occ=3** · R1/R2 **OBP occ=2** · R4 `418195406` **OBP occ=2** |
 | Re-push srpanj–kolovoz 2026 | R3/R6 **157 €** (baza 147 €) · R1/R2 **118 €** (baza 113 €, outbox #115) |
 
 | Period | Sobe | Stara lista (1 odr.) | Nova lista (1 odr.) |
@@ -232,11 +237,11 @@ docker compose build django && docker compose up -d django celery-worker
 |----------|------------|
 | `sell_mode` | `per_person` |
 | `rate_mode` | `auto` (± **5 €**) |
-| Primary occupancy | **max odrasli** (R3/R6: **3** · R1/R2: **2**) |
+| Primary occupancy | **max odrasli** (R3/R6: **3** · R1/R2/R4: **2**) |
 | `children_fee` | **2.00 €** |
 | `meal_type` | `breakfast` |
 | Booking channel | **OBP** · occupancy = primary (max odrasli) |
-| Max odraslih | R1/R2: 2 · R3/R6: 3 (nema 4 odraslih) |
+| Max odraslih | R1/R2/R4: 2 · R3/R6: 3 (nema 4 odraslih) |
 
 ```
 normal = baza_1_osoba + (max_odrasli − 1) × 5
@@ -247,6 +252,7 @@ Channex push = normal
 | Soba | Max odr. | Normal (push) | 1 odr. | 2 odr. | 3 odr. | 3 odr. + 1 dijete |
 |------|----------|---------------|--------|--------|--------|-------------------|
 | **R1/R2** | 2 | **118,00** | 113 (−5) | 118 | — | 120,00 |
+| **R4** (−10% od R1/R2) | 2 | **106,70** | 101,70 (−5) | 106,70 | — | 108,70 |
 | **R3/R6** | 3 | **157,00** | 147 (−10) | 152 (−5) | 157 | 159,00 |
 
 Ponovni push iz stay.hr:
