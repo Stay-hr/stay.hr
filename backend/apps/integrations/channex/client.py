@@ -316,9 +316,13 @@ class ChannexClient:
         *,
         property_id: str,
         room_type_id: str | None = None,
+        limit: int = 100,
     ) -> list[dict[str, Any]]:
         """GET /photos — read capability only (smoke / drift / admin; not upload path)."""
-        params: dict[str, Any] = {"filter[property_id]": property_id}
+        params: dict[str, Any] = {
+            "filter[property_id]": property_id,
+            "pagination[limit]": int(limit),
+        }
         if room_type_id:
             params["filter[room_type_id]"] = room_type_id
         payload = self._request("GET", "/photos", params=params)
