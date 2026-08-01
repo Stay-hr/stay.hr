@@ -29,4 +29,6 @@ MESSAGE_ORCHESTRATION_PROPERTIES = []
 
 # Photo flush / Channex write tests control these explicitly; default allow writes.
 CHANNEX_OUTBOUND_ENABLED = True
+CHANNEX_OUTBOUND_TENANT_SLUGS = []
+CHANNEX_OUTBOUND_MAINTENANCE = False
 UNIT_PHOTO_VERIFY_AFTER_UPLOAD = True

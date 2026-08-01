@@ -1,6 +1,6 @@
 # ADR 0014 — Channex outbound guard (single-writer concurrency control)
 
-**Status:** Accepted  
+**Status:** Accepted (amended 2026-08-01)  
 **Date:** 2026-07-29  
 **Authors:** Platform team
 
@@ -15,9 +15,14 @@ same Channex property causes:
 
 - Double ACKs (feed appears empty for the other writer)
 - Conflicting ARI repair (availability flip-flops)
-- Unexplained inventory changes
+- Unexplained inventory changes / **overbooking**
 
 This is **concurrency control**, not a security feature.
+
+**Incident 2026-08-01:** WSL Celery ran `verify_channex_availability_daily` with
+`repair=True` against a stale DB, pushed `availability=1` for R4 to live Channex,
+and Booking.com sold a same-day stay → overbooking `#1053` / `#1059`. See
+[postmortem](../../operations/incidents/2026-08-01-wsl-channex-second-writer-overbooking.md).
 
 ## Decision
 
@@ -31,58 +36,102 @@ This is **concurrency control**, not a security feature.
          READ ONLY
 ```
 
-| Host | Role | `can_write_to_channex()` |
-|------|------|--------------------------|
-| **hel1** | Single live writer — deploy, ARI, mapping, new room | **true** |
-| **WSL** | Local API/UI, read, dump | **false** |
+| Host | Role | `CHANNEX_OUTBOUND_ENABLED` |
+|------|------|----------------------------|
+| **hel1** | Single live writer — deploy, ARI, mapping | **`true` (must set in `.env`)** |
+| **WSL** | Local API/UI, read, dump, **verify-only** | **`false` (code default)** |
+
+### Fail-closed default
+
+`CHANNEX_OUTBOUND_ENABLED` defaults to **`False`**. Omitting the flag on hel1
+after deploy makes production read-only — set `true` **before** deploy
+(see rollout in the postmortem).
+
+WSL also uses `DJANGO_SETTINGS_MODULE=config.settings.production` (`DEBUG=False`);
+hard-deny on `DEBUG` alone would not have blocked the incident.
+
+### Verify ≠ repair
+
+Shared diff engine only:
+
+```text
+verify() → mismatch_list
+repair(mismatch_list) → OutboundGuard → blast-radius threshold → write
+```
+
+- Daily Beat: **verify + notify only** (safe on every host).
+- Repair: CLI `--repair` on an authorized writer (subject to guard + threshold).
+- Repair must **not** recompute availability with a different formula.
+
+### Blast-radius threshold (repair only)
+
+Refuse repair (structured skip log) when any of:
+
+- distinct units with mismatches ≥ `CHANNEX_ARI_REPAIR_MAX_UNITS` (default 5)
+- affected units / units_checked > `CHANNEX_ARI_REPAIR_MAX_UNIT_PERCENT` (default 20%),
+  only when `units_checked >= max_units` (avoids 1/1 false trips)
+- any unit has ≥ `CHANNEX_ARI_REPAIR_MAX_DAYS_PER_UNIT` mismatch days (default 3)
 
 ### Implementation layers
 
-1. **Env flag** `CHANNEX_OUTBOUND_ENABLED` (default `True` → hel1 unchanged).
-2. **Guard helper** `can_write_to_channex()` in `apps.integrations.channex.outbound_guard`.
-3. **Client choke** in `ChannexClient._request`: non-GET + write disabled → raise `ChannexWriteDisabled`.
-4. **Early-skip** in periodic Celery tasks: return `{"skipped": true}` (not an error).
-5. **ACK atomicity**: if write disabled → no ingest, no ACK (never ingest then fail ACK).
-6. **Force override** via `force_channex_write()` context manager for CLI maintenance
-   (`--force-channex-outbound`).
+1. **Env flag** `CHANNEX_OUTBOUND_ENABLED` (default **`False`** — fail-closed).
+2. Optional `CHANNEX_OUTBOUND_TENANT_SLUGS` allowlist; `CHANNEX_OUTBOUND_MAINTENANCE`.
+3. **`assert_can_write()`** in `outbound_guard` — sole semantic write gate; audits every
+   allow/block (`channex_outbound_decision`); force emits `CHANNEX FORCE WRITE` WARNING.
+4. **Client choke** in `ChannexClient._request`: non-GET → `assert_can_write`.
+5. **Early-skip** for periodic *write* Celery tasks (`skip_if_channex_write_disabled`).
+   Verify-only Beat tasks do **not** early-skip.
+6. **ACK atomicity**: if write disabled → no ingest, no ACK.
+7. **Force override** via `force_channex_write()` / `--force-channex-outbound`.
+8. Startup banner: `Channex outbound: enabled=… mode=writer|read-only`.
+9. Process counters on `GET /system/status` → `channex.*`.
 
 ### Skip vs raise
 
 | Path | Behaviour when write disabled |
 |------|-------------------------------|
-| Celery Beat / worker tasks | `return {"skipped": True}` + INFO log |
-| `ChannexClient` non-GET (safety net) | raise `ChannexWriteDisabled` |
+| Celery *write* Beat/worker tasks | `return {"skipped": True}` + audit log |
+| Celery **verify** daily | runs (GET + notify); never POSTs |
+| `ChannexClient` non-GET | raise `ChannexWriteDisabled` |
 | Management command without `--force-…` | raise `CommandError` with hint |
-| Management command with `--force-…` | WARNING + structured log `reason=force_cli` + proceed |
+| Management command with `--force-…` | `CHANNEX FORCE WRITE` WARNING + proceed |
 
-### Observability
+### Breaking operational change (CLI)
 
-- Structured log event `channex_outbound_blocked` with method, endpoint, reason, tenant.
-- In-process counter `channex_outbound_blocked_total` exposed in `GET /api/v1/reception/system/status/`.
-- Worker startup WARNING when `CHANNEX_OUTBOUND_ENABLED=false`.
+- **Before:** `manage.py verify_channex_availability` repaired by default.
+- **After:** bare command is **verify-only**; pass `--repair` on the writer host.
 
-### WSL defaults
+### Redis / distributed writer lease (deferred)
 
-- `docker-compose.dev.yml` sets `CHANNEX_OUTBOUND_ENABLED: "false"` for django, celery-worker, celery-beat.
-- `scripts/up-dev.sh` starts without Celery by default; `--with-celery` for intentional queue testing.
+Single-writer in v1 is enforced by configuration (`CHANNEX_OUTBOUND_ENABLED`) and
+operational rules because there is **only one authorized production instance**.
+A distributed lease/lock is **not** required yet. If multiple writer instances are
+introduced later, add a distributed writer lease — consciously deferred, not forgotten.
 
 ## Consequences
 
-- hel1 remains the **single writer** with no `.env` change required.
-- WSL can freely run API/UI, read Channex data, run tests, without risking live channel state.
-- Explicit `--force-channex-outbound` on CLI commands enables maintenance writes from WSL when hel1 is offline.
+- hel1 must set `CHANNEX_OUTBOUND_ENABLED=true` in `.env` before every deploy that
+  includes this change.
+- WSL can run API/UI, read Channex, run verify, dump/restore DB, without mutating
+  live ARI — even if Celery beat is running.
+- Explicit `--force-channex-outbound` enables maintenance writes from WSL only when
+  hel1 is offline.
 
 ## Release notes
 
-**Introduced single-writer concurrency control for Channex integrations.**
+**Amended single-writer concurrency control (fail-closed + verify ≠ repair).**
 
-Development environments are now read-only by default. All outbound writes are
-centrally enforced through `ChannexClient`, while operational tasks degrade
-gracefully via early-skip. This prevents concurrent writers against the same
-live Channex account without affecting read operations.
+- Default outbound disabled; hel1 opts in via `.env`.
+- Availability verify and repair are separate; Beat never auto-repairs.
+- OutboundGuard audits every decision; blast-radius threshold blocks suspicious
+  mass repairs (stale-DB proxy).
+- CLI: `--repair` required to push ARI.
 
 ## Non-goals
 
+- Redis single-writer lock / lease (deferred — see above)
+- DB dump generation / freshness watermark before repair
+- Generic multi-provider `OutboundGuard` (Channex-first; extract when Booking
+  Direct / Expedia / Airbnb outbound appears)
 - Separate staging Channex property
-- hel1→WSL dump/restore automation
 - Disabling live testing on hel1

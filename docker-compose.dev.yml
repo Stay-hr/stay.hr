@@ -1,0 +1,20 @@
+# Local / WSL development overlay — fail-closed Channex outbound (ADR 0014).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Or: COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml
+#
+# Does NOT enable frontend next-dev; only pins Channex to read-only so a stale
+# local DB cannot repair live ARI (incident 2026-08-01).
+
+services:
+  django:
+    environment:
+      CHANNEX_OUTBOUND_ENABLED: "false"
+  celery-worker:
+    environment:
+      CHANNEX_OUTBOUND_ENABLED: "false"
+  celery-beat:
+    environment:
+      CHANNEX_OUTBOUND_ENABLED: "false"
+  django-run:
+    environment:
+      CHANNEX_OUTBOUND_ENABLED: "false"

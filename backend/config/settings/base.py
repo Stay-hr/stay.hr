@@ -154,12 +154,29 @@ UNIT_PHOTO_MAX_BYTES = env.int("UNIT_PHOTO_MAX_BYTES", default=8 * 1024 * 1024)
 UNIT_PHOTO_MAX_EDGE = env.int("UNIT_PHOTO_MAX_EDGE", default=8000)
 UNIT_PHOTO_MIN_EDGE = env.int("UNIT_PHOTO_MIN_EDGE", default=100)
 
-# Channex write capability (single-writer / concurrency control). Default True so hel1
-# is unchanged without .env. WSL sets false via docker-compose.dev.yml.
-CHANNEX_OUTBOUND_ENABLED = env.bool("CHANNEX_OUTBOUND_ENABLED", default=True)
+# Channex write capability (single-writer / concurrency control). Fail-closed:
+# default False so WSL/stale clones cannot mutate live ARI. hel1 .env MUST set true
+# before deploy (see ADR 0014 + incident 2026-08-01). WSL: false via .env / docker-compose.dev.yml.
+CHANNEX_OUTBOUND_ENABLED = env.bool("CHANNEX_OUTBOUND_ENABLED", default=False)
+# Empty = all tenants when enabled; non-empty = only listed slugs may write.
+CHANNEX_OUTBOUND_TENANT_SLUGS = env.list("CHANNEX_OUTBOUND_TENANT_SLUGS", default=[])
+# When true, all outbound writes are blocked (ops maintenance).
+CHANNEX_OUTBOUND_MAINTENANCE = env.bool("CHANNEX_OUTBOUND_MAINTENANCE", default=False)
+# ARI repair blast-radius thresholds (stale-DB proxy). Verify-only ignores these.
+CHANNEX_ARI_REPAIR_MAX_UNITS = env.int("CHANNEX_ARI_REPAIR_MAX_UNITS", default=5)
+CHANNEX_ARI_REPAIR_MAX_UNIT_PERCENT = env.float(
+    "CHANNEX_ARI_REPAIR_MAX_UNIT_PERCENT", default=20.0
+)
+CHANNEX_ARI_REPAIR_MAX_DAYS_PER_UNIT = env.int(
+    "CHANNEX_ARI_REPAIR_MAX_DAYS_PER_UNIT", default=3
+)
 
 # After create_photo, GET /photos/:id to confirm id/position/room_type (Phase B rollout).
 UNIT_PHOTO_VERIFY_AFTER_UPLOAD = env.bool("UNIT_PHOTO_VERIFY_AFTER_UPLOAD", default=True)
+
+# ChannelSyncObserver on GET /system/status photos (ADR 0015 Layer 2/3). Default off
+# (CLI is primary); set true for live Channex LIST on status polls.
+CHANNEL_PHOTO_STATUS_ENABLED = env.bool("CHANNEL_PHOTO_STATUS_ENABLED", default=False)
 
 STORAGES = {
     "default": {

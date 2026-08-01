@@ -8,18 +8,22 @@ from apps.integrations.channex.availability_verify_service import (
     DEFAULT_VERIFY_DAYS,
     verify_and_repair_availability,
 )
+from apps.integrations.channex.management_mixins import ChannexWriteCommandMixin
 
 # Ops convenience default only — service requires an explicit tenant_slug.
 OPS_DEFAULT_TENANT_SLUG = "uzorita"
 
 
-class Command(BaseCommand):
+class Command(ChannexWriteCommandMixin, BaseCommand):
     help = (
-        "Verify stay.hr occupancy vs live Channex GET /availability; "
-        "re-push ARI on mismatch (any Channex tenant; default slug: uzorita)."
+        "Verify stay.hr occupancy vs live Channex GET /availability "
+        "(any Channex tenant; default slug: uzorita). "
+        "Default is verify-only (Breaking operational change 2026-08: bare "
+        "command no longer repairs). Pass --repair on the writer host to re-push."
     )
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)
         parser.add_argument(
             "--tenant-slug",
             default=OPS_DEFAULT_TENANT_SLUG,
@@ -38,21 +42,48 @@ class Command(BaseCommand):
             help="Start date YYYY-MM-DD (default: today).",
         )
         parser.add_argument(
+            "--repair",
+            action="store_true",
+            help=(
+                "Re-push ARI for mismatches on an authorized writer host. "
+                "Subject to OutboundGuard + blast-radius threshold."
+            ),
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
-            help="Report mismatches only; do not re-push or notify.",
+            help="Alias of default behaviour (verify-only; no repair).",
+        )
+        parser.add_argument(
+            "--no-notify",
+            action="store_true",
+            help="Do not send reception push on mismatches.",
         )
 
     def handle(self, *args, **options):
         from_date = self._parse_from_date(options["from_date"])
-        dry_run = bool(options["dry_run"])
-        result = verify_and_repair_availability(
-            tenant_slug=options["tenant_slug"],
-            days=options["days"],
-            from_date=from_date,
-            repair=not dry_run,
-            notify=not dry_run,
-        )
+        do_repair = bool(options["repair"]) and not bool(options["dry_run"])
+        notify = not bool(options["no_notify"])
+
+        if do_repair:
+            with self.channex_write_context(options):
+                result = verify_and_repair_availability(
+                    tenant_slug=options["tenant_slug"],
+                    days=options["days"],
+                    from_date=from_date,
+                    repair=True,
+                    notify=notify,
+                    caller="cli",
+                )
+        else:
+            result = verify_and_repair_availability(
+                tenant_slug=options["tenant_slug"],
+                days=options["days"],
+                from_date=from_date,
+                repair=False,
+                notify=notify,
+                caller="cli",
+            )
 
         if result.get("skipped"):
             self.stderr.write(
@@ -76,16 +107,37 @@ class Command(BaseCommand):
                 f"expected={row['expected']} channex={row['actual']}"
             )
 
-        if mismatch_count:
-            style = self.style.WARNING if dry_run else self.style.SUCCESS
-            msg = (
-                f"Found {mismatch_count} mismatch(es)"
-                + (" (dry-run, not repaired)." if dry_run else f"; repaired={repaired}.")
+        if result.get("repair_skipped"):
+            blast = result.get("blast_radius") or {}
+            self.stderr.write(
+                self.style.WARNING(
+                    f"Repair skipped ({result.get('repair_skip_reason')}): "
+                    f"units={blast.get('units')} "
+                    f"affected_percent={blast.get('affected_percent')} "
+                    f"max_days={blast.get('max_days')} "
+                    f"reasons={blast.get('reasons')}"
+                )
             )
-            self.stdout.write(style(msg))
-            if dry_run:
-                raise SystemExit(1)
-            return
+
+        if mismatch_count:
+            if do_repair and repaired:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"Found {mismatch_count} mismatch(es); repaired={repaired}."
+                    )
+                )
+                return
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Found {mismatch_count} mismatch(es) (verify-only, not repaired)."
+                )
+            )
+            self.stderr.write(
+                "Hint: mismatches not repaired; pass --repair on the writer host "
+                "(CHANNEX_OUTBOUND_ENABLED=true). "
+                "Breaking change 2026-08: bare command is verify-only."
+            )
+            raise SystemExit(1)
 
         self.stdout.write(self.style.SUCCESS("No availability mismatches."))
 
