@@ -682,8 +682,208 @@ class ReceptionAPITests(TestCase):
             **self.auth,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], Reservation.Status.CHECKED_IN)
+        body = response.json()
+        self.assertEqual(body["status"], Reservation.Status.CHECKED_IN)
+        self.assertIsNotNone(body.get("evisitor_checkin"))
         mock_notify_status.assert_called_once()
+
+    @patch("apps.reservations.checkin.property_local_now")
+    @patch("apps.core.tasks.notify_reservation_status_changed.delay")
+    @patch(
+        "apps.reservations.reservation_checkin_complete.submit_guest_checkin",
+    )
+    def test_check_in_auto_evisitor_complete(
+        self,
+        mock_submit,
+        mock_notify_status,
+        mock_local_now,
+    ):
+        from datetime import datetime
+        from types import SimpleNamespace
+        from zoneinfo import ZoneInfo
+
+        from apps.integrations.evisitor.metrics import (
+            get_evisitor_checkin_auto_breakdown,
+            reset_evisitor_checkin_auto_total,
+        )
+
+        reset_evisitor_checkin_auto_total()
+        mock_local_now.return_value = datetime(
+            2026, 5, 10, 10, 0, tzinfo=ZoneInfo("Europe/Zagreb")
+        )
+        mock_submit.return_value = SimpleNamespace(
+            status="sent",
+            registration_id="a01c2e9f-3839-4f0e-b39b-775e107d6f36",
+        )
+
+        response = self.client.patch(
+            f"/api/v1/reception/reservations/{self.reservation.id}/",
+            {"status": Reservation.Status.CHECKED_IN},
+            format="json",
+            **self.auth,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], Reservation.Status.CHECKED_IN)
+        ev = body["evisitor_checkin"]
+        self.assertEqual(ev["overall"], "complete")
+        self.assertEqual(ev["submitted"], 1)
+        self.assertEqual(ev["failed"], 0)
+        self.assertTrue(ev.get("correlation_id"))
+        mock_submit.assert_called_once()
+        self.assertEqual(
+            mock_submit.call_args.kwargs.get("http_timeout"),
+            8.0,
+        )
+        breakdown = get_evisitor_checkin_auto_breakdown()
+        self.assertTrue(any(row["result"] == "complete" and row["count"] >= 1 for row in breakdown))
+        mock_notify_status.assert_called_once()
+
+    @patch("apps.reservations.checkin.property_local_now")
+    @patch("apps.core.tasks.notify_reservation_status_changed.delay")
+    @patch(
+        "apps.reservations.reservation_checkin_complete.submit_evisitor_for_reservation",
+    )
+    def test_check_in_skips_evisitor_when_no_eligible_guests(
+        self,
+        mock_submit_reservation,
+        mock_notify_status,
+        mock_local_now,
+    ):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from apps.integrations.evisitor.metrics import (
+            get_evisitor_checkin_auto_breakdown,
+            reset_evisitor_checkin_auto_total,
+        )
+
+        reset_evisitor_checkin_auto_total()
+        mock_local_now.return_value = datetime(
+            2026, 5, 10, 10, 0, tzinfo=ZoneInfo("Europe/Zagreb")
+        )
+        self.guest.date_of_birth = date(2015, 1, 1)
+        self.guest.save(update_fields=["date_of_birth"])
+
+        response = self.client.patch(
+            f"/api/v1/reception/reservations/{self.reservation.id}/",
+            {"status": Reservation.Status.CHECKED_IN},
+            format="json",
+            **self.auth,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], Reservation.Status.CHECKED_IN)
+        ev = body["evisitor_checkin"]
+        self.assertEqual(ev["overall"], "not_required")
+        self.assertEqual(ev["skipped"], 1)
+        mock_submit_reservation.assert_not_called()
+        breakdown = get_evisitor_checkin_auto_breakdown()
+        self.assertTrue(
+            any(row["result"] == "not_required" and row["count"] >= 1 for row in breakdown)
+        )
+        mock_notify_status.assert_called_once()
+
+    @patch("apps.reservations.checkin.property_local_now")
+    @patch("apps.core.tasks.notify_reservation_status_changed.delay")
+    @patch(
+        "apps.reservations.reservation_checkin_complete.submit_guest_checkin",
+    )
+    def test_check_in_auto_evisitor_partial_and_per_guest_continue(
+        self,
+        mock_submit,
+        mock_notify_status,
+        mock_local_now,
+    ):
+        from datetime import datetime
+        from types import SimpleNamespace
+        from zoneinfo import ZoneInfo
+
+        from apps.integrations.evisitor.exceptions import EvisitorApiError
+
+        mock_local_now.return_value = datetime(
+            2026, 5, 10, 10, 0, tzinfo=ZoneInfo("Europe/Zagreb")
+        )
+        Guest.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            first_name="Iva",
+            last_name="Ivić",
+            is_primary=False,
+            date_of_birth=date(1990, 1, 1),
+        )
+        self.guest.date_of_birth = date(1985, 1, 1)
+        self.guest.save(update_fields=["date_of_birth"])
+
+        mock_submit.side_effect = [
+            EvisitorApiError(
+                "timeout",
+                user_message="eVisitor zahtjev je istekao (timeout).",
+            ),
+            SimpleNamespace(
+                status="sent",
+                registration_id="b11c2e9f-3839-4f0e-b39b-775e107d6f36",
+            ),
+        ]
+
+        response = self.client.patch(
+            f"/api/v1/reception/reservations/{self.reservation.id}/",
+            {"status": Reservation.Status.CHECKED_IN},
+            format="json",
+            **self.auth,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], Reservation.Status.CHECKED_IN)
+        ev = body["evisitor_checkin"]
+        self.assertEqual(ev["overall"], "partial")
+        self.assertEqual(ev["submitted"], 1)
+        self.assertEqual(ev["failed"], 1)
+        self.assertEqual(len(ev["failed_guests"]), 1)
+        self.assertEqual(mock_submit.call_count, 2)
+
+    @patch("apps.reservations.checkin.property_local_now")
+    @patch("apps.core.tasks.notify_reservation_status_changed.delay")
+    @patch(
+        "apps.reservations.reservation_checkin_complete.submit_guest_checkin",
+    )
+    def test_already_checked_in_patch_does_not_retry_evisitor(
+        self,
+        mock_submit,
+        mock_notify_status,
+        mock_local_now,
+    ):
+        from datetime import datetime
+        from types import SimpleNamespace
+        from zoneinfo import ZoneInfo
+
+        mock_local_now.return_value = datetime(
+            2026, 5, 10, 10, 0, tzinfo=ZoneInfo("Europe/Zagreb")
+        )
+        mock_submit.return_value = SimpleNamespace(
+            status="sent",
+            registration_id="a01c2e9f-3839-4f0e-b39b-775e107d6f36",
+        )
+
+        first = self.client.patch(
+            f"/api/v1/reception/reservations/{self.reservation.id}/",
+            {"status": Reservation.Status.CHECKED_IN},
+            format="json",
+            **self.auth,
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertIsNotNone(first.json().get("evisitor_checkin"))
+        mock_submit.assert_called_once()
+
+        second = self.client.patch(
+            f"/api/v1/reception/reservations/{self.reservation.id}/",
+            {"status": Reservation.Status.CHECKED_IN},
+            format="json",
+            **self.auth,
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertIsNone(second.json().get("evisitor_checkin"))
+        mock_submit.assert_called_once()
 
     @patch("apps.reservations.checkin.property_local_now")
     def test_detail_includes_check_in_allowed_on_arrival_date(self, mock_local_now):
@@ -701,6 +901,7 @@ class ReceptionAPITests(TestCase):
         data = response.json()
         self.assertTrue(data["check_in_allowed"])
         self.assertIsNone(data["check_in_blocked_code"])
+        self.assertIsNone(data.get("evisitor_checkin"))
 
     @patch("apps.reservations.checkin.property_local_now")
     def test_detail_check_in_blocked_wrong_date(self, mock_local_now):

@@ -160,6 +160,7 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
     payment_status_key = serializers.SerializerMethodField()
     evisitor_summary = serializers.SerializerMethodField()
     evisitor_progress = serializers.SerializerMethodField()
+    evisitor_checkin = serializers.SerializerMethodField()
     checkin_progress = serializers.SerializerMethodField()
     check_in_allowed = serializers.SerializerMethodField()
     check_in_blocked_code = serializers.SerializerMethodField()
@@ -220,6 +221,7 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
             "guests",
             "evisitor_summary",
             "evisitor_progress",
+            "evisitor_checkin",
             "checkin_progress",
             "check_in_allowed",
             "check_in_blocked_code",
@@ -233,6 +235,10 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
             "booking_payout_service_fee",
             "booking_payout_received",
         )
+
+    def get_evisitor_checkin(self, obj) -> dict | None:
+        # Only populated on PATCH check-in responses via serializer context.
+        return self.context.get("evisitor_checkin")
 
     def get_booking_payout_received(self, obj) -> bool:
         return obj.booking_payout_received_at is not None
@@ -400,6 +406,28 @@ class ReservationUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         waived_fees = validated_data.pop("waived_fees", True)
         new_status = validated_data.get("status", instance.status)
+        self._evisitor_checkin = None
+        if (
+            instance.status == Reservation.Status.EXPECTED
+            and new_status == Reservation.Status.CHECKED_IN
+        ):
+            from apps.reservations.reservation_checkin_complete import (
+                perform_reception_checkin,
+            )
+
+            request = self.context.get("request")
+            tenant = getattr(request, "tenant", None) or instance.tenant
+            try:
+                result = perform_reception_checkin(instance, tenant=tenant)
+            except CheckInBlockedError as exc:
+                raise serializers.ValidationError({"status": exc.message}) from exc
+            instance.refresh_from_db()
+            validated_data["status"] = instance.status
+            if result.get("evisitor") is not None:
+                self._evisitor_checkin = {
+                    **result["evisitor"],
+                    "correlation_id": result.get("correlation_id"),
+                }
         if (
             instance.status == Reservation.Status.EXPECTED
             and new_status == Reservation.Status.NO_SHOW

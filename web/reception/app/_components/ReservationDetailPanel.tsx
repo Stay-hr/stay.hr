@@ -27,8 +27,40 @@ import {
   statusConfirmKey,
   statusSuccessKey,
 } from "@/lib/reservationStatusTransitions";
-import type { AppConfig, BookingPdfImportResult, ReservationDetail, ReservationStatus } from "@/lib/types";
+import type {
+  AppConfig,
+  BookingPdfImportResult,
+  EvisitorCheckinResult,
+  ReservationDetail,
+  ReservationStatus,
+} from "@/lib/types";
 import { reservationStatusClass } from "@/lib/reservationUi";
+
+function checkInSuccessMessage(
+  t: (key: string, values?: Record<string, string | number>) => string,
+  evisitorCheckin: EvisitorCheckinResult | null | undefined,
+): string {
+  if (!evisitorCheckin) {
+    return t("checkInSuccess");
+  }
+  const required =
+    evisitorCheckin.submitted + evisitorCheckin.failed + evisitorCheckin.validation_failed;
+  switch (evisitorCheckin.overall) {
+    case "complete":
+      return t("checkInSuccessEvisitorComplete");
+    case "partial":
+      return t("checkInSuccessEvisitorPartial", {
+        submitted: evisitorCheckin.submitted,
+        required,
+      });
+    case "none":
+      return t("checkInSuccessEvisitorNone");
+    case "not_required":
+      return t("checkInSuccessEvisitorNotRequired");
+    default:
+      return t("checkInSuccess");
+  }
+}
 
 type Props = {
   reservationId: number;
@@ -213,9 +245,14 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
             : undefined;
         throw new Error(statusMessage || data?.detail || t("statusChangeFailed"));
       }
-      setReservation((await res.json()) as ReservationDetail);
-      const successKey = statusSuccessKey(newStatus);
-      setActionMessage(successKey ? t(successKey) : t("statusChangeFailed"));
+      const updated = (await res.json()) as ReservationDetail;
+      setReservation(updated);
+      if (newStatus === "checked_in") {
+        setActionMessage(checkInSuccessMessage(t, updated.evisitor_checkin));
+      } else {
+        const successKey = statusSuccessKey(newStatus);
+        setActionMessage(successKey ? t(successKey) : t("statusChangeFailed"));
+      }
       await onUpdated?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("statusChangeFailed"));

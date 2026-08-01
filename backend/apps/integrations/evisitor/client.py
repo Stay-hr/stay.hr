@@ -29,11 +29,16 @@ def _evisitor_ssl_context() -> ssl.SSLContext:
 
 
 class EvisitorClient:
-    def __init__(self, config: EvisitorRuntimeConfig) -> None:
+    def __init__(
+        self,
+        config: EvisitorRuntimeConfig,
+        *,
+        timeout: float = 60.0,
+    ) -> None:
         self._config = config
         self._ensure_config()
         self._session = httpx.Client(
-            timeout=60.0,
+            timeout=timeout,
             follow_redirects=True,
             verify=_evisitor_ssl_context(),
         )
@@ -80,7 +85,14 @@ class EvisitorClient:
         }
         if self._config.api_key:
             payload["apikey"] = self._config.api_key
-        response = self._session.post(f"{self._auth_url}Login", json=payload)
+        try:
+            response = self._session.post(f"{self._auth_url}Login", json=payload)
+        except httpx.TimeoutException as exc:
+            raise EvisitorApiError(
+                "eVisitor zahtjev je istekao (timeout).",
+                user_message="eVisitor zahtjev je istekao (timeout).",
+                system_message=str(exc),
+            ) from exc
         if response.status_code != 200:
             raise EvisitorApiError(
                 f"eVisitor login HTTP {response.status_code}",
@@ -117,7 +129,14 @@ class EvisitorClient:
 
     def execute_action(self, action: str, data: dict[str, Any]) -> None:
         url = f"{self._rest_url}{action.strip('/')}/"
-        response = self._session.post(url, json=data)
+        try:
+            response = self._session.post(url, json=data)
+        except httpx.TimeoutException as exc:
+            raise EvisitorApiError(
+                "eVisitor zahtjev je istekao (timeout).",
+                user_message="eVisitor zahtjev je istekao (timeout).",
+                system_message=str(exc),
+            ) from exc
         if response.status_code != 200:
             user_message, system_message = self._extract_error_messages(response)
             resolved = resolve_evisitor_error_message(

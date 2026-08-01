@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
+
+from django.db import transaction
 
 from apps.integrations.evisitor.eligibility import guest_requires_evisitor
 from apps.integrations.evisitor.exceptions import (
@@ -11,6 +14,7 @@ from apps.integrations.evisitor.exceptions import (
     EvisitorConfigError,
     EvisitorValidationError,
 )
+from apps.integrations.evisitor.metrics import record_checkin_auto
 from apps.integrations.evisitor.service import submit_guest_checkin
 from apps.integrations.evisitor.summary import evisitor_summary_for_reservation
 from apps.integrations.models import IntegrationConfig
@@ -24,12 +28,26 @@ from apps.integrations.whatsapp.whatsapp_operator_service import (
     notify_guest_operator_checkin_complete,
 )
 from apps.reservations.checkin import CheckInBlockedError, validate_reservation_check_in
-from apps.reservations.models import DocumentIntakeJob, Reservation
+from apps.reservations.models import DocumentIntakeJob, EvisitorGuestStatus, Reservation
+from apps.tenants.models import Tenant
 
 logger = logging.getLogger(__name__)
 
+_RECEPTION_EVISITOR_HTTP_TIMEOUT = 8.0
+_SENT_STATUSES = frozenset(
+    {
+        EvisitorGuestStatus.SENT,
+        "sent",
+        "SENT",
+    }
+)
 
-def mark_reservation_checked_in(reservation: Reservation) -> dict:
+
+def mark_reservation_checked_in(
+    reservation: Reservation,
+    *,
+    notify: bool = True,
+) -> dict:
     if reservation.status == Reservation.Status.CHECKED_IN:
         return {"status": "already_checked_in"}
 
@@ -47,13 +65,14 @@ def mark_reservation_checked_in(reservation: Reservation) -> dict:
 
     waive_whatsapp_autocheckin(reservation)
 
-    from apps.core.tasks import notify_reservation_status_changed
+    if notify:
+        from apps.core.tasks import notify_reservation_status_changed
 
-    notify_reservation_status_changed.delay(
-        reservation.pk,
-        old_status,
-        reservation.status,
-    )
+        notify_reservation_status_changed.delay(
+            reservation.pk,
+            old_status,
+            reservation.status,
+        )
     return {"status": "checked_in", "old_status": old_status}
 
 
@@ -61,25 +80,33 @@ def submit_evisitor_for_reservation(
     reservation: Reservation,
     *,
     time_stay_from: str | None = None,
+    http_timeout: float | None = None,
+    correlation_id: str | None = None,
 ) -> list[dict]:
     results: list[dict] = []
     guests = list(reservation.guests.all())
     for guest in guests:
+        guest_name = guest.name or f"{guest.first_name} {guest.last_name}".strip()
         if not guest_requires_evisitor(guest, reference_date=reservation.check_in):
             results.append(
                 {
                     "guest_id": guest.pk,
-                    "guest_name": guest.name or f"{guest.first_name} {guest.last_name}".strip(),
+                    "guest_name": guest_name,
                     "status": "not_required",
                 }
             )
             continue
         try:
-            submission = submit_guest_checkin(guest, time_stay_from=time_stay_from)
+            submission = submit_guest_checkin(
+                guest,
+                time_stay_from=time_stay_from,
+                http_timeout=http_timeout,
+                correlation_id=correlation_id,
+            )
             results.append(
                 {
                     "guest_id": guest.pk,
-                    "guest_name": guest.name or f"{guest.first_name} {guest.last_name}".strip(),
+                    "guest_name": guest_name,
                     "status": submission.status,
                     "registration_id": str(submission.registration_id),
                 }
@@ -88,7 +115,7 @@ def submit_evisitor_for_reservation(
             results.append(
                 {
                     "guest_id": guest.pk,
-                    "guest_name": guest.name or f"{guest.first_name} {guest.last_name}".strip(),
+                    "guest_name": guest_name,
                     "status": "validation_failed",
                     "message": str(exc),
                     "field_errors": exc.field_errors or {},
@@ -98,6 +125,7 @@ def submit_evisitor_for_reservation(
             results.append(
                 {
                     "guest_id": guest.pk,
+                    "guest_name": guest_name,
                     "status": "config_error",
                     "message": str(exc),
                 }
@@ -106,11 +134,200 @@ def submit_evisitor_for_reservation(
             results.append(
                 {
                     "guest_id": guest.pk,
+                    "guest_name": guest_name,
                     "status": "api_error",
                     "message": str(exc),
                 }
             )
+        except Exception as exc:  # noqa: BLE001 — best-effort; never fail check-in
+            logger.exception(
+                "evisitor.submit_unexpected reservation_id=%s guest_id=%s correlation_id=%s",
+                reservation.pk,
+                guest.pk,
+                correlation_id,
+            )
+            results.append(
+                {
+                    "guest_id": guest.pk,
+                    "guest_name": guest_name,
+                    "status": "api_error",
+                    "message": str(exc) or "unexpected_error",
+                }
+            )
     return results
+
+
+def _aggregate_evisitor_checkin(results: list[dict]) -> dict:
+    submitted = 0
+    skipped = 0
+    failed = 0
+    validation_failed = 0
+    failed_guests: list[dict] = []
+
+    for row in results:
+        status = str(row.get("status") or "")
+        if status in _SENT_STATUSES:
+            submitted += 1
+            continue
+        if status == "not_required":
+            skipped += 1
+            continue
+        if status == "validation_failed":
+            validation_failed += 1
+            failed_guests.append(
+                {
+                    "guest_id": row.get("guest_id"),
+                    "guest_name": row.get("guest_name"),
+                    "status": status,
+                    "message": row.get("message") or "",
+                    "field_errors": row.get("field_errors") or {},
+                }
+            )
+            continue
+        failed += 1
+        failed_guests.append(
+            {
+                "guest_id": row.get("guest_id"),
+                "guest_name": row.get("guest_name"),
+                "status": status,
+                "message": row.get("message") or "",
+            }
+        )
+
+    eligible = submitted + failed + validation_failed
+    if eligible == 0:
+        overall = "not_required"
+    elif submitted == eligible:
+        overall = "complete"
+    elif submitted == 0:
+        overall = "none"
+    else:
+        overall = "partial"
+
+    return {
+        "overall": overall,
+        "submitted": submitted,
+        "skipped": skipped,
+        "failed": failed,
+        "validation_failed": validation_failed,
+        "failed_guests": failed_guests,
+    }
+
+
+def perform_reception_checkin(
+    reservation: Reservation,
+    *,
+    tenant: Tenant | None = None,
+    time_stay_from: str | None = None,
+    correlation_id: str | None = None,
+) -> dict:
+    """Reception check-in: commit local status, then best-effort eVisitor.
+
+    Does not re-submit eVisitor when already checked in (retry via evisitor-submit).
+    """
+    cid = (correlation_id or "").strip() or str(uuid.uuid4())
+    logger.info(
+        "reception.checkin.start",
+        extra={
+            "event": "reception.checkin.start",
+            "correlation_id": cid,
+            "reservation_id": reservation.pk,
+        },
+    )
+
+    if reservation.status == Reservation.Status.CHECKED_IN:
+        return {
+            "status": "already_checked_in",
+            "checkin": {"status": "already_checked_in"},
+            "evisitor": None,
+            "correlation_id": cid,
+        }
+
+    check_tenant = tenant or reservation.tenant
+    try:
+        validate_reservation_check_in(reservation, tenant=check_tenant)
+    except CheckInBlockedError:
+        raise
+
+    # Commit check-in before any eVisitor HTTP so timeouts cannot roll it back.
+    with transaction.atomic():
+        checkin_result = mark_reservation_checked_in(reservation, notify=False)
+
+    if checkin_result.get("status") == "blocked":
+        raise CheckInBlockedError(
+            str(checkin_result.get("code") or "blocked"),
+            str(checkin_result.get("message") or "Check-in nije moguć."),
+        )
+
+    if checkin_result.get("status") == "already_checked_in":
+        return {
+            "status": "already_checked_in",
+            "checkin": checkin_result,
+            "evisitor": None,
+            "correlation_id": cid,
+        }
+
+    reservation.refresh_from_db()
+    guests = list(reservation.guests.all())
+    eligible = [
+        g
+        for g in guests
+        if guest_requires_evisitor(g, reference_date=reservation.check_in)
+    ]
+
+    # DoD: no eVisitor service call when nobody is eligible.
+    if not eligible:
+        evisitor_summary = {
+            "overall": "not_required",
+            "submitted": 0,
+            "skipped": len(guests),
+            "failed": 0,
+            "validation_failed": 0,
+            "failed_guests": [],
+        }
+        record_checkin_auto(result="not_required")
+        logger.info(
+            "reception.checkin.done",
+            extra={
+                "event": "reception.checkin.done",
+                "correlation_id": cid,
+                "reservation_id": reservation.pk,
+                "evisitor_overall": "not_required",
+            },
+        )
+        return {
+            "status": "checked_in",
+            "checkin": checkin_result,
+            "evisitor": evisitor_summary,
+            "correlation_id": cid,
+        }
+
+    evisitor_results = submit_evisitor_for_reservation(
+        reservation,
+        time_stay_from=time_stay_from,
+        http_timeout=_RECEPTION_EVISITOR_HTTP_TIMEOUT,
+        correlation_id=cid,
+    )
+    evisitor_summary = _aggregate_evisitor_checkin(evisitor_results)
+    record_checkin_auto(result=str(evisitor_summary["overall"]))
+    logger.info(
+        "reception.checkin.done",
+        extra={
+            "event": "reception.checkin.done",
+            "correlation_id": cid,
+            "reservation_id": reservation.pk,
+            "evisitor_overall": evisitor_summary["overall"],
+            "evisitor_submitted": evisitor_summary["submitted"],
+            "evisitor_failed": evisitor_summary["failed"],
+            "evisitor_validation_failed": evisitor_summary["validation_failed"],
+        },
+    )
+    return {
+        "status": "checked_in",
+        "checkin": checkin_result,
+        "evisitor": evisitor_summary,
+        "correlation_id": cid,
+    }
 
 
 def complete_guest_checkin_after_apply(

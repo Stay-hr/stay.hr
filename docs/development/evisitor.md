@@ -2,6 +2,31 @@
 
 stay.hr je **integracijski sloj** između recepcije, OCR/WhatsApp kanala i službenog eVisitor REST API-ja. Ne zamjenjuje eVisitor web sučelje — automatizira prijavu i odjavu gostiju kad su podaci u sustavu potpuni i konfiguracija ispravna.
 
+## Milestone: eVisitor v1
+
+| | |
+|--|--|
+| **Status** | Production Ready / Production Stable |
+| **Completed** | 2026-08 |
+| **Pattern** | First complete implementation of [ADR 0016: External Integration Pattern](../architecture/adr/0016-external-integration-pattern.md) |
+
+**Načela**
+
+- Lokalni reception workflow (check-in / check-out) je autoritativan — ne rollbacka se zbog eVisitora.
+- eVisitor je best-effort sinkronizacija s vlastitim lifecycleom (`not_sent` → `sent` → `checkout_failed` → `checked_out`).
+- Retry je eksplicitan i idempotentan (`POST .../evisitor-submit/`, `.../evisitor-checkout/`).
+- Observability (audit, metrike, `correlation_id`) je primarni alat za daljnja poboljšanja.
+
+**Feature policy**
+
+| Dopušteno | Zabranjeno bez produkcijskog signala |
+|-----------|--------------------------------------|
+| Bugfix | Nove funkcionalnosti |
+| Observability (po potrebi) | Unaprijedne optimizacije (async, histogram, …) |
+| Kompatibilnost s promjenama eVisitor API-ja | |
+
+**Ponovno otvaranje modula** samo uz mjerljiv razlog: promjena eVisitor API-ja, trajni porast `partial`/`none`, regulatorni zahtjev, ili zahtjev korisnika koji se ne može riješiti operativno.
+
 ---
 
 ## Arhitektura
@@ -259,7 +284,7 @@ Funkcija `guest_requires_evisitor` ([`eligibility.py`](../../backend/apps/integr
 
 ## Check-in u eVisitor
 
-**Check-in rezervacije ≠ eVisitor submit.** Promjena `Reservation.status` na `checked_in` ne garantira automatsku prijavu u eVisitoru; submit je zaseban korak (ručno ili automatizirano nakon check-ina).
+**Check-in rezervacije ≠ obavezan eVisitor uspjeh.** Reception PATCH na `checked_in` **pokušava** best-effort eVisitor submit, ali lokalni check-in se **commitira prije** bilo kakvog HTTP poziva prema eVisitoru. Ako podaci nedostaju, config/API padne ili timeout, rezervacija ostaje `checked_in`; retry je `POST .../evisitor-submit/`.
 
 ### Koraci submita
 
@@ -273,13 +298,18 @@ Funkcija `guest_requires_evisitor` ([`eligibility.py`](../../backend/apps/integr
 
 | Okidač | Put | Napomena |
 |--------|-----|----------|
-| Recepcija (Hospira) | `POST .../evisitor-submit/` | Ručni submit po gostu |
+| Recepcija PATCH check-in | `perform_reception_checkin` | Best-effort nakon COMMIT lokalnog check-ina; `http_timeout=8s` **po gostu**; `correlation_id` kroz audit/log |
+| Recepcija (ručno) | `POST .../evisitor-submit/` | Ručni submit / retry po gostu |
 | WhatsApp operator — apply job | `complete_guest_checkin_after_apply` | Nakon check-ina + apply dokumenata |
 | WhatsApp operator — job complete | `operator_job_complete` | Batch nakon operatorovog završetka |
 | Toni — potvrda dolaska | `perform_arrival_confirmed_checkin` | Check-in + eVisitor za sve eligible goste |
 | Ops / management commands | npr. `ops_res22_bottcher` | Ručni operativni alati |
 
-OCR sam po sebi **ne šalje** eVisitor — nakon importa dokumenata submit je zaseban korak ([`document_intake_service.py`](../../backend/apps/reservations/document_intake_service.py)).
+**Reception auto check-in:** ako nema nijednog eligible gosta (`guest_requires_evisitor` == false za sve), `submit_evisitor_for_reservation` se **ne poziva**; `evisitor_checkin.overall = not_required`. Već `checked_in` PATCH je no-op za eVisitor (nema skrivenog retryja).
+
+**API polje `evisitor_checkin`:** vraća se **samo** u odgovoru na PATCH koji radi check-in (context). GET ga ne računa — uvijek `null`. Metrika: `evisitor_checkin_auto_total` s `result=complete|partial|none|not_required`.
+
+OCR sam po sebi **ne šalje** eVisitor — nakon importa dokumenata submit je zaseban korak ([`document_intake_service.py`](../../backend/apps/reservations/document_intake_service.py)). WhatsApp/Toni orkestracija **nije** promijenjena ovim reception flowom.
 
 ---
 
