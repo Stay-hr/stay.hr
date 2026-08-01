@@ -125,37 +125,58 @@ Očekivano: `200` ili `307` (redirect), ne `404`/`502`.
 
 ## B) Nova Stay subdomena (`*.stay.hr`)
 
-Primjer: `demo.stay.hr` za tenant `demo`.
+Primjer: `uzorita-sibenik.stay.hr` (primary booking za tenant `uzorita`) ili `demo.stay.hr`.
 
-Wildcard DNS i Traefik `HostRegexp` već pokrivaju routing — **nema novih Traefik labela**.
+Wildcard DNS (`*.stay.hr`) i Traefik `HostRegexp` pokrivaju **routing**. Za pouzdan **TLS cert** (Let’s Encrypt DNS-01) dodaj eksplicitni `Host()` router — `HostRegexp` sam ne izdaje cert po pojedinačnom hostu.
 
 ### Koraci
 
 1. **Admin** → [Tenant domains](https://admin.stay.hr/admin/tenants/tenantdomain/) → **Add**:
-   - `domain`: `demo.stay.hr`
-   - `tenant`: demo
-   - `property`: (opcionalno) FK na objekt — ako je postavljen, booking ide direktno na taj objekt
+   - `domain`: `uzorita-sibenik.stay.hr` (ili `demo.stay.hr`)
+   - `tenant`: uzorita (ili demo)
+   - `property`: FK na objekt ako booking ide direktno na taj objekt (inače ostavi prazno = tenant hub)
    - `domain_type`: `stay_subdomain`
+   - `is_primary`: `True` ako ovo treba biti kanonska domena za guest check-in linkove
    - `is_verified`: `False`
 
-2. Odaberi red → admin akcija **Provision DNS** → backend upsert-a A zapis u Cloudflare
+2. Odaberi red → admin akcija **Provision DNS** → backend upsert-a A zapis u Cloudflare zoni `stay.hr`  
+   (`CF_DNS_API_TOKEN` mora biti isti valjani Zone DNS Edit token kao u `/opt/stacks/traefik/.env`).
 
-3. Provjera:
+3. **Traefik** — eksplicitni router u `docker-compose.yml` (`web-booking`) za TLS:
 
-```bash
-curl -sS -o /dev/null -w '%{http_code}\n' https://demo.stay.hr/
-curl -sS -H "Host: demo.stay.hr" http://stay_django:8000/api/v1/public/site-context/
+```yaml
+- traefik.http.routers.stay-booking-<slug>.rule=Host(`uzorita-sibenik.stay.hr`)
+- traefik.http.routers.stay-booking-<slug>.entrypoints=websecure
+- traefik.http.routers.stay-booking-<slug>.tls=true
+- traefik.http.routers.stay-booking-<slug>.tls.certresolver=cloudflare
+- traefik.http.routers.stay-booking-<slug>.service=stay-web-booking
+- traefik.http.routers.stay-booking-<slug>.priority=100
 ```
 
-4. Postavi `is_verified=True` u adminu
+```bash
+cd /opt/stacks/stay.hr
+docker compose up -d web-booking
+```
+
+4. Provjera:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' https://uzorita-sibenik.stay.hr/
+curl -sS -H "Host: uzorita-sibenik.stay.hr" http://stay_django:8000/api/v1/public/site-context/
+# TLS SAN mora biti taj host (ne TRAEFIK DEFAULT CERT):
+echo | openssl s_client -connect 127.0.0.1:443 -servername uzorita-sibenik.stay.hr 2>/dev/null \
+  | openssl x509 -noout -subject -dates
+```
+
+5. `is_verified=True` u adminu (guest check-in base URL bira verified + primary property domain).
 
 ### Slug u URL-u (više objekata po tenantu)
 
 Ako `TenantDomain.property` **nije** postavljen (tenant hub):
 
 - `https://demo.stay.hr/p/<property-slug>/` — booking za taj objekt
-- Primjer: `https://uzorita.stay.hr/p/uzorita/`
-
+- Primjer hub: `https://uzorita.stay.hr/p/uzorita/`
+- Primjer primary property booking: `https://uzorita-sibenik.stay.hr/`
 ---
 
 ## C) Custom domena (vanjski host)
@@ -226,12 +247,17 @@ docker compose run --rm django python manage.py rollout_uzorita_domains
 
 Command:
 
-1. Upsert-a `TenantDomain` zapise (`uzorita.stay.hr`, `booking.uzorita.hr`)
-2. Pokreće `provision_platform_dns` + **Provision DNS** po domenu
+1. Upsert-a `TenantDomain` zapise:
+   - `uzorita-sibenik.stay.hr` (property booking, **primary**)
+   - `uzorita.stay.hr` (tenant hub)
+   - `booking.uzorita.hr` (legacy custom; DNS se ne provisionira ako zona ne postoji)
+2. Pokreće `provision_platform_dns` + **Provision DNS** za `*.stay.hr` domene
 3. Curl provjere (javni hostovi + internal `site-context`)
 4. Postavlja `is_verified=True` ako sve prođe
 
 Opcije: `--skip-dns`, `--skip-verify`, `--dry-run`.
+
+Primarna javna booking adresa (2026-08): **`https://uzorita-sibenik.stay.hr/`** — zamjena za `booking.uzorita.hr` dok vanjska domena nije dostupna.
 
 ---
 
@@ -405,12 +431,12 @@ git checkout <prethodni-commit>
 | 1 | `provision_platform_dns` (app + wildcard) | |
 | 2 | Traefik labele: `app.stay.hr`, `HostRegexp *.stay.hr` | |
 | 3 | TenantDomain `uzorita.stay.hr` (tenant hub, property=null) + Provision DNS | |
-| 4 | TenantDomain `booking.uzorita.hr` (property=uzorita) + Provision DNS | |
-| 5 | Traefik `Host(booking.uzorita.hr)` | |
-| 6 | `https://booking.uzorita.hr/` radi | |
-| 7 | `https://uzorita.stay.hr/p/uzorita/` radi | |
+| 4 | TenantDomain `uzorita-sibenik.stay.hr` (property=uzorita, **primary**) + Provision DNS | |
+| 5 | Traefik eksplicitni `Host(uzorita-sibenik.stay.hr)` + valjani LE cert | |
+| 6 | `https://uzorita-sibenik.stay.hr/` radi (booking + site-context) | |
+| 7 | Guest check-in linkovi koriste `https://uzorita-sibenik.stay.hr` | |
 | 8 | `https://app.stay.hr/` recepcija | |
-
+| 9 | Legacy `booking.uzorita.hr` (opcionalno; samo ako `uzorita.hr` zona postoji) | |
 ---
 
 ## Troubleshooting
@@ -419,9 +445,10 @@ git checkout <prethodni-commit>
 |---------|----------|
 | `502 Bad Gateway` | Je li web container up? `docker compose ps` |
 | DNS ne resolve | Cloudflare dashboard → DNS zapisi; `Provision DNS` ponovno |
-| TLS greška | Traefik log; `CF_DNS_API_TOKEN` u traefik `.env`; DNS mora biti proxied |
+| TLS greška / DEFAULT CERT | Eksplicitni `Host()` + `tls.certresolver=cloudflare`; `CF_DNS_API_TOKEN` u traefik **i** stay.hr `.env` mora biti valjan; DNS proxied |
 | Booking prikazuje krivi objekt | `TenantDomain.property` FK; `site-context` s `Host` headerom |
 | `404` na custom domeni | Nedostaje Traefik `Host()` label za tu domenu |
+| Check-in link na staroj domeni | `is_primary` na željenom `TenantDomain`; `is_verified=True` |
 | Admin `is_verified` blokira | U produkciji middleware filtrira neverified domene — postavi verified nakon provjere |
 | Web ne vidi tenant | Prosljeđuje li edge `Host` header na `STAY_API_INTERNAL_URL`? |
 

@@ -52,10 +52,19 @@ class Command(BaseCommand):
                 "tenant": tenant,
                 "property": None,
                 "domain_type": TenantDomain.DomainType.STAY_SUBDOMAIN,
-                "is_primary": True,
+                "is_primary": False,
             },
         )
         booking_domain, _ = TenantDomain.objects.update_or_create(
+            domain="uzorita-sibenik.stay.hr",
+            defaults={
+                "tenant": tenant,
+                "property": property_obj,
+                "domain_type": TenantDomain.DomainType.STAY_SUBDOMAIN,
+                "is_primary": True,
+            },
+        )
+        legacy_domain, _ = TenantDomain.objects.update_or_create(
             domain="booking.uzorita.hr",
             defaults={
                 "tenant": tenant,
@@ -68,7 +77,8 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 "TenantDomain records ready: "
-                f"{hub_domain.domain} (hub), {booking_domain.domain} (property booking)",
+                f"{booking_domain.domain} (primary booking), "
+                f"{hub_domain.domain} (hub), {legacy_domain.domain} (legacy custom)",
             )
         )
 
@@ -81,6 +91,9 @@ class Command(BaseCommand):
                     for domain in (hub_domain, booking_domain):
                         message = provision_tenant_domain_dns(domain, dry_run=True)
                         self.stdout.write(f"Would provision tenant DNS: {message}")
+                    self.stdout.write(
+                        f"Would skip DNS for legacy custom domain: {legacy_domain.domain}",
+                    )
                 else:
                     platform_records = provision_platform_dns()
                     for line in platform_records:
@@ -88,6 +101,9 @@ class Command(BaseCommand):
                     for domain in (hub_domain, booking_domain):
                         message = provision_tenant_domain_dns(domain)
                         self.stdout.write(f"Tenant DNS: {message}")
+                    self.stdout.write(
+                        f"Skipped DNS for legacy custom domain: {legacy_domain.domain}",
+                    )
             except CloudflareAPIError as exc:
                 raise CommandError(str(exc)) from exc
 
@@ -96,8 +112,8 @@ class Command(BaseCommand):
             return
 
         checks = [
+            ("https://uzorita-sibenik.stay.hr/", {}),
             ("https://uzorita.stay.hr/p/uzorita/", {}),
-            ("https://booking.uzorita.hr/", {}),
         ]
 
         all_ok = True
@@ -137,7 +153,7 @@ class Command(BaseCommand):
         try:
             request = RequestFactory().get(
                 "/api/v1/public/site-context/",
-                HTTP_HOST="booking.uzorita.hr",
+                HTTP_HOST="uzorita-sibenik.stay.hr",
             )
             TenantHostMiddleware(lambda req: req)(request)
             response = SiteContextView.as_view()(request)
@@ -146,7 +162,7 @@ class Command(BaseCommand):
             status = self.style.SUCCESS if ok else self.style.ERROR
             self.stdout.write(
                 status(
-                    "site-context Host=booking.uzorita.hr -> "
+                    "site-context Host=uzorita-sibenik.stay.hr -> "
                     f"{code} (expected 200)"
                 ),
             )

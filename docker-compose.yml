@@ -140,6 +140,12 @@ services:
       - traefik.http.routers.stay-booking-uzorita.tls.certresolver=cloudflare
       - traefik.http.routers.stay-booking-uzorita.service=stay-web-booking
       - traefik.http.routers.stay-booking-uzorita.priority=50
+      - traefik.http.routers.stay-booking-uzorita-sibenik.rule=Host(`uzorita-sibenik.stay.hr`)
+      - traefik.http.routers.stay-booking-uzorita-sibenik.entrypoints=websecure
+      - traefik.http.routers.stay-booking-uzorita-sibenik.tls=true
+      - traefik.http.routers.stay-booking-uzorita-sibenik.tls.certresolver=cloudflare
+      - traefik.http.routers.stay-booking-uzorita-sibenik.service=stay-web-booking
+      - traefik.http.routers.stay-booking-uzorita-sibenik.priority=100
 
   web-reception:
     build:
