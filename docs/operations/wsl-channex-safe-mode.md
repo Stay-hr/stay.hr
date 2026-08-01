@@ -50,6 +50,21 @@ python manage.py verify_channex_availability --tenant-slug uzorita --repair
 
 Bare command **no longer repairs**. Pass `--repair` explicitly on hel1.
 
+## After bad outbound writes
+
+If a non-writer (or stale DB) pushed wrong ARI to live Channex, removing
+**root cause** is not enough — remote inventory may still be open (**residual
+exposure**). Before **Incident closed**:
+
+```text
+stop writer → remove root cause / deploy → full inventory reconcile (hel1)
+→ Verify clean (0 mismatches) → Incident closed
+```
+
+See [incident 2026-08-01](incidents/2026-08-01-wsl-channex-second-writer-overbooking.md)
+(Phase B, Detection gap, Incident Done). Never mark closed while verify still
+reports mismatches.
+
 ## Force write (maintenance)
 
 When hel1 is offline and you need to write from WSL:

@@ -14,6 +14,7 @@ Ovaj runbook sprječava tip overbookinga iz 2026.: PMS ima manje soba nego Booki
 - Nakon **PDF importa** koji mijenja dodjelu soba
 - Dnevno (automatski): Celery `detect_overbooking` (06:00) + `detect_multi_room_gaps` (06:15) + `verify_channex_availability` (06:30, **verify-only** / notify; repair samo ručno `--repair` na hel1 writeru — [ADR 0014](../architecture/adr/0014-channex-outbound-guard.md), [incident 2026-08-01](incidents/2026-08-01-wsl-channex-second-writer-overbooking.md))
 - WSL nikad ne smije biti drugi Channex writer (`CHANNEX_OUTBOUND_ENABLED=false`)
+- Nakon **root cause** tipa second-writer / krivih Channex writeova: obavezan **full inventory reconcile** na hel1 + **Verify clean (0 mismatches)** prije **Incident closed** (Phase B / residual exposure — [incident 2026-08-01](incidents/2026-08-01-wsl-channex-second-writer-overbooking.md#after-bad-outbound-writes--close-procedure))
 
 ---
 
