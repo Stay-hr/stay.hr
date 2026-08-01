@@ -2,6 +2,8 @@
 .env.local
 scripts/.env
 .cursor/
+.db-sync/
+secrets/
 *.pyc
 __pycache__/
 .pytest_cache/
