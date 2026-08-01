@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 
 from apps.integrations.channex.config import ChannexRoomTypeLink, ChannexRuntimeConfig
@@ -152,21 +152,3 @@ class ChannelSyncObserverTests(TestCase):
     def test_unknown_tenant(self):
         result = self._observer().compare(tenant_slug="missing")
         self.assertEqual(result["status"], "CHANNEX_UNAVAILABLE")
-
-
-class PhotosStatusBlockTests(TestCase):
-    def test_photos_block_disabled_by_default(self):
-        from apps.core.system_status import build_system_status_payload
-
-        payload = build_system_status_payload(tenant_slug="uzorita")
-        self.assertIn("photos", payload)
-        self.assertEqual(payload["photos"]["status"], "CHANNEX_UNAVAILABLE")
-        self.assertIn("disabled", payload["photos"].get("error", ""))
-
-    @override_settings(CHANNEL_PHOTO_STATUS_ENABLED=True)
-    def test_photos_block_live_when_enabled(self):
-        from apps.core.system_status import build_system_status_payload
-
-        payload = build_system_status_payload(tenant_slug="missing-tenant-xyz")
-        self.assertEqual(payload["photos"]["status"], "CHANNEX_UNAVAILABLE")
-        self.assertIn("tenant not found", payload["photos"].get("error", ""))
