@@ -93,6 +93,24 @@ export type EvisitorProgress = {
   pending: number;
 };
 
+export type EvisitorCheckinFailedGuest = {
+  guest_id?: number;
+  guest_name?: string;
+  status?: string;
+  message?: string;
+  field_errors?: Record<string, string>;
+};
+
+export type EvisitorCheckinResult = {
+  overall: "complete" | "partial" | "none" | "not_required";
+  submitted: number;
+  skipped: number;
+  failed: number;
+  validation_failed: number;
+  failed_guests: EvisitorCheckinFailedGuest[];
+  correlation_id?: string;
+};
+
 export type InvoiceSummary = {
   id: number;
   invoice_number: string;
@@ -210,6 +228,7 @@ export type ReservationDetail = Reservation & {
   confirmation_pdf_url: string;
   evisitor_summary?: EvisitorSummary;
   evisitor_progress?: EvisitorProgress;
+  evisitor_checkin?: EvisitorCheckinResult | null;
   checkin_progress?: CheckinProgress;
   check_in_allowed?: boolean;
   check_in_blocked_code?: "wrong_date" | "room_occupied" | "no_unit" | null;

@@ -642,7 +642,11 @@ class ReservationDetailView(TenantAPIView, generics.RetrieveUpdateAPIView):
             if instance.status == Reservation.Status.CANCELED:
                 queue_guest_booking_canceled_email(instance.pk, old_status=old_status)
         detail = self.get_queryset().get(pk=instance.pk)
-        output = ReservationTimelineSerializer(detail, context=self.get_serializer_context())
+        context = self.get_serializer_context()
+        evisitor_checkin = getattr(update_serializer, "_evisitor_checkin", None)
+        if evisitor_checkin is not None:
+            context = {**context, "evisitor_checkin": evisitor_checkin}
+        output = ReservationTimelineSerializer(detail, context=context)
         return Response(output.data)
 
 

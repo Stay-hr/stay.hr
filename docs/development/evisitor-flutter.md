@@ -2,6 +2,10 @@
 
 Opća arhitektura, statusi, recovery, checkout i audit opisani su u [evisitor.md](evisitor.md). Ovaj dokument pokriva Flutter/Hospira klijent i prikaz u UI-u.
 
+## Reception check-in (PATCH)
+
+`PATCH /api/v1/reception/reservations/{id}/` s `{"status":"checked_in"}` lokalno check-inira rezervaciju pa **best-effort** pokušava eVisitor. U odgovoru može biti polje `evisitor_checkin` (overall / submitted / failed_guests / correlation_id). Na GET-u je uvijek `null`. Retry i dalje ide preko `evisitor-submit` ispod — Flutter UI za to polje nije obavezan u ovom PR-u.
+
 ## API: prijava gosta
 
 ```http

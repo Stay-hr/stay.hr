@@ -71,6 +71,8 @@ def submit_guest_checkin(
     *,
     force_retry: bool = False,
     time_stay_from: str | None = None,
+    http_timeout: float | None = None,
+    correlation_id: str | None = None,
 ) -> EvisitorSubmission:
     config = _resolve_for_guest(guest)
     guest = Guest.objects.select_related("reservation").get(pk=guest.pk)
@@ -134,7 +136,8 @@ def submit_guest_checkin(
         evisitor_registration_id=registration_id,
     )
 
-    client = EvisitorClient(config)
+    client_timeout = 60.0 if http_timeout is None else float(http_timeout)
+    client = EvisitorClient(config, timeout=client_timeout)
     try:
         client.login()
         client.execute_action("CheckInTourist", payload)
@@ -144,6 +147,18 @@ def submit_guest_checkin(
         field_errors = getattr(exc, "field_errors", None)
         if field_errors:
             user_msg = "; ".join(f"{k}: {v}" for k, v in field_errors.items())
+
+        if correlation_id:
+            logger.info(
+                "evisitor.checkin_attempt_failed",
+                extra={
+                    "event": "evisitor.checkin_attempt_failed",
+                    "correlation_id": correlation_id,
+                    "guest_id": guest.pk,
+                    "reservation_id": getattr(guest.reservation, "pk", None),
+                    "error": user_msg[:500],
+                },
+            )
 
         existing_id = parse_existing_registration_id(user_msg)
         if existing_id:
@@ -210,6 +225,18 @@ def submit_guest_checkin(
     submission.submitted_at = now
     submission.response_payload = {"ok": True}
     submission.save(update_fields=["status", "submitted_at", "response_payload"])
+
+    if correlation_id:
+        logger.info(
+            "evisitor.checkin_attempt_ok",
+            extra={
+                "event": "evisitor.checkin_attempt_ok",
+                "correlation_id": correlation_id,
+                "guest_id": guest.pk,
+                "reservation_id": getattr(guest.reservation, "pk", None),
+                "registration_id": str(registration_id),
+            },
+        )
 
     with transaction.atomic():
         Guest.objects.filter(pk=guest.pk).update(
