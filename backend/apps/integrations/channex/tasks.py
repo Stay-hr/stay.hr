@@ -5,10 +5,7 @@ import logging
 from celery import shared_task
 
 from apps.integrations.channex.ari_service import flush_channex_ari_outbox, get_active_channex_integration
-from apps.integrations.channex.availability_verify_service import (
-    DEFAULT_VERIFY_DAYS,
-    verify_and_repair_availability,
-)
+from apps.integrations.channex.availability_verify_service import DEFAULT_VERIFY_DAYS
 from apps.integrations.channex.exceptions import (
     ChannexBookingIngestError,
     PhotoSyncRetryableError,
@@ -93,13 +90,13 @@ def verify_channex_availability_daily(
     tenant_id: int = OPS_DEFAULT_TENANT_ID,
     days: int = DEFAULT_VERIFY_DAYS,
 ) -> dict:
-    """Daily GET /availability verify + ARI re-push for one tenant (default: 2)."""
-    skipped = skip_if_channex_write_disabled(
-        task="verify_channex_availability_daily",
-        tenant=str(tenant_id),
-    )
-    if skipped is not None:
-        return skipped
+    """Daily GET /availability verify + notify (no ARI repair).
+
+    Safe on read-only hosts. Repair is CLI-only on an authorized writer
+    (incident 2026-08-01 / ADR 0014).
+    """
+    from apps.integrations.channex.availability_verify_service import verify_availability
+
     tenant = Tenant.objects.filter(pk=tenant_id).first()
     if tenant is None:
         return {"skipped": True, "reason": "tenant_not_found", "tenant_id": tenant_id}
@@ -108,10 +105,9 @@ def verify_channex_availability_daily(
     if not slug:
         return {"skipped": True, "reason": "tenant_slug_missing", "tenant_id": tenant_id}
 
-    result = verify_and_repair_availability(
+    result = verify_availability(
         tenant_slug=slug,
         days=days,
-        repair=True,
         notify=True,
     )
     return {"tenant_id": tenant_id, **result}

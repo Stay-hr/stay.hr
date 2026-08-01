@@ -42,3 +42,9 @@ class IntegrationsConfig(AppConfig):
             validate_welcome_templates(raise_on_error=True)
 
         connection_created.connect(_validate_once, weak=False)
+
+        from apps.integrations.channex.outbound_guard import (
+            log_channex_outbound_startup_banner,
+        )
+
+        log_channex_outbound_startup_banner()

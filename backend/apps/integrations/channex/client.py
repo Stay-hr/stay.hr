@@ -6,11 +6,8 @@ from typing import Any
 import httpx
 
 from apps.integrations.channex.config import ChannexRuntimeConfig
-from apps.integrations.channex.exceptions import ChannexApiError, ChannexWriteDisabled
-from apps.integrations.channex.outbound_guard import (
-    can_write_to_channex,
-    record_channex_write_blocked,
-)
+from apps.integrations.channex.exceptions import ChannexApiError
+from apps.integrations.channex.outbound_guard import assert_can_write
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +37,10 @@ class ChannexClient:
 
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         method_upper = method.upper()
-        if method_upper != "GET" and not can_write_to_channex():
-            record_channex_write_blocked(
-                method=method_upper, path=path, reason="feature_flag"
-            )
-            raise ChannexWriteDisabled(
-                method=method_upper,
-                path=path,
-                reason="feature_flag",
+        if method_upper != "GET":
+            assert_can_write(
+                operation=f"{method_upper} {path}",
+                caller="client",
             )
 
         try:

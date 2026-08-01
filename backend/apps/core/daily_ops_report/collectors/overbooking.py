@@ -86,7 +86,7 @@ class OverbookingCollector:
         """Read-only Channex GET verify for DAILY_OPS_REPORT_TENANT_ID (default 2)."""
         from apps.integrations.channex.availability_verify_service import (
             DEFAULT_VERIFY_DAYS,
-            verify_and_repair_availability,
+            verify_availability,
         )
 
         slug = (tenant.slug or "").strip()
@@ -98,10 +98,9 @@ class OverbookingCollector:
                 display="tenant_slug_missing",
             )
 
-        result = verify_and_repair_availability(
+        result = verify_availability(
             tenant_slug=slug,
             days=DEFAULT_VERIFY_DAYS,
-            repair=False,
             notify=False,
         )
         if result.get("skipped"):

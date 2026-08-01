@@ -51,6 +51,29 @@ def _messaging_status_block() -> dict:
         }
 
 
+def _channex_status_block() -> dict:
+    """Outbound guard + verify/repair process counters (ADR 0014)."""
+    try:
+        from apps.integrations.channex.availability_verify_service import (
+            get_channex_repair_skipped_threshold_total,
+            get_channex_repair_success_total,
+            get_channex_verify_mismatches_total,
+        )
+        from apps.integrations.channex.outbound_guard import (
+            channex_outbound_status_snapshot,
+        )
+
+        snap = channex_outbound_status_snapshot()
+        return {
+            **snap,
+            "verify_mismatches_total": get_channex_verify_mismatches_total(),
+            "repair_skipped_threshold_total": get_channex_repair_skipped_threshold_total(),
+            "repair_success_total": get_channex_repair_success_total(),
+        }
+    except Exception as exc:  # noqa: BLE001 — status must stay available
+        return {"ok": False, "error": str(exc)[:200]}
+
+
 def build_system_status_payload(*, reporter_process: str | None = None) -> dict:
     gunicorn_config = gunicorn_config_from_env()
     sse = get_sse_connection_stats()
@@ -70,6 +93,7 @@ def build_system_status_payload(*, reporter_process: str | None = None) -> dict:
         "event_bus": event_bus,
         "database": database,
         "messaging": _messaging_status_block(),
+        "channex": _channex_status_block(),
         "components": build_components_status(
             event_bus=event_bus,
             sse=sse,

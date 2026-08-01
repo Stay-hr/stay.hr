@@ -12,7 +12,8 @@ Ovaj runbook sprječava tip overbookinga iz 2026.: PMS ima manje soba nego Booki
 - Nova rezervacija s **2+ soba** ili PDF s više `Luxury Room Uzorita - R*`
 - Rezervacija „cijeli objekt“ (4 sobe: R1, R2, R3, R6)
 - Nakon **PDF importa** koji mijenja dodjelu soba
-- Dnevno (automatski): Celery `detect_overbooking` (06:00) + `detect_multi_room_gaps` (06:15) + `verify_channex_availability` (06:30) + push ako ima konflikata / ARI mismatch
+- Dnevno (automatski): Celery `detect_overbooking` (06:00) + `detect_multi_room_gaps` (06:15) + `verify_channex_availability` (06:30, **verify-only** / notify; repair samo ručno `--repair` na hel1 writeru — [ADR 0014](../architecture/adr/0014-channex-outbound-guard.md), [incident 2026-08-01](incidents/2026-08-01-wsl-channex-second-writer-overbooking.md))
+- WSL nikad ne smije biti drugi Channex writer (`CHANNEX_OUTBOUND_ENABLED=false`)
 
 ---
 
@@ -29,8 +30,9 @@ Ovaj runbook sprječava tip overbookinga iz 2026.: PMS ima manje soba nego Booki
    ```
 4. **Verify live Channex availability** (GET vs stay.hr; re-push on mismatch):
    ```bash
-   docker compose exec django python manage.py verify_channex_availability --tenant-slug uzorita --dry-run
-   # bez --dry-run: re-push + reception push
+   docker compose exec django python manage.py verify_channex_availability --tenant-slug uzorita
+   # writer (hel1) only — explicit repair after reading output / threshold:
+   # docker compose exec django python manage.py verify_channex_availability --tenant-slug uzorita --repair
    ```
 5. **Detekcija konflikta**:
    ```bash
