@@ -308,7 +308,23 @@ Postoje **dva sloja** statusa — ne miješati ih u UI-u.
 | `pending` | **Privremeno stanje tijekom obrade zahtjeva prema eVisitor API-ju** (ne bi trebalo dugo ostati) |
 | `sent` | uspješno prijavljeno u eVisitor |
 | `checked_out` | odjavljeno iz eVisitora |
-| `failed` | **Zadnji pokušaj nije uspio; moguće ponovno poslati** (`force_retry: true` ili novi submit) |
+| `failed` | **CheckIn nije uspio**; gost možda nije u eVisitoru — moguće ponoviti prijavu |
+| `checkout_failed` | **CheckIn uspješan, CheckOut nije uspio**; gost je još prijavljen — ponoviti odjavu (ne prijavu) |
+
+**Invariant:**
+
+```
+failed
+  = CheckIn nije uspio
+
+checkout_failed
+  = CheckIn uspješan
+  = CheckOut nije uspio
+  = gost je još prijavljen u eVisitoru
+  = evisitor_registration_id i uspješni check-in submission ostaju netaknuti
+```
+
+Zabranjena tranzicija: `checkout_failed` → `failed`.
 
 ### Operacijski status (rezultat jedne operacije / API odgovor)
 
@@ -328,11 +344,13 @@ Funkcija `evisitor_summary_for_reservation` ([`summary.py`](../../backend/apps/i
 | vrijednost | značenje |
 |------------|----------|
 | `none` | nema gostiju |
-| `incomplete` | barem jedan eligible gost nije `sent` / `checked_out` |
-| `complete` | svi eligible gosti su `sent` (ili mix `sent` + `checked_out`) |
+| `incomplete` | barem jedan eligible gost nije prijavljen (`sent` / `checkout_failed` / `checked_out`) |
+| `complete` | svi eligible gosti su **prijavljeni** (`sent`, `checkout_failed` ili mix s `checked_out`) — **ne** znači da je rezervacija odjavljena |
 | `checked_out` | svi eligible gosti su `checked_out` |
 
 Ako nema eligible gostiju (samo djeca), summary je `complete`.
+
+> `summary == complete` dopušta pokušaj reservation checkouta. Ako CheckOut padne, rezervacija ostaje `checked_in` uz `CheckoutBlockedError(evisitor_checkout_failed)` dok svi gosti nisu `checked_out`.
 
 ---
 
@@ -361,8 +379,9 @@ Checkout koristi isti model: submission se kreira prije `CheckOutTourist`, ažur
 
 1. **`sent` bez `force_retry`** — endpoint ne zove eVisitor; vraća postojeće stanje ([`EvisitorSubmitView`](../../backend/apps/api/reception_views.py), L909–922).
 2. **Recovery** — usklađivanje iz greške „već prijavljena” bez duplicirane prijave u eVisitoru.
-3. **Checkout** — koristi spremljeni `Guest.evisitor_registration_id` za `CheckOutTourist`; ponovljeni checkout za `checked_out` gosta vraća postojeći submission bez novog API poziva.
-4. **Ponovljeni submit** — dok je gost već `sent`, ponovni pozivi ne stvaraju duplicirane prijave (osim eksplicitnog `force_retry: true` nakon `failed`).
+3. **Checkout** — koristi spremljeni `Guest.evisitor_registration_id` za `CheckOutTourist`; ponovljeni checkout za `checked_out` gosta vraća postojeći submission bez novog API poziva (per-guest endpoint i `submit_guest_checkout`).
+4. **Ponovljeni submit** — dok je gost već `sent` ili `checkout_failed`, ponovni check-in pozivi ne stvaraju duplicirane prijave; `checkout_failed` **nikad** ne pokreće CheckIn retry.
+5. **Checkout retry** — `checkout_failed` → retry → `checkout_failed` ili `checked_out` (nikad `failed`).
 
 ---
 
@@ -374,7 +393,7 @@ stay.hr sprječava zatvaranje rezervacije prije ispunjenja zakonskih obveza prij
 perform_reservation_checkout
          |
          v
-  evisitor_summary == complete?
+  evisitor_summary == complete?   (= svi eligible prijavljeni)
          |
     NE --+--> CheckoutBlockedError (evisitor_incomplete)
          |
@@ -382,15 +401,36 @@ perform_reservation_checkout
          |
          v
   checkout_reservation_guests_in_evisitor
-  (CheckOutTourist za sve goste sa statusom sent)
+  (CheckOutTourist za sent | checkout_failed; continue na grešci)
          |
-         v
-  Guest.evisitor_status -> checked_out
+    fail-+--> CheckoutBlockedError (evisitor_checkout_failed + failed_guests[])
+         |    guest.status = checkout_failed; rezervacija ostaje checked_in
+         |
+        OK (svi checked_out)
          |
          v
   Reservation.status -> checked_out
   (+ fiskalizacija/račun ako je konfigurirano)
 ```
+
+Per-guest retry:
+
+```text
+POST /api/v1/reception/reservations/{id}/guests/{guestId}/evisitor-checkout/
+```
+
+| status | rezultat |
+|--------|----------|
+| `sent` / `checkout_failed` | CheckOut |
+| `checked_out` | 200 no-op |
+| `failed` / `not_sent` / `pending` | 409 |
+
+Observability:
+
+- structured log event `evisitor.checkout_failed` (reservation/guest/registration/correlation/payload/response/reason)
+- process-local counter `evisitor_checkout_failed_total` (tenant, property, reason)
+
+Future (van ovog PR-a): `checkout_pending_confirmation` ako eVisitor vrati ambiguous odgovor.
 
 Ako eVisitor konfiguracija nedostaje pri checkoutu, gosti se lokalno označavaju `checked_out` bez API poziva (fallback u `checkout_reservation_guests_in_evisitor`).
 

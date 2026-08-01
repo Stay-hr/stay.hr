@@ -173,13 +173,18 @@
     "evisitorSent": "Inviato",
     "evisitorCheckedOut": "Check-out",
     "evisitorFailed": "Errore",
+    "evisitorCheckoutFailed": "Check-out non riuscito",
     "evisitorSubmit": "Registra in eVisitor",
     "evisitorRetry": "Riprova",
+    "evisitorRetryCheckout": "Riprova check-out",
     "evisitorSubmitting": "Invio…",
     "evisitorSubmitSuccess": "Ospite registrato in eVisitor.",
+    "evisitorCheckoutSuccess": "Ospite disregistrato da eVisitor.",
     "evisitorRecovered": "Ospite già registrato in eVisitor.",
     "evisitorSubmitFailed": "Registrazione eVisitor non riuscita.",
-    "evisitorSubmitFailedWithReason": "Registrazione eVisitor non riuscita: {reason}"
+    "evisitorSubmitFailedWithReason": "Registrazione eVisitor non riuscita: {reason}",
+    "evisitorCheckoutFailedWithReason": "Check-out eVisitor non riuscito: {reason}",
+    "evisitorCheckoutRetryFailed": "Check-out eVisitor non riuscito."
   },
   "source": {
     "stay": "stay.hr"

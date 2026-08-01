@@ -89,6 +89,7 @@ from apps.api.reception_views import (
     DocumentPhotosUploadView,
     DocumentScanIngestView,
     EvisitorSubmitView,
+    EvisitorCheckoutView,
     GuestFacePhotoView,
     IdScanSampleUploadView,
     ReceptionGuestCountriesStatisticsView,
@@ -447,6 +448,11 @@ urlpatterns = [
         "reservations/<int:reservation_id>/guests/<int:guest_id>/evisitor-submit/",
         EvisitorSubmitView.as_view(),
         name="reception-evisitor-submit",
+    ),
+    path(
+        "reservations/<int:reservation_id>/guests/<int:guest_id>/evisitor-checkout/",
+        EvisitorCheckoutView.as_view(),
+        name="reception-evisitor-checkout",
     ),
     path(
         "calendar/blocks/",

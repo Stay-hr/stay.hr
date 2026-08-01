@@ -41,7 +41,7 @@ from apps.integrations.evisitor.exceptions import (
     EvisitorConfigError,
     EvisitorValidationError,
 )
-from apps.integrations.evisitor.service import submit_guest_checkin
+from apps.integrations.evisitor.service import submit_guest_checkin, submit_guest_checkout
 from apps.properties.models import Property
 from apps.properties.resolution import PropertyResolutionError, resolve_property_for_tenant
 from apps.reservations.booking_pdf_import import parse_booking_pdf
@@ -1172,20 +1172,37 @@ class EvisitorSubmitView(ReceptionWriteView, APIView):
             request.data, dict
         ) else False
 
-        if guest.evisitor_status == EvisitorGuestStatus.SENT and not force_retry:
+        if (
+            guest.evisitor_status
+            in (EvisitorGuestStatus.SENT, EvisitorGuestStatus.CHECKOUT_FAILED)
+            and not force_retry
+        ):
             from apps.integrations.whatsapp.evisitor_reply import (
                 maybe_send_evisitor_registered_whatsapp_reply,
             )
 
             wa_result = maybe_send_evisitor_registered_whatsapp_reply(guest.reservation)
             response_payload = {
-                "status": EvisitorGuestStatus.SENT,
+                "status": guest.evisitor_status,
                 "registration_id": str(guest.evisitor_registration_id or ""),
                 "message": "Gost je već prijavljen u eVisitor.",
             }
             if wa_result.get("status") not in ("skipped", "disabled"):
                 response_payload["whatsapp"] = wa_result
             return Response(response_payload)
+
+        if guest.evisitor_status == EvisitorGuestStatus.CHECKOUT_FAILED:
+            return Response(
+                {
+                    "status": EvisitorGuestStatus.CHECKOUT_FAILED,
+                    "registration_id": str(guest.evisitor_registration_id or ""),
+                    "message": (
+                        "Gost je prijavljen u eVisitor; odjava nije uspjela. "
+                        "Koristite evisitor-checkout za ponovnu odjavu."
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
         if not guest_requires_evisitor(guest):
             return Response(
@@ -1254,6 +1271,95 @@ class EvisitorSubmitView(ReceptionWriteView, APIView):
             payload["whatsapp"] = wa_result
 
         return Response(payload)
+
+
+class EvisitorCheckoutView(ReceptionWriteView, APIView):
+    """Idempotent per-guest eVisitor CheckOut.
+
+    sent / checkout_failed → attempt CheckOut
+    checked_out → 200 no-op
+    failed / not_sent / pending → 409
+    """
+
+    def post(self, request, reservation_id: int, guest_id: int):
+        _get_reservation(request.tenant, reservation_id)
+        guest = _get_guest(request.tenant, reservation_id, guest_id)
+        status_value = (guest.evisitor_status or "").strip() or EvisitorGuestStatus.NOT_SENT
+
+        if status_value == EvisitorGuestStatus.CHECKED_OUT:
+            submission = (
+                guest.evisitor_submissions.filter(status=EvisitorGuestStatus.CHECKED_OUT)
+                .order_by("-created_at")
+                .first()
+            )
+            return Response(
+                {
+                    "status": EvisitorGuestStatus.CHECKED_OUT,
+                    "registration_id": str(guest.evisitor_registration_id or ""),
+                    "submitted_at": getattr(submission, "submitted_at", None),
+                    "message": "Gost je već odjavljen u eVisitoru.",
+                }
+            )
+
+        if status_value not in (
+            EvisitorGuestStatus.SENT,
+            EvisitorGuestStatus.CHECKOUT_FAILED,
+        ):
+            return Response(
+                {
+                    "status": status_value,
+                    "message": "Gost nije uspješno prijavljen u eVisitor (nije moguća odjava).",
+                    "code": "guest_not_checked_in",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        try:
+            submission = submit_guest_checkout(guest)
+        except EvisitorValidationError as exc:
+            field_errors = exc.field_errors or {}
+            return Response(
+                {
+                    "status": "validation_failed",
+                    "message": _evisitor_validation_message(exc, field_errors),
+                    "field_errors": field_errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except EvisitorConfigError as exc:
+            return Response(
+                {
+                    "status": "config_error",
+                    "message": str(exc),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except EvisitorApiError as exc:
+            from apps.integrations.evisitor.messages import resolve_evisitor_error_message
+
+            user_message = resolve_evisitor_error_message(
+                user_message=exc.user_message or "",
+                system_message=exc.system_message or "",
+                fallback=str(exc),
+            )
+            guest.refresh_from_db()
+            return Response(
+                {
+                    "status": EvisitorGuestStatus.CHECKOUT_FAILED,
+                    "user_message": user_message,
+                    "system_message": exc.system_message,
+                    "registration_id": str(guest.evisitor_registration_id or ""),
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(
+            {
+                "status": submission.status,
+                "registration_id": str(submission.registration_id or ""),
+                "submitted_at": submission.submitted_at,
+            }
+        )
 
 
 MAX_BOOKING_PDF_BYTES = 5 * 1024 * 1024

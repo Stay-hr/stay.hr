@@ -198,6 +198,7 @@ class EvisitorGuestStatus(models.TextChoices):
     SENT = "sent", "Poslano"
     CHECKED_OUT = "checked_out", "Odjavljeno"
     FAILED = "failed", "Neuspješno"
+    CHECKOUT_FAILED = "checkout_failed", "Odjava nije uspjela"
 
 
 class Guest(TenantScopedModel):

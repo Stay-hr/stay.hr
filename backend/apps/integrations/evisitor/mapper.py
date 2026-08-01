@@ -152,7 +152,10 @@ def build_check_out_payload(
     status = (guest.evisitor_status or "").strip()
     if status == EvisitorGuestStatus.CHECKED_OUT:
         errors["evisitor_status"] = "Gost je već odjavljen u eVisitoru."
-    elif status != EvisitorGuestStatus.SENT:
+    elif status not in (
+        EvisitorGuestStatus.SENT,
+        EvisitorGuestStatus.CHECKOUT_FAILED,
+    ):
         errors["evisitor_status"] = "Gost nije prijavljen u eVisitoru."
 
     today = timezone.localdate()

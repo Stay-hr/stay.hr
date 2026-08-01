@@ -123,9 +123,16 @@ Koristi `guest.evisitor_status` s liste rezervacije:
 | `pending` | U tijeku |
 | `sent` | Prijavljeno |
 | `checked_out` | Odjavljeno |
-| `failed` | Neuspješno — ali provjeri eVisitor web prije ponovnog slanja |
+| `failed` | CheckIn nije uspio — moguće ponoviti prijavu |
+| `checkout_failed` | CheckIn OK, CheckOut nije uspio — ponoviti odjavu (`evisitor-checkout`), **ne** prijavu |
 
 Nakon uspješnog submita ili `recovered: true`, osvježi gosta s API-ja (`GET .../reservations/{id}/`).
+
+Per-guest odjava:
+
+```text
+POST /api/v1/reception/reservations/{reservationId}/guests/{guestId}/evisitor-checkout/
+```
 
 ## Preporuka: client helper
 

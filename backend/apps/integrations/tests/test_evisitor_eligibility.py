@@ -113,10 +113,21 @@ class EvisitorEligibilityTests(TestCase):
             date_of_birth=date(1970, 3, 3),
             evisitor_status=EvisitorGuestStatus.FAILED,
         )
+        adult_checkout_failed = self._guest(
+            first_name="CheckoutFailed",
+            date_of_birth=date(1972, 2, 2),
+            evisitor_status=EvisitorGuestStatus.CHECKOUT_FAILED,
+        )
         child = self._guest(date_of_birth=date(2014, 7, 16))
 
         progress = evisitor_progress_for_guests(
-            [adult_sent, adult_pending, adult_failed, child],
+            [adult_sent, adult_pending, adult_failed, adult_checkout_failed, child],
             reference_date=self.check_in,
         )
-        self.assertEqual(progress, {"required": 3, "sent": 1, "failed": 1, "pending": 1})
+        self.assertEqual(progress, {"required": 4, "sent": 2, "failed": 1, "pending": 1})
+
+        summary = evisitor_summary_for_guests(
+            [adult_sent, adult_checkout_failed],
+            reference_date=self.check_in,
+        )
+        self.assertEqual(summary, "complete")

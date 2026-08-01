@@ -48,6 +48,7 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
   const [loading, setLoading] = useState(true);
   const [statusChanging, setStatusChanging] = useState(false);
   const [moveDatesOpen, setMoveDatesOpen] = useState(false);
+  const [checkoutFailedGuestIds, setCheckoutFailedGuestIds] = useState<number[]>([]);
   const [guestInvoices, setGuestInvoices] = useState(false);
   const [channelManager, setChannelManager] = useState<string | undefined>();
 
@@ -160,6 +161,7 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
     setStatusChanging(true);
     setActionMessage("");
     setError("");
+    setCheckoutFailedGuestIds([]);
     try {
       const payload: { status: ReservationStatus; waived_fees?: boolean } = {
         status: newStatus,
@@ -175,10 +177,35 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as {
-          status?: string | string[];
+          status?:
+            | string
+            | string[]
+            | {
+                code?: string;
+                message?: string;
+                failed_guests?: Array<{ guest_id?: number; name?: string; reason?: string }>;
+              };
           detail?: string;
         } | null;
         const statusError = data?.status;
+        if (
+          statusError &&
+          typeof statusError === "object" &&
+          !Array.isArray(statusError) &&
+          statusError.code === "evisitor_checkout_failed"
+        ) {
+          const failed = statusError.failed_guests || [];
+          setCheckoutFailedGuestIds(
+            failed
+              .map((g) => g.guest_id)
+              .filter((id): id is number => typeof id === "number"),
+          );
+          const lines = [
+            statusError.message || t("statusChangeFailed"),
+            ...failed.map((g) => `${g.name || g.guest_id}: ${g.reason || ""}`.trim()),
+          ].filter(Boolean);
+          throw new Error(lines.join("\n"));
+        }
         const statusMessage = Array.isArray(statusError)
           ? statusError[0]
           : typeof statusError === "string"
@@ -192,6 +219,7 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
       await onUpdated?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("statusChangeFailed"));
+      await load();
     } finally {
       setStatusChanging(false);
     }
@@ -210,7 +238,7 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
   return (
     <div className="space-y-4">
       {actionMessage ? <p className="text-sm text-emerald-700">{actionMessage}</p> : null}
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="whitespace-pre-wrap text-sm text-red-600">{error}</p> : null}
 
       {!embedded ? (
         <div>
@@ -361,6 +389,7 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
           guests={reservation.guests || []}
           reservationStatus={reservation.status}
           onGuestUpdated={load}
+          highlightGuestIds={checkoutFailedGuestIds}
         />
       </div>
 
