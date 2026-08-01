@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import logging
 
+from apps.integrations.evisitor.exceptions import (
+    EvisitorApiError,
+    EvisitorConfigError,
+    EvisitorValidationError,
+)
 from apps.integrations.evisitor.service import checkout_reservation_guests_in_evisitor
 from apps.integrations.evisitor.summary import evisitor_summary_for_reservation
 from apps.reservations.guest_slots import remove_unfilled_secondary_guests
@@ -11,8 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 class CheckoutBlockedError(Exception):
-    def __init__(self, code: str, message: str = ""):
+    def __init__(
+        self,
+        code: str,
+        message: str = "",
+        *,
+        failed_guests: list[dict] | None = None,
+    ):
         self.code = code
+        self.failed_guests = list(failed_guests or [])
         super().__init__(message or code)
 
 
@@ -43,7 +55,19 @@ def perform_reservation_checkout(
             "Checkout blocked: eVisitor registration incomplete.",
         )
 
-    checkout_reservation_guests_in_evisitor(reservation)
+    try:
+        checkout_reservation_guests_in_evisitor(reservation)
+    except EvisitorApiError as exc:
+        raise CheckoutBlockedError(
+            "evisitor_checkout_failed",
+            getattr(exc, "user_message", "") or str(exc),
+            failed_guests=getattr(exc, "failed_guests", None),
+        ) from exc
+    except (EvisitorValidationError, EvisitorConfigError) as exc:
+        raise CheckoutBlockedError(
+            "evisitor_checkout_failed",
+            str(exc),
+        ) from exc
 
     from apps.billing.exceptions import FiscalConfigError, InvoiceBuildError
     from apps.billing.services.issue import issue_guest_invoice, should_issue_invoice_on_checkout

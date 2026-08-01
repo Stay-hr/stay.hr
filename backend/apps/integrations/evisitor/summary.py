@@ -35,11 +35,16 @@ def evisitor_summary_for_guests(guests, *, reference_date: date | None = None) -
         return "complete"
 
     statuses = [evisitor_status_for_guest(g) for g in required_guests]
+    registered = {
+        EvisitorGuestStatus.SENT,
+        EvisitorGuestStatus.CHECKED_OUT,
+        EvisitorGuestStatus.CHECKOUT_FAILED,
+    }
     if all(s == EvisitorGuestStatus.CHECKED_OUT for s in statuses):
         return "checked_out"
-    if all(s in (EvisitorGuestStatus.SENT, EvisitorGuestStatus.CHECKED_OUT) for s in statuses):
-        return "complete"
-    if all(s == EvisitorGuestStatus.SENT for s in statuses):
+    # "complete" = all eligible guests are registered in eVisitor (check-in done).
+    # Does NOT mean reservation checkout finished — checkout_failed still needs CheckOut.
+    if all(s in registered for s in statuses):
         return "complete"
     return "incomplete"
 
@@ -71,7 +76,11 @@ def evisitor_progress_for_guests(guests, *, reference_date: date | None = None) 
     sent = failed = pending = 0
     for guest in required_guests:
         status = evisitor_status_for_guest(guest)
-        if status in (EvisitorGuestStatus.SENT, EvisitorGuestStatus.CHECKED_OUT):
+        if status in (
+            EvisitorGuestStatus.SENT,
+            EvisitorGuestStatus.CHECKED_OUT,
+            EvisitorGuestStatus.CHECKOUT_FAILED,
+        ):
             sent += 1
         elif status == EvisitorGuestStatus.FAILED:
             failed += 1

@@ -173,13 +173,18 @@
     "evisitorSent": "Envoyé",
     "evisitorCheckedOut": "Départ enregistré",
     "evisitorFailed": "Échec",
+    "evisitorCheckoutFailed": "Départ échoué",
     "evisitorSubmit": "Enregistrer dans eVisitor",
     "evisitorRetry": "Réessayer",
+    "evisitorRetryCheckout": "Réessayer le départ",
     "evisitorSubmitting": "Envoi…",
     "evisitorSubmitSuccess": "Invité enregistré dans eVisitor.",
+    "evisitorCheckoutSuccess": "Invité désinscrit d'eVisitor.",
     "evisitorRecovered": "Invité déjà enregistré dans eVisitor.",
     "evisitorSubmitFailed": "Échec de l'enregistrement eVisitor.",
-    "evisitorSubmitFailedWithReason": "Échec de l'enregistrement eVisitor : {reason}"
+    "evisitorSubmitFailedWithReason": "Échec de l'enregistrement eVisitor : {reason}",
+    "evisitorCheckoutFailedWithReason": "Échec du départ eVisitor : {reason}",
+    "evisitorCheckoutRetryFailed": "Échec du départ eVisitor."
   },
   "source": {
     "stay": "stay.hr"

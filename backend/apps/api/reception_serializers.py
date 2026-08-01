@@ -87,7 +87,11 @@ class GuestLiteSerializer(serializers.ModelSerializer):
     def get_evisitor_error(self, obj) -> str:
         if not guest_requires_evisitor(obj):
             return ""
-        if evisitor_status_for_guest(obj) != EvisitorGuestStatus.FAILED:
+        status = evisitor_status_for_guest(obj)
+        if status not in (
+            EvisitorGuestStatus.FAILED,
+            EvisitorGuestStatus.CHECKOUT_FAILED,
+        ):
             return ""
         submission = (
             obj.evisitor_submissions.filter(status=EvisitorGuestStatus.FAILED)
@@ -442,6 +446,15 @@ class ReservationUpdateSerializer(serializers.ModelSerializer):
                             )
                         }
                     ) from exc
+                if exc.code == "evisitor_checkout_failed":
+                    payload = {
+                        "code": "evisitor_checkout_failed",
+                        "message": str(exc)
+                        or "Odjava u eVisitoru nije uspjela za neke goste; "
+                        "gosti su i dalje prijavljeni.",
+                        "failed_guests": list(exc.failed_guests or []),
+                    }
+                    raise serializers.ValidationError({"status": payload}) from exc
                 if exc.code == "fiscal_config_incomplete":
                     raise serializers.ValidationError(
                         {

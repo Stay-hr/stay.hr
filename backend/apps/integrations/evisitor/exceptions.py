@@ -20,8 +20,10 @@ class EvisitorApiError(EvisitorError):
         user_message: str = "",
         system_message: str = "",
         status_code: int | None = None,
+        failed_guests: list[dict] | None = None,
     ):
         super().__init__(message)
         self.user_message = user_message
         self.system_message = system_message
         self.status_code = status_code
+        self.failed_guests = list(failed_guests or [])

@@ -173,13 +173,18 @@
     "evisitorSent": "Enviado",
     "evisitorCheckedOut": "Salida registrada",
     "evisitorFailed": "Error",
+    "evisitorCheckoutFailed": "Salida fallida",
     "evisitorSubmit": "Registrar en eVisitor",
     "evisitorRetry": "Reintentar",
+    "evisitorRetryCheckout": "Reintentar salida",
     "evisitorSubmitting": "Enviando…",
     "evisitorSubmitSuccess": "Huésped registrado en eVisitor.",
+    "evisitorCheckoutSuccess": "Huésped dado de baja en eVisitor.",
     "evisitorRecovered": "Huésped ya registrado en eVisitor.",
     "evisitorSubmitFailed": "Error al registrar en eVisitor.",
-    "evisitorSubmitFailedWithReason": "Error al registrar en eVisitor: {reason}"
+    "evisitorSubmitFailedWithReason": "Error al registrar en eVisitor: {reason}",
+    "evisitorCheckoutFailedWithReason": "Error al dar de baja en eVisitor: {reason}",
+    "evisitorCheckoutRetryFailed": "Error al dar de baja en eVisitor."
   },
   "source": {
     "stay": "stay.hr"

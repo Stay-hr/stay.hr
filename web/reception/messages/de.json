@@ -173,13 +173,18 @@
     "evisitorSent": "Gesendet",
     "evisitorCheckedOut": "Abgemeldet",
     "evisitorFailed": "Fehler",
+    "evisitorCheckoutFailed": "Abmeldung fehlgeschlagen",
     "evisitorSubmit": "In eVisitor anmelden",
     "evisitorRetry": "Erneut senden",
+    "evisitorRetryCheckout": "Abmeldung erneut versuchen",
     "evisitorSubmitting": "Senden…",
     "evisitorSubmitSuccess": "Gast in eVisitor angemeldet.",
+    "evisitorCheckoutSuccess": "Gast aus eVisitor abgemeldet.",
     "evisitorRecovered": "Gast war bereits in eVisitor angemeldet.",
     "evisitorSubmitFailed": "eVisitor-Anmeldung fehlgeschlagen.",
-    "evisitorSubmitFailedWithReason": "eVisitor-Anmeldung fehlgeschlagen: {reason}"
+    "evisitorSubmitFailedWithReason": "eVisitor-Anmeldung fehlgeschlagen: {reason}",
+    "evisitorCheckoutFailedWithReason": "eVisitor-Abmeldung fehlgeschlagen: {reason}",
+    "evisitorCheckoutRetryFailed": "eVisitor-Abmeldung fehlgeschlagen."
   },
   "source": {
     "stay": "stay.hr"

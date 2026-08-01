@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { CountryFlag } from "@/app/_components/CountryFlag";
 import { GuestAvatar } from "@/app/_components/GuestAvatar";
@@ -33,10 +33,11 @@ type Props = {
   guests: GuestLite[];
   reservationStatus?: ReservationStatus;
   onGuestUpdated?: () => void | Promise<void>;
+  highlightGuestIds?: number[];
 };
 
 const EVISITOR_SUBMITTABLE_STATUSES = new Set<ReservationStatus>(["expected", "checked_in"]);
-const EVISITOR_DONE_STATUSES = new Set(["sent", "checked_out"]);
+const EVISITOR_DONE_STATUSES = new Set(["sent", "checked_out", "checkout_failed"]);
 
 const EVISITOR_FIELD_LABEL_KEYS: Record<string, string> = {
   first_name: "evisitorFieldFirstName",
@@ -57,6 +58,7 @@ export function GuestList({
   guests,
   reservationStatus,
   onGuestUpdated,
+  highlightGuestIds,
 }: Props) {
   const t = useTranslations("guest");
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -70,6 +72,7 @@ export function GuestList({
       sent: t("evisitorSent"),
       checked_out: t("evisitorCheckedOut"),
       failed: t("evisitorFailed"),
+      checkout_failed: t("evisitorCheckoutFailed"),
       submitted: t("evisitorSent"),
       complete: t("evisitorSent"),
     };
@@ -100,6 +103,16 @@ export function GuestList({
     return !EVISITOR_DONE_STATUSES.has(status);
   }
 
+  function canShowEvisitorCheckoutRetry(guest: GuestLite, status: string): boolean {
+    if (!guestRequiresEvisitor(guest)) {
+      return false;
+    }
+    if (reservationStatus !== "checked_in") {
+      return false;
+    }
+    return status === "checkout_failed";
+  }
+
   function showEvisitorBadge(guest: GuestLite, status: string): boolean {
     if (!guestRequiresEvisitor(guest)) {
       return true;
@@ -107,6 +120,7 @@ export function GuestList({
     return (
       status === "sent" ||
       status === "failed" ||
+      status === "checkout_failed" ||
       status === "checked_out" ||
       status === "not_sent" ||
       status === "pending"
@@ -119,6 +133,9 @@ export function GuestList({
     }
     if (status === "sent" || status === "checked_out") {
       return "badge badge-checked_in text-xs";
+    }
+    if (status === "checkout_failed") {
+      return "badge text-xs bg-amber-50 text-amber-800 ring-1 ring-amber-200";
     }
     if (status === "failed") {
       return "badge badge-canceled text-xs";
@@ -185,6 +202,12 @@ export function GuestList({
     setExpandedId((current) => (current === id ? null : id));
   }
 
+  useEffect(() => {
+    if (highlightGuestIds && highlightGuestIds.length > 0) {
+      setExpandedId(highlightGuestIds[0]);
+    }
+  }, [highlightGuestIds]);
+
   async function handleEvisitorSubmit(guest: GuestLite) {
     const forceRetry = guest.evisitor_status === "failed";
     setSubmittingGuestId(guest.id);
@@ -243,6 +266,54 @@ export function GuestList({
     }
   }
 
+  async function handleEvisitorCheckout(guest: GuestLite) {
+    setSubmittingGuestId(guest.id);
+    setGuestMessages((current) => {
+      const next = { ...current };
+      delete next[guest.id];
+      return next;
+    });
+
+    try {
+      const res = await fetch(
+        `/api/stay/reception/reservations/${reservationId}/guests/${guest.id}/evisitor-checkout/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const data = (await res.json().catch(() => null)) as EvisitorSubmitResponse | null;
+
+      if (res.ok && data?.status === "checked_out") {
+        setGuestMessages({
+          [guest.id]: {
+            type: "success",
+            text: data.message || t("evisitorCheckoutSuccess"),
+          },
+        });
+        await onGuestUpdated?.();
+        return;
+      }
+
+      const reason = data?.user_message || data?.message || "";
+      setGuestMessages({
+        [guest.id]: {
+          type: "error",
+          text: reason
+            ? t("evisitorCheckoutFailedWithReason", { reason })
+            : t("evisitorCheckoutRetryFailed"),
+        },
+      });
+      await onGuestUpdated?.();
+    } catch {
+      setGuestMessages({
+        [guest.id]: { type: "error", text: t("evisitorCheckoutRetryFailed") },
+      });
+    } finally {
+      setSubmittingGuestId(null);
+    }
+  }
+
   return (
     <ul className="divide-y divide-stay-border rounded-xl border border-stay-border">
       {guests.map((guest) => {
@@ -252,12 +323,17 @@ export function GuestList({
         const detailRows = guestDetailRows(guest);
         const evisitorStatus = guest.evisitor_status || "not_sent";
         const showSubmit = canShowEvisitorSubmit(guest, evisitorStatus);
+        const showCheckoutRetry = canShowEvisitorCheckoutRetry(guest, evisitorStatus);
         const showBadge = showEvisitorBadge(guest, evisitorStatus);
         const isSubmitting = submittingGuestId === guest.id;
         const guestMessage = guestMessages[guest.id];
+        const isHighlighted = Boolean(highlightGuestIds?.includes(guest.id));
 
         return (
-          <li key={guest.id}>
+          <li
+            key={guest.id}
+            className={isHighlighted ? "bg-amber-50/60 ring-1 ring-inset ring-amber-200" : undefined}
+          >
             <button
               type="button"
               className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-slate-50"
@@ -362,6 +438,22 @@ export function GuestList({
                         : evisitorStatus === "failed"
                           ? t("evisitorRetry")
                           : t("evisitorSubmit")}
+                    </button>
+                  </div>
+                ) : null}
+
+                {showCheckoutRetry ? (
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={isSubmitting}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleEvisitorCheckout(guest);
+                      }}
+                    >
+                      {isSubmitting ? t("evisitorSubmitting") : t("evisitorRetryCheckout")}
                     </button>
                   </div>
                 ) : null}
