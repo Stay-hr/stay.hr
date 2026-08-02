@@ -129,6 +129,7 @@ export type ReservationVersionsResponse = {
 export type GuestMessageTimelineItem = {
   id: number;
   source: "outbound" | "whatsapp" | "booking" | "inbound";
+  whatsapp_source?: "cloud_api" | "business_app";
   direction: "inbound" | "outbound";
   channel: "email" | "whatsapp" | "booking";
   channels?: string[];

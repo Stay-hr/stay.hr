@@ -335,6 +335,10 @@ class WhatsAppMessage(TenantScopedModel):
         INBOUND = "inbound", "Inbound"
         OUTBOUND = "outbound", "Outbound"
 
+    class Source(models.TextChoices):
+        CLOUD_API = "cloud_api", "Cloud API"
+        BUSINESS_APP = "business_app", "Business App"
+
     integration = models.ForeignKey(
         IntegrationConfig,
         on_delete=models.SET_NULL,
@@ -353,6 +357,11 @@ class WhatsAppMessage(TenantScopedModel):
     wa_id = models.CharField(max_length=32, db_index=True)
     phone_number_id = models.CharField(max_length=32, blank=True)
     direction = models.CharField(max_length=16, choices=Direction.choices)
+    source = models.CharField(
+        max_length=16,
+        choices=Source.choices,
+        default=Source.CLOUD_API,
+    )
     message_type = models.CharField(max_length=32, blank=True)
     body = models.TextField(blank=True)
     media_file = models.FileField(
@@ -361,6 +370,7 @@ class WhatsAppMessage(TenantScopedModel):
         default="",
     )
     raw_payload = models.JSONField(default=dict, blank=True)
+    received_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
