@@ -117,7 +117,7 @@ class EvisitorCheckoutFailedTests(TestCase):
         mock_client_cls.return_value = client
         client.execute_action.side_effect = EvisitorApiError(
             "fail",
-            user_message="Ne postoji prijava sa zadanim ID-jem",
+            user_message="[[[Ne možete izmjeniti podatke prijave nakon dozvoljenog roka izmjena.]]]",
             status_code=400,
         )
 
@@ -143,6 +143,37 @@ class EvisitorCheckoutFailedTests(TestCase):
         self.assertEqual(attempt.status, EvisitorGuestStatus.FAILED)
         self.assertIn("CheckOutDate", attempt.request_payload)
         self.assertEqual(get_evisitor_checkout_failed_total(), 1)
+
+    @patch("apps.integrations.evisitor.service.resolve_evisitor_config")
+    @patch("apps.integrations.evisitor.service.EvisitorClient")
+    def test_already_checked_out_message_is_idempotent_success(
+        self, mock_client_cls, mock_resolve
+    ):
+        """eVisitor auto-checkout → CheckOutTourist OR-message → local checked_out."""
+        mock_resolve.return_value = self.config
+        client = MagicMock()
+        mock_client_cls.return_value = client
+        client.execute_action.side_effect = EvisitorApiError(
+            "fail",
+            user_message=(
+                "[[[Ne postoji prijava sa zadanim ID-jem ili je već odjavljena "
+                "ili poništena.]]] (ID: a01c2e9f-3839-4f0e-b39b-775e107d6f36)"
+            ),
+            status_code=400,
+        )
+
+        guest = self._adult()
+        self._sent_checkin_submission(guest)
+
+        submission = submit_guest_checkout(guest)
+
+        guest.refresh_from_db()
+        self.assertEqual(guest.evisitor_status, EvisitorGuestStatus.CHECKED_OUT)
+        self.assertEqual(submission.status, EvisitorGuestStatus.CHECKED_OUT)
+        self.assertTrue(submission.response_payload.get("already_checked_out"))
+        self.assertEqual(get_evisitor_checkout_failed_total(), 0)
+        client.execute_action.assert_called_once()
+        self.assertEqual(client.execute_action.call_args.args[0], "CheckOutTourist")
 
     @patch("apps.integrations.evisitor.service.resolve_evisitor_config")
     @patch("apps.integrations.evisitor.service.EvisitorClient")

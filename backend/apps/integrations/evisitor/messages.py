@@ -103,3 +103,23 @@ def parse_existing_registration_id(user_message: str) -> str | None:
     if matches:
         return matches[-1].lower()
     return None
+
+
+def is_already_checked_out_message(user_message: str) -> bool:
+    """True when CheckOutTourist reports the stay is gone / already out / annulled.
+
+    eVisitor often auto-checks-out on ``ForeseenStayUntil``. A later
+    ``CheckOutTourist`` then returns this ambiguous OR-message. For guests we
+    already successfully checked in, treat it as idempotent checkout success.
+
+    Do **not** call ``CancelTouristCheckOut`` to probe — that reopens the stay
+    and can block a subsequent checkout after the edit window ("rok izmjena").
+    """
+    text = format_evisitor_user_message(user_message) or (user_message or "")
+    lowered = text.lower()
+    return (
+        "ne postoji prijava sa zadanim id" in lowered
+        or ("već odjavljena" in lowered and "poništena" in lowered)
+        or "vec odjavljena" in lowered
+        or "je već odjavljena ili poništena" in lowered
+    )

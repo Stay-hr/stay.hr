@@ -49,7 +49,9 @@ def perform_reservation_checkout(
             "evisitor_none",
             "Checkout blocked: reservation has no guests.",
         )
-    if summary != "complete":
+    # complete = all eligible checked in (or mix with already checked out)
+    # checked_out = all eligible already checked out in eVisitor locally
+    if summary not in ("complete", "checked_out"):
         raise CheckoutBlockedError(
             "evisitor_incomplete",
             "Checkout blocked: eVisitor registration incomplete.",
