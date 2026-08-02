@@ -2,6 +2,7 @@ from django.test import TestCase
 
 from apps.integrations.evisitor.messages import (
     format_evisitor_user_message,
+    is_already_checked_out_message,
     parse_existing_registration_id,
     resolve_evisitor_error_message,
 )
@@ -27,6 +28,25 @@ class EvisitorMessagesTests(TestCase):
 
     def test_parse_returns_none_for_other_errors(self):
         self.assertIsNone(parse_existing_registration_id("Nepoznata greška"))
+
+    def test_is_already_checked_out_message(self):
+        self.assertTrue(
+            is_already_checked_out_message(
+                "[[[Ne postoji prijava sa zadanim ID-jem ili je već odjavljena "
+                "ili poništena.]]] (ID: a01c2e9f-3839-4f0e-b39b-775e107d6f36)"
+            )
+        )
+        self.assertTrue(
+            is_already_checked_out_message(
+                "[[[Prijava sa zadanim ID-jem je već odjavljena ili poništena. "
+                "Izmjena nije moguća.]]]"
+            )
+        )
+        self.assertFalse(
+            is_already_checked_out_message(
+                "[[[Ne možete izmjeniti podatke prijave nakon dozvoljenog roka izmjena.]]]"
+            )
+        )
 
     def test_resolve_from_system_message_json(self):
         system = (

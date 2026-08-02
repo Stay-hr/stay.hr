@@ -459,8 +459,17 @@ Observability:
 
 - structured log event `evisitor.checkout_failed` (reservation/guest/registration/correlation/payload/response/reason)
 - process-local counter `evisitor_checkout_failed_total` (tenant, property, reason)
+- structured log event `evisitor.checkout_already_done` when CheckOut gets the ambiguous „ne postoji / već odjavljena / poništena” message (idempotent success)
 
-Future (van ovog PR-a): `checkout_pending_confirmation` ako eVisitor vrati ambiguous odgovor.
+### Auto-odjava u eVisitoru
+
+Portal često **automatski odjavi** gosta na `ForeseenStayUntil`. Kasniji `CheckOutTourist` tada vraća:
+
+> Ne postoji prijava sa zadanim ID-jem ili je već odjavljena ili poništena.
+
+Stay to tretira kao **uspješnu (idempotentnu) odjavu** → `Guest.evisitor_status = checked_out`.
+
+**Zabranjeno:** zvati `CancelTouristCheckOut` kao „probe” — to ponovo otvara boravak, a nakon roka izmjene API više ne može odjaviti („Javite se u TZ”).
 
 Ako eVisitor konfiguracija nedostaje pri checkoutu, gosti se lokalno označavaju `checked_out` bez API poziva (fallback u `checkout_reservation_guests_in_evisitor`).
 

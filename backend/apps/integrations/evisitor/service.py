@@ -19,6 +19,7 @@ from apps.integrations.evisitor.mapper import (
 )
 from apps.integrations.evisitor.messages import (
     format_evisitor_user_message,
+    is_already_checked_out_message,
     parse_existing_registration_id,
     resolve_evisitor_error_message,
 )
@@ -362,13 +363,35 @@ def submit_guest_checkout(
         client = EvisitorClient(config)
     assert client is not None
 
+    already_out = False
     try:
         if own_client:
             client.login()
         client.execute_action("CheckOutTourist", payload)
     except (EvisitorApiError, EvisitorValidationError, EvisitorConfigError) as exc:
-        _record_checkout_failure(submission, guest, exc)
-        raise
+        user_msg = getattr(exc, "user_message", "") or str(exc)
+        # eVisitor portal/auto-checkout may already have closed the stay.
+        # Treat as idempotent success — never CancelTouristCheckOut here.
+        if isinstance(exc, EvisitorApiError) and is_already_checked_out_message(user_msg):
+            already_out = True
+            readable = resolve_evisitor_error_message(
+                user_message=user_msg,
+                system_message=getattr(exc, "system_message", "") or "",
+                fallback=user_msg,
+            )
+            logger.info(
+                "evisitor.checkout_already_done",
+                extra={
+                    "event": "evisitor.checkout_already_done",
+                    "guest_id": guest.pk,
+                    "reservation_id": getattr(guest.reservation, "pk", None),
+                    "registration_id": str(registration_id or ""),
+                    "evisitor_message": readable,
+                },
+            )
+        else:
+            _record_checkout_failure(submission, guest, exc)
+            raise
     finally:
         if own_client:
             try:
@@ -379,7 +402,18 @@ def submit_guest_checkout(
     now = timezone.now()
     submission.status = EvisitorGuestStatus.CHECKED_OUT
     submission.submitted_at = now
-    submission.response_payload = {"ok": True, "action": "CheckOutTourist"}
+    submission.response_payload = {
+        "ok": True,
+        "action": "CheckOutTourist",
+        **(
+            {
+                "already_checked_out": True,
+                "message": "Prijava je već odjavljena ili zatvorena u eVisitoru.",
+            }
+            if already_out
+            else {}
+        ),
+    }
     submission.save(update_fields=["status", "submitted_at", "response_payload"])
 
     Guest.objects.filter(pk=guest.pk).update(
