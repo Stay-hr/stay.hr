@@ -185,6 +185,7 @@ def _record_whatsapp_message_row(
             "wa_id": phone_wa,
             "phone_number_id": runtime.phone_number_id,
             "direction": WhatsAppMessage.Direction.OUTBOUND,
+            "source": WhatsAppMessage.Source.CLOUD_API,
             "message_type": message_type,
             "body": body,
             "raw_payload": raw_payload,

@@ -70,7 +70,7 @@ def route_inbound_message(
 
 
 def _route_tenant_inbound(message: WhatsAppMessage, *, tenant_id: int) -> dict:
-    reservation = _match_by_thread(message)
+    reservation = _match_by_thread(wa_id=message.wa_id)
     if reservation is not None and reservation.tenant_id == tenant_id:
         return _routed_result(reservation, WhatsAppInboundRouting.RoutingMethod.THREAD)
 
@@ -91,7 +91,7 @@ def _route_tenant_inbound(message: WhatsAppMessage, *, tenant_id: int) -> dict:
 
 
 def _route_platform_inbound(message: WhatsAppMessage) -> dict:
-    reservation = _match_by_thread(message)
+    reservation = _match_by_thread(wa_id=message.wa_id)
     if reservation is not None:
         return _routed_result(reservation, WhatsAppInboundRouting.RoutingMethod.THREAD)
 
@@ -115,12 +115,41 @@ def _route_platform_inbound(message: WhatsAppMessage) -> dict:
     return {"status": WhatsAppInboundRouting.Status.UNROUTED}
 
 
-def _match_by_thread(message: WhatsAppMessage) -> Reservation | None:
+def resolve_business_app_echo_reservation(
+    *,
+    wa_id: str,
+    integration: IntegrationConfig,
+) -> tuple[Reservation | None, str]:
+    """Match reservation for a Business App outbound echo.
+
+    Cascade: thread → phone → none. Unmatched (none) is expected, not an error.
+    Does not create WhatsAppInboundRouting rows.
+    """
+    # TODO: MATCH_WINDOW configurable (thread match currently 48h hard-coded)
+    reservation = _match_by_thread(wa_id=wa_id)
+    if reservation is not None:
+        if is_platform_integration(integration) or reservation.tenant_id == integration.tenant_id:
+            return reservation, "thread"
+        reservation = None
+
+    if is_platform_integration(integration):
+        matches = _find_reservations_by_phone_cross_tenant(wa_id)
+        if len(matches) == 1:
+            return matches[0], "phone"
+        return None, "none"
+
+    reservation = find_reservation_for_wa_id(tenant_id=integration.tenant_id, wa_id=wa_id)
+    if reservation is not None:
+        return reservation, "phone"
+    return None, "none"
+
+
+def _match_by_thread(*, wa_id: str) -> Reservation | None:
     cutoff = timezone.now() - timedelta(hours=THREAD_WINDOW_HOURS)
     recent = (
         WhatsAppMessage.objects.filter(
             direction=WhatsAppMessage.Direction.OUTBOUND,
-            wa_id=message.wa_id,
+            wa_id=wa_id,
             reservation__isnull=False,
             created_at__gte=cutoff,
         )

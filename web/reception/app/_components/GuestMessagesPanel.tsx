@@ -461,6 +461,9 @@ export function GuestMessagesPanel({ reservationId }: Props) {
                 >
                   <div className="mb-1 flex flex-wrap items-center gap-2 text-xs opacity-80">
                     <span>{timelineChannelLabels(item, t)}</span>
+                    {item.whatsapp_source === "business_app" ? (
+                      <span>Business app</span>
+                    ) : null}
                     <span>{formatMessageTime(item.created_at)}</span>
                     {item.sent_by_name ? <span>{item.sent_by_name}</span> : null}
                   </div>

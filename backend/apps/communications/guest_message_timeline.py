@@ -136,6 +136,7 @@ def serialize_whatsapp(msg: WhatsAppMessage) -> dict:
     return {
         "id": WA_ID_OFFSET + msg.pk,
         "source": "whatsapp",
+        "whatsapp_source": msg.source or WhatsAppMessage.Source.CLOUD_API,
         "direction": msg.direction,
         "channel": "whatsapp",
         "body_text": format_timeline_body_text(body),
