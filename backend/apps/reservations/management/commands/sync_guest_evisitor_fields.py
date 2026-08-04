@@ -6,8 +6,9 @@ import re
 
 from django.core.management.base import BaseCommand
 
+from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
 from apps.reservations.models import Guest
-from apps.reservations.mrz_parse import normalize_residence_address, parse_sex_from_mrz
+from apps.reservations.mrz_parse import parse_sex_from_mrz
 
 # Geschlecht / Sex on German ID front (OCR fragments).
 _SEX_PATTERNS = (
@@ -63,10 +64,15 @@ class Command(BaseCommand):
                     fields.append("sex")
 
             if guest.address:
-                normalized = normalize_residence_address(guest.address)
-                if normalized != guest.address:
-                    guest.address = normalized
+                result = validate_evisitor_residence_address(guest.address)
+                if result.valid and result.normalized_address != guest.address:
+                    guest.address = result.normalized_address
                     fields.append("address")
+                elif not result.valid:
+                    self.stdout.write(
+                        f"guest {guest_id}: address invalid — "
+                        f"{result.errors[0] if result.errors else 'cannot determine city'}"
+                    )
 
             if not fields:
                 self.stdout.write(f"guest {guest_id}: nothing to update")

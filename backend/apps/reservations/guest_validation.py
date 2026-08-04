@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
 from apps.reservations.models import Guest
 
 
@@ -84,6 +85,8 @@ class GuestValidator:
         if not _has_document_type(guest):
             missing.append("document_type")
         if not _has_text(guest.address):
+            missing.append("address")
+        elif not validate_evisitor_residence_address(guest.address).valid:
             missing.append("address")
 
         status = SlotReadinessStatus.READY if not missing else SlotReadinessStatus.PARTIAL

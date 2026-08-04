@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.integrations.evisitor.config import EvisitorRuntimeConfig
 from apps.integrations.evisitor.exceptions import EvisitorValidationError
 from apps.integrations.evisitor.lookups import iso2_to_iso3, map_document_type_code
-from apps.reservations.mrz_parse import normalize_residence_address
+from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
 from apps.reservations.models import EvisitorGuestStatus, Guest, Reservation
 
 
@@ -16,22 +16,6 @@ def _format_yyyymmdd(value: date | None) -> str:
     if not value:
         return ""
     return value.strftime("%Y%m%d")
-
-
-def _extract_city_of_residence(normalized_address: str) -> str:
-    """Pick eVisitor city; HR osobna often lists naselje first, then Grad <city>."""
-    raw = (normalized_address or "").strip()
-    if not raw:
-        return ""
-    parts = [p.strip() for p in raw.split(",") if p.strip()]
-    for part in parts:
-        lowered = part.lower()
-        if lowered.startswith("grad "):
-            city = part[5:].strip()
-            return city or part
-    if parts:
-        return parts[0][:64]
-    return raw[:64]
 
 
 def _map_gender(sex: str) -> str:
@@ -98,8 +82,13 @@ def build_check_in_payload(
     if guest.document_country_iso3:
         country_of_residence = guest.document_country_iso3.strip().upper()[:3]
 
-    normalized_address = normalize_residence_address(guest.address or "")
-    city_of_residence = _extract_city_of_residence(normalized_address)
+    address_result = validate_evisitor_residence_address(guest.address or "")
+    if not address_result.valid:
+        errors["address"] = (
+            address_result.errors[0]
+            if address_result.errors
+            else "Nije moguće odrediti grad prebivališta (CityOfResidence)."
+        )
 
     if errors:
         raise EvisitorValidationError(
@@ -118,10 +107,10 @@ def build_check_in_payload(
         "DateOfBirth": _format_yyyymmdd(guest.date_of_birth),
         "Citizenship": citizenship,
         "CountryOfBirth": citizenship,
-        "CityOfBirth": city_of_residence or "-",
+        "CityOfBirth": address_result.city,
         "CountryOfResidence": country_of_residence,
-        "CityOfResidence": city_of_residence or "-",
-        "ResidenceAddress": normalize_residence_address(guest.address or "-").strip()[:128],
+        "CityOfResidence": address_result.city,
+        "ResidenceAddress": address_result.normalized_address.strip()[:128],
         "DocumentType": document_type,
         "DocumentNumber": document_number[:16],
         "StayFrom": _format_yyyymmdd(reservation.check_in),

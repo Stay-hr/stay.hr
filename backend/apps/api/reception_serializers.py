@@ -6,6 +6,7 @@ from apps.integrations.evisitor.exceptions import (
     EvisitorValidationError,
 )
 from apps.integrations.evisitor.eligibility import guest_requires_evisitor
+from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
 from apps.integrations.evisitor.summary import (
     evisitor_progress_for_reservation,
     evisitor_status_for_guest,
@@ -592,6 +593,19 @@ class GuestDetailSerializer(serializers.ModelSerializer):
             return ""
         return guest_face_photo_url(obj, request)
 
+    def validate_address(self, value):
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        result = validate_evisitor_residence_address(raw)
+        if not result.valid:
+            raise serializers.ValidationError(
+                result.errors[0]
+                if result.errors
+                else "Nije moguće odrediti grad prebivališta (CityOfResidence)."
+            )
+        return result.normalized_address
+
     def update(self, instance, validated_data):
         if validated_data.get("is_primary", False):
             (
@@ -610,6 +624,19 @@ class GuestCreateSerializer(serializers.ModelSerializer):
             "first_name": {"required": False, "allow_blank": True},
             "last_name": {"required": False, "allow_blank": True},
         }
+
+    def validate_address(self, value):
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        result = validate_evisitor_residence_address(raw)
+        if not result.valid:
+            raise serializers.ValidationError(
+                result.errors[0]
+                if result.errors
+                else "Nije moguće odrediti grad prebivališta (CityOfResidence)."
+            )
+        return result.normalized_address
 
     def validate(self, attrs):
         first_name = (attrs.get("first_name") or "").strip()

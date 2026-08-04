@@ -288,7 +288,7 @@ Funkcija `guest_requires_evisitor` ([`eligibility.py`](../../backend/apps/integr
 
 ### Koraci submita
 
-1. **Lokalna validacija** — `build_check_in_payload` provjerava obavezna polja (`first_name`, `last_name`, `sex`, `date_of_birth`, državljanstvo, dokument, adresa…). Greška → `validation_failed` **bez** kreiranja `EvisitorSubmission`.
+1. **Lokalna validacija** — `build_check_in_payload` provjerava obavezna polja (`first_name`, `last_name`, `sex`, `date_of_birth`, državljanstvo, dokument…) te **pouzdano određivanje `CityOfResidence`** preko [`validate_evisitor_residence_address`](../../backend/apps/integrations/evisitor/residence_address.py) (jedan izvor istine za mapper, Guest API i OCR). Ako se grad ne može jednoznačno izvući → `validation_failed` **bez** HTTP poziva i **bez** kreiranja `EvisitorSubmission`. Pri uspješnoj validaciji API/OCR **persistira** `normalized_address` (kanonski oblik); `normalized_address` postoji samo kad je `valid=True`.
 2. **Audit** — kreira se `EvisitorSubmission` sa statusom `pending`; `Guest.evisitor_status` → `pending`.
 3. **Login** — `EvisitorClient.login()` (AspNetFormsAuth + opcionalni `apikey` na testu).
 4. **CheckInTourist** — POST na `/Rest/Htz/CheckInTourist/`.

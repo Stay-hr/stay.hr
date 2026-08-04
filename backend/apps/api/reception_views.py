@@ -53,7 +53,8 @@ from apps.reservations.document_photo_storage import (
     id_recognition_sample_filename,
 )
 from apps.reservations.face_photo import guest_face_photo_document
-from apps.reservations.mrz_parse import normalize_residence_address, parse_sex_from_mrz
+from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
+from apps.reservations.mrz_parse import parse_sex_from_mrz
 from apps.reservations.nationality_display import normalize_country_iso2
 from apps.reservations.query import property_day_range
 from apps.reservations.models import (
@@ -911,8 +912,13 @@ class DocumentScanIngestView(ReceptionWriteView, APIView):
                 updates["document_country_iso2"] = issue_iso2
 
         adresa = as_str("adresa")
+        address_for_suggest = adresa
         if adresa:
-            updates["address"] = normalize_residence_address(adresa)
+            address_result = validate_evisitor_residence_address(adresa)
+            if address_result.valid:
+                updates["address"] = address_result.normalized_address
+                address_for_suggest = address_result.normalized_address
+            # Invalid: do not persist bad address; keep prior guest.address.
 
         tip = str(meta.get("tip_dokumenta", "")).strip().lower()
         if tip == "passport":
@@ -938,7 +944,7 @@ class DocumentScanIngestView(ReceptionWriteView, APIView):
             "document_number": doc_no,
             "nationality": updates.get("nationality"),
             "date_of_birth": dob,
-            "address": updates.get("address") or adresa,
+            "address": address_for_suggest,
         }
         suggested_fields = {k: v for k, v in suggested_fields.items() if v}
 
