@@ -29,6 +29,7 @@ from apps.reservations.guest_checkin_session import (
     regenerate_session,
     touch_session_activity,
 )
+from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
 from apps.reservations.guest_validation import SlotReadinessStatus
 from apps.reservations.models import Guest, GuestCheckInSession, GuestCheckInSessionStatus, Reservation
 
@@ -270,6 +271,21 @@ def _apply_guest_fields(guest: Guest, fields: dict) -> None:
     for key, value in fields.items():
         if key not in _GUEST_PATCHABLE_FIELDS:
             continue
+        if key == "address":
+            raw = (value or "").strip() if isinstance(value, str) else ""
+            if raw:
+                result = validate_evisitor_residence_address(raw)
+                if not result.valid:
+                    raise GuestCheckInOrchestratorError(
+                        "invalid_address",
+                        result.errors[0]
+                        if result.errors
+                        else "Nije moguće odrediti grad prebivališta (CityOfResidence).",
+                        http_status=400,
+                    )
+                value = result.normalized_address
+            else:
+                value = ""
         setattr(guest, key, value)
         update_fields.append(key)
 

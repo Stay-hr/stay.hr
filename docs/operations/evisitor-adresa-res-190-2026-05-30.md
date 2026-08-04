@@ -100,6 +100,8 @@ Format **`Grad, ulica`** — usklađen s uspješnim prijavama u bazi (npr. `NOVI
 
 HR osobna na stražnjoj strani piše `PREBIVALIŠTE: OSIJEK, OSIJEK` + ulica zasebno — pri mapiranju **grad ide prvi**.
 
+**Ažuriranje (validacija):** street-first adrese (npr. `Dubrovačka 30, Osijek`) sada se **odbijaju lokalno** u [`validate_evisitor_residence_address`](../../backend/apps/integrations/evisitor/residence_address.py) prije eVisitor API-ja — nema automatskog okretanja redoslijeda. Vidi [evisitor.md — Check-in](../development/evisitor.md#check-in-u-evisitor).
+
 ---
 
 ## Povezani dokumenti i kod
@@ -107,6 +109,7 @@ HR osobna na stražnjoj strani piše `PREBIVALIŠTE: OSIJEK, OSIJEK` + ulica zas
 | Što | Gdje |
 |-----|------|
 | Ručni OCR runbook | [id-document-import.md](../development/id-document-import.md) |
+| Residence address validator | `backend/apps/integrations/evisitor/residence_address.py` |
 | eVisitor mapper | `backend/apps/integrations/evisitor/mapper.py` |
 | eVisitor servis | `backend/apps/integrations/evisitor/service.py` |
 | Logovi | `docker compose logs django` — tražiti `CheckInTourist`, `evisitor-submit`, guest ID `1194` |

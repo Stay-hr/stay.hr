@@ -54,7 +54,8 @@ from apps.reservations.document_intake_telemetry import (
     build_document_intake_telemetry,
 )
 from apps.reservations.guest_slots import ensure_guest_slots_for_intake
-from apps.reservations.mrz_parse import normalize_residence_address, parse_sex_from_mrz
+from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
+from apps.reservations.mrz_parse import parse_sex_from_mrz
 from apps.reservations.nationality_display import guest_nationality_iso2, normalize_country_iso2
 from apps.reservations.document_photo_storage import (
     DOCUMENT_TYPE_NATIONAL_ID,
@@ -973,8 +974,13 @@ def _guest_updates_from_payload(raw_payload: dict) -> tuple[dict, dict]:
             updates["document_country_iso2"] = issue_iso2
 
     adresa = as_str("adresa")
+    address_for_suggest = adresa
     if adresa:
-        updates["address"] = normalize_residence_address(adresa)
+        address_result = validate_evisitor_residence_address(adresa)
+        if address_result.valid:
+            updates["address"] = address_result.normalized_address
+            address_for_suggest = address_result.normalized_address
+        # Invalid: do not persist bad address; keep prior guest.address.
 
     meta = raw_payload.get("metapodaci") or {}
     tip = str(meta.get("tip_dokumenta") or "").lower()
@@ -998,7 +1004,7 @@ def _guest_updates_from_payload(raw_payload: dict) -> tuple[dict, dict]:
         "document_number": doc_no,
         "nationality": iso2,
         "date_of_birth": dob,
-        "address": updates.get("address") or adresa,
+        "address": address_for_suggest,
     }
     suggested = {k: v for k, v in suggested.items() if v}
     return updates, suggested
