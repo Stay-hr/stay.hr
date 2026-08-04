@@ -112,3 +112,28 @@ class EvisitorResidenceAddressTests(SimpleTestCase):
         result = validate_evisitor_residence_address(f"{long_city}, Ulica 1")
         self.assertFalse(result.valid)
         self.assertEqual(result.normalized_address, "")
+
+    def test_nova_gradiska_no_comma_ok(self):
+        """Place names ending in ova/ška must not be treated as street tokens."""
+        result = validate_evisitor_residence_address("Nova Gradiška 15")
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "Nova Gradiška")
+        self.assertEqual(result.normalized_address, "Nova Gradiška, 15")
+
+    def test_strip_grad_label_comma_form(self):
+        result = validate_evisitor_residence_address("Grad Zagreb, Ulica 1")
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "Zagreb")
+        self.assertEqual(result.normalized_address, "Zagreb, Ulica 1")
+
+    def test_stari_grad_not_stripped_as_label(self):
+        result = validate_evisitor_residence_address("Stari Grad, Ulica 1")
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "Stari Grad")
+        self.assertEqual(result.normalized_address, "Stari Grad, Ulica 1")
+
+    def test_strip_grad_label_no_comma_form(self):
+        result = validate_evisitor_residence_address("Grad Zagreb 12")
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "Zagreb")
+        self.assertEqual(result.normalized_address, "Zagreb, 12")

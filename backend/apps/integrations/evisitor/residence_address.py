@@ -32,9 +32,10 @@ _HOUSE_NUMBER_RE = re.compile(
     re.UNICODE,
 )
 
-# Common Slavic street-name endings (no-comma 3a must not treat these as city words).
+# Street-like adjectival endings used to reject "Osijek Dubrovačka 30".
+# Keep ska/čka only — ova/eva/ška false-positive on places (Nova, Gradiška).
 _STREETISH_TOKEN_RE = re.compile(
-    r"(ska|čka|ška|ova|eva)$",
+    r"(ska|čka)$",
     re.IGNORECASE | re.UNICODE,
 )
 
@@ -133,6 +134,17 @@ def _city_has_streetish_token(city: str) -> bool:
     return False
 
 
+def _strip_grad_label(city: str) -> str:
+    """Strip leading administrative label ``Grad`` (e.g. ``Grad Zagreb`` → ``Zagreb``).
+
+    Does not touch multi-word place names like ``Stari Grad``.
+    """
+    parts = (city or "").strip().split(None, 1)
+    if len(parts) == 2 and parts[0].casefold() == "grad":
+        return parts[1].strip()
+    return (city or "").strip()
+
+
 def _city_shape_errors(city: str, *, max_words: int) -> str | None:
     if not city.strip():
         return MSG_CANNOT_DETERMINE
@@ -157,6 +169,10 @@ def _validate_comma_form(address: str) -> AddressValidationResult:
     shape_err = _city_shape_errors(city, max_words=_MAX_CITY_WORDS_COMMA)
     if shape_err:
         return _fail(shape_err)
+
+    city = _strip_grad_label(city)
+    if not city:
+        return _fail(MSG_CANNOT_DETERMINE)
 
     if not rest:
         return _ok(city, city)
@@ -184,6 +200,10 @@ def _validate_no_comma_form(address: str) -> AddressValidationResult:
         if shape_err == MSG_CITY_TOO_LONG:
             return _fail(MSG_CANNOT_DETERMINE)
         return _fail(shape_err)
+
+    city = _strip_grad_label(city)
+    if not city:
+        return _fail(MSG_CANNOT_DETERMINE)
 
     # Unambiguous: city + house-number-only remainder.
     normalized = f"{city}, {house}"
