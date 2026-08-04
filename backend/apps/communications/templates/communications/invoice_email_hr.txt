@@ -5,11 +5,8 @@ u prilogu Vam šaljemo račun za boravak u {{ property_name }}.
 Broj računa: {{ invoice_number }}
 Rezervacija: {{ booking_code }}
 
-Račun možete pregledati i ispisati na sljedećoj poveznici:
+Račun možete pregledati na sljedećoj poveznici:
 {{ invoice_url }}
-
-Preuzimanje PDF-a:
-{{ invoice_pdf_url }}
 
 Lijep pozdrav,
 {{ property_name }}

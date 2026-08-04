@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
+from django.template.loader import render_to_string
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -13,7 +16,7 @@ from apps.api.permissions import DenyAdminScopes, HasReceptionAccess
 from apps.api.reception_views import ReceptionReadView, ReceptionWriteView
 from apps.api.views import TenantAPIView
 from apps.billing.models import Invoice, TenantFiscalSettings
-from apps.billing.services.pdf import render_invoice_html
+from apps.billing.services.pdf import render_invoice_html, split_rendered_invoice_html
 from apps.communications.invoice_email import send_invoice_email
 from apps.reservations.models import Guest, Reservation
 
@@ -237,17 +240,46 @@ class InvoicePdfView(ReceptionReadView, APIView):
         )
 
 
+def _invoice_unavailable_response() -> HttpResponse:
+    html = render_to_string("billing/invoice_unavailable.html")
+    return HttpResponse(html, status=404)
+
+
 class PublicInvoiceHtmlView(InvoiceSerializerMixin, APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request, public_access_token):
-        invoice = get_object_or_404(
-            Invoice.objects.select_related("tenant", "reservation", "reservation__property"),
-            public_access_token=public_access_token,
+        invoice = (
+            Invoice.objects.select_related("tenant", "reservation", "reservation__property")
+            .filter(public_access_token=public_access_token)
+            .first()
         )
+        if invoice is None:
+            return _invoice_unavailable_response()
+
         settings, _ = TenantFiscalSettings.objects.get_or_create(tenant=invoice.tenant)
-        html = render_invoice_html(invoice, settings)
+        rendered = render_invoice_html(invoice, settings)
+        invoice_styles, invoice_body_html = split_rendered_invoice_html(rendered)
+        property_name = ""
+        if invoice.reservation_id and invoice.reservation.property_id:
+            property_name = invoice.reservation.property.name
+        page_title = f"Invoice {invoice.invoice_number}"
+        if property_name:
+            page_title = f"{page_title} — {property_name}"
+        total_display = f"{invoice.total.quantize(Decimal('0.01')):.2f}".replace(".", ",")
+        html = render_to_string(
+            "billing/invoice_guest_portal.html",
+            {
+                "invoice": invoice,
+                "invoice_styles": invoice_styles,
+                "invoice_body_html": invoice_body_html,
+                "property_name": property_name,
+                "issued_at_display": invoice.issued_at.strftime("%d.%m.%Y %H:%M"),
+                "amount_display": f"{total_display} {invoice.currency}",
+                "page_title": page_title,
+            },
+        )
         return HttpResponse(html)
 
 
@@ -256,12 +288,15 @@ class PublicInvoicePdfView(APIView):
     authentication_classes = []
 
     def get(self, request, public_access_token):
-        invoice = get_object_or_404(
-            Invoice.objects.select_related("tenant"),
-            public_access_token=public_access_token,
+        invoice = (
+            Invoice.objects.select_related("tenant")
+            .filter(public_access_token=public_access_token)
+            .first()
         )
+        if invoice is None:
+            return _invoice_unavailable_response()
         if not invoice.pdf_file:
-            return Response({"detail": "PDF not available."}, status=status.HTTP_404_NOT_FOUND)
+            return _invoice_unavailable_response()
         return FileResponse(
             invoice.pdf_file.open("rb"),
             as_attachment=True,

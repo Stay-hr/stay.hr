@@ -5,14 +5,10 @@
   Rezervacija: <strong>{{ booking_code }}</strong>
 </p>
 <p>
-  <a href="{{ invoice_url }}">Otvori račun i ispiši PDF</a>
+  <a href="{{ invoice_url }}">Otvori račun</a>
 </p>
 <p style="word-break: break-all; font-size: 14px; color: #333;">
-  Pregled i ispis:<br>
+  Pregled računa:<br>
   <a href="{{ invoice_url }}">{{ invoice_url }}</a>
-</p>
-<p style="word-break: break-all; font-size: 14px; color: #333;">
-  Preuzimanje PDF-a:<br>
-  <a href="{{ invoice_pdf_url }}">{{ invoice_pdf_url }}</a>
 </p>
 <p>Lijep pozdrav,<br>{{ property_name }}</p>
