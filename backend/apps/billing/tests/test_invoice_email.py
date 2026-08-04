@@ -62,17 +62,21 @@ class InvoiceEmailTests(TestCase):
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "no_recipient")
 
-    @patch("apps.communications.invoice_email.EmailMultiAlternatives.send")
+    @patch("apps.communications.invoice_email.EmailMultiAlternatives")
     @patch("apps.communications.invoice_email._smtp_connection_for_reservation")
-    def test_send_invoice_email_success(self, mock_connection, mock_send):
+    def test_send_invoice_email_success(self, mock_connection, mock_email_cls):
         mock_connection.return_value = object()
+        message = mock_email_cls.return_value
         invoice = self._invoice()
         result = send_invoice_email(invoice.pk)
         self.assertEqual(result["status"], "sent")
-        mock_send.assert_called_once()
-        message = mock_send.call_args[0][0]
-        html_body = message.alternatives[0][0]
-        self.assertIn(f"/api/v1/public/invoices/{invoice.public_access_token}/", html_body)
-        self.assertIn(f"/api/v1/public/invoices/{invoice.public_access_token}/pdf/", html_body)
+        message.send.assert_called_once()
+        html_body = message.attach_alternative.call_args[0][0]
+        text_body = mock_email_cls.call_args.kwargs["body"]
+        portal_path = f"/api/v1/public/invoices/{invoice.public_access_token}/"
+        pdf_path = f"/api/v1/public/invoices/{invoice.public_access_token}/pdf/"
+        self.assertIn(portal_path, html_body)
+        self.assertNotIn(pdf_path, html_body)
+        self.assertNotIn(pdf_path, text_body)
         invoice.refresh_from_db()
         self.assertEqual(invoice.email_recipient, "guest@example.com")

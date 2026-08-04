@@ -2,6 +2,8 @@
 
 Capability: **prikupiti usable email za dostavu računa**. Izdavanje, fiskalizacija i slanje računa ostaju u postojećem checkout pipelineu (`perform_reservation_checkout` → `issue_guest_invoice` → `fiscalize` → `send_invoice_email_task`).
 
+Guest delivery UX after send: [`invoice-guest-portal.md`](invoice-guest-portal.md) (portal URL only — not PDF URL in messages).
+
 ## Flow
 
 1. Gost traži račun (invoice / facture / Rechnung / račun …).

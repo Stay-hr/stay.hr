@@ -8,7 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.billing.models import Invoice, TenantFiscalSettings
+from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
 from apps.properties.models import Property
 from apps.reservations.checkout import perform_reservation_checkout
 from apps.reservations.models import EvisitorGuestStatus, Guest, Reservation
@@ -154,8 +154,18 @@ class PublicInvoiceAccessTests(TestCase):
         )
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Guest Guest")
-        self.assertContains(response, "1-PP1-1")
+        content = response.content.decode()
+        self.assertIn("Guest Guest", content)
+        self.assertIn("1-PP1-1", content)
+        self.assertIn('href="pdf/"', content)
+        self.assertIn("aria-label=\"Download invoice PDF\"", content)
+        self.assertIn("aria-label=\"Print invoice\"", content)
+        self.assertIn("window.print()", content)
+        self.assertIn("no-print", content)
+        self.assertIn('property="og:title"', content)
+        self.assertIn("Invoice 1-PP1-1", content)
+        self.assertNotRegex(content, r'https?://[^"\s]+/pdf/')
+        self.assertNotIn(f"/api/v1/public/invoices/{self.invoice.public_access_token}/pdf/", content)
 
     def test_public_invoice_unknown_token_404(self):
         url = reverse(
@@ -164,3 +174,6 @@ class PublicInvoiceAccessTests(TestCase):
         )
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
+        content = response.content.decode()
+        self.assertIn("Invoice is not available.", content)
+        self.assertIn("Please contact the property if you believe this is an error.", content)

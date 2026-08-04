@@ -14,80 +14,84 @@
       font-weight: bold;
     }
     @page { size: A4; margin: 1.5cm; }
-    body { font-family: DejaVuSans, sans-serif; font-size: 11pt; color: #111; }
-    h1 { font-size: 18pt; margin: 0 0 8px; font-weight: bold; }
-    strong { font-weight: bold; }
-    .muted { color: #555; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
-    th { background: #f3f3f3; font-weight: bold; }
-    .right { text-align: right; }
-    .totals { margin-top: 12px; font-weight: bold; }
-    .footer { margin-top: 24px; font-size: 10pt; line-height: 1.5; }
-    .qr { margin-top: 16px; }
+    body { margin: 0; }
+    .invoice-document { font-family: DejaVuSans, sans-serif; font-size: 11pt; color: #111; }
+    .invoice-document h1 { font-size: 18pt; margin: 0 0 8px; font-weight: bold; }
+    .invoice-document strong { font-weight: bold; }
+    .invoice-document .muted { color: #555; }
+    .invoice-document table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    .invoice-document th,
+    .invoice-document td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
+    .invoice-document th { background: #f3f3f3; font-weight: bold; }
+    .invoice-document .right { text-align: right; }
+    .invoice-document .totals { margin-top: 12px; font-weight: bold; }
+    .invoice-document .footer { margin-top: 24px; font-size: 10pt; line-height: 1.5; }
+    .invoice-document .qr { margin-top: 16px; }
     @media print {
       .no-print { display: none; }
     }
   </style>
 </head>
 <body>
-  <h1>Račun {{ invoice.invoice_number }}</h1>
-  <p class="muted">Datum izdavanja: {{ issued_at_display }}</p>
-  {% if reservation_number %}
-  <p class="muted">Broj rezervacije: {{ reservation_number }}</p>
-  {% endif %}
-
-  <p><strong>Izdavatelj:</strong><br>
-    {{ settings.issuer_name }}<br>
-    {{ settings.issuer_address|linebreaksbr }}
-    {% if settings.issuer_oib %}<br>OIB: {{ settings.issuer_oib }}{% endif %}
-    {% if settings.issuer_iban %}<br>IBAN: {{ settings.issuer_iban }}{% endif %}
-  </p>
-
-  <p><strong>Kupac:</strong><br>
-    {{ invoice.buyer_name }}
-    {% if invoice.buyer_document_number %}<br>Broj dokumenta: {{ invoice.buyer_document_number }}{% endif %}
-    {% if invoice.buyer_address %}<br>Adresa: {{ invoice.buyer_address|linebreaksbr }}{% endif %}
-    {% if invoice.buyer_country %}<br>Država: {{ invoice.buyer_country }}{% endif %}
-  </p>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Stavka</th>
-        <th class="right">Količina</th>
-        <th class="right">Cijena (€)</th>
-        <th class="right">PDV %</th>
-        <th class="right">PDV iznos (€)</th>
-        <th class="right">Ukupno (€)</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for line in formatted_lines %}
-      <tr>
-        <td>{{ line.description }}</td>
-        <td class="right">{{ line.quantity }}</td>
-        <td class="right">{{ line.unit_price }}</td>
-        <td class="right">{{ line.vat_rate }}</td>
-        <td class="right">{{ line.vat_amount }}</td>
-        <td class="right">{{ line.line_total }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <p class="totals right">UKUPNO ZA PLATITI: {{ total }} €</p>
-
-  <div class="footer">
-    <p>{{ tourist_tax_clause }}</p>
-    <p>{{ invoice.payment_note }}</p>
-    <p>Operater: {{ operator_code }}</p>
-    <p>ZKI: {{ zki_display }}<br>JIR: {{ jir_display }}</p>
-    {% if qr_data_uri %}
-    <div class="qr">
-      <img src="{{ qr_data_uri }}" alt="QR kod računa" width="120" height="120">
-    </div>
+  <div class="invoice-document">
+    <h1>Račun {{ invoice.invoice_number }}</h1>
+    <p class="muted">Datum izdavanja: {{ issued_at_display }}</p>
+    {% if reservation_number %}
+    <p class="muted">Broj rezervacije: {{ reservation_number }}</p>
     {% endif %}
+
+    <p><strong>Izdavatelj:</strong><br>
+      {{ settings.issuer_name }}<br>
+      {{ settings.issuer_address|linebreaksbr }}
+      {% if settings.issuer_oib %}<br>OIB: {{ settings.issuer_oib }}{% endif %}
+      {% if settings.issuer_iban %}<br>IBAN: {{ settings.issuer_iban }}{% endif %}
+    </p>
+
+    <p><strong>Kupac:</strong><br>
+      {{ invoice.buyer_name }}
+      {% if invoice.buyer_document_number %}<br>Broj dokumenta: {{ invoice.buyer_document_number }}{% endif %}
+      {% if invoice.buyer_address %}<br>Adresa: {{ invoice.buyer_address|linebreaksbr }}{% endif %}
+      {% if invoice.buyer_country %}<br>Država: {{ invoice.buyer_country }}{% endif %}
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Stavka</th>
+          <th class="right">Količina</th>
+          <th class="right">Cijena (€)</th>
+          <th class="right">PDV %</th>
+          <th class="right">PDV iznos (€)</th>
+          <th class="right">Ukupno (€)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in formatted_lines %}
+        <tr>
+          <td>{{ line.description }}</td>
+          <td class="right">{{ line.quantity }}</td>
+          <td class="right">{{ line.unit_price }}</td>
+          <td class="right">{{ line.vat_rate }}</td>
+          <td class="right">{{ line.vat_amount }}</td>
+          <td class="right">{{ line.line_total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p class="totals right">UKUPNO ZA PLATITI: {{ total }} €</p>
+
+    <div class="footer">
+      <p>{{ tourist_tax_clause }}</p>
+      <p>{{ invoice.payment_note }}</p>
+      <p>Operater: {{ operator_code }}</p>
+      <p>ZKI: {{ zki_display }}<br>JIR: {{ jir_display }}</p>
+      {% if qr_data_uri %}
+      <div class="qr">
+        <img src="{{ qr_data_uri }}" alt="QR kod računa" width="120" height="120">
+      </div>
+      {% endif %}
+    </div>
   </div>
 </body>
 </html>

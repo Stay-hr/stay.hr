@@ -43,12 +43,9 @@ def resolve_invoice_recipient(reservation) -> str | None:
     return None
 
 
-def _public_invoice_urls(invoice: Invoice) -> tuple[str, str]:
+def _public_invoice_url(invoice: Invoice) -> str:
     base = (settings.STAY_PUBLIC_API_URL or "https://api.stay.hr").rstrip("/")
-    token = invoice.public_access_token
-    html_url = f"{base}/api/v1/public/invoices/{token}/"
-    pdf_url = f"{base}/api/v1/public/invoices/{token}/pdf/"
-    return html_url, pdf_url
+    return f"{base}/api/v1/public/invoices/{invoice.public_access_token}/"
 
 
 def send_invoice_email(invoice_id: int) -> dict:
@@ -72,14 +69,12 @@ def send_invoice_email(invoice_id: int) -> dict:
 
     sender, _from_email = _sender_for_reservation(reservation)
     language = _language_for_reservation(reservation)
-    invoice_url, invoice_pdf_url = _public_invoice_urls(invoice)
     context = {
         "booker_name": invoice.buyer_name,
         "booking_code": reservation.booking_code,
         "property_name": reservation.property.name,
         "invoice_number": invoice.invoice_number,
-        "invoice_url": invoice_url,
-        "invoice_pdf_url": invoice_pdf_url,
+        "invoice_url": _public_invoice_url(invoice),
     }
     subject = f"Račun — {reservation.property.name}"
     text_body = render_to_string(f"communications/invoice_email_{language}.txt", context)

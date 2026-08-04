@@ -5,11 +5,8 @@ Please find your invoice for your stay at {{ property_name }}.
 Invoice number: {{ invoice_number }}
 Booking: {{ booking_code }}
 
-View and print your invoice:
+View your invoice:
 {{ invoice_url }}
-
-Download PDF:
-{{ invoice_pdf_url }}
 
 Kind regards,
 {{ property_name }}
