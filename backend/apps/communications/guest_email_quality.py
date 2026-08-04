@@ -61,3 +61,38 @@ def extract_emails_from_text(text: str) -> list[str]:
 
 def extract_usable_invoice_emails(text: str) -> list[str]:
     return [e for e in extract_emails_from_text(text) if is_usable_invoice_email(e)]
+
+
+def prefer_usable_invoice_email(existing: str | None, incoming: str | None) -> str:
+    """Keep a usable address when channel sync would overwrite it with relay/empty."""
+    existing_clean = (existing or "").strip()
+    incoming_clean = (incoming or "").strip()
+    if is_usable_invoice_email(existing_clean) and not is_usable_invoice_email(incoming_clean):
+        return existing_clean
+    return incoming_clean or existing_clean
+
+
+def invoice_email_candidates(reservation) -> list[str]:
+    """Booker then primary guest, de-duplicated (order preserved)."""
+    ordered: list[str] = []
+    seen: set[str] = set()
+    primary = reservation.guests.filter(is_primary=True).first()
+    for raw in (
+        (reservation.booker_email or "").strip(),
+        ((primary.email if primary is not None else "") or "").strip(),
+    ):
+        if not raw:
+            continue
+        key = raw.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(raw)
+    return ordered
+
+
+def first_usable_invoice_email(reservation) -> str | None:
+    for email in invoice_email_candidates(reservation):
+        if is_usable_invoice_email(email):
+            return email
+    return None

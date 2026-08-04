@@ -8,14 +8,17 @@ from django.utils import timezone
 
 from apps.communications.guest_email_quality import (
     extract_usable_invoice_emails,
+    first_usable_invoice_email,
     is_ota_relay_email,
     is_usable_invoice_email,
+    prefer_usable_invoice_email,
 )
 from apps.communications.guest_invoice_inbound import maybe_handle_guest_invoice_inbound
 from apps.communications.guest_invoice_patterns import guest_message_requests_invoice
 from apps.communications.invoice_email import resolve_invoice_recipient
 from apps.communications.invoice_email_capture import (
     InvoiceEmailCaptureService,
+    has_usable_invoice_recipient,
     start_waiting_for_invoice_email,
 )
 from apps.communications.models import GuestMessageDraft
@@ -37,6 +40,20 @@ class GuestEmailQualityTests(TestCase):
             "bonjour,\nreissitua@gmail.com\nand a@guest.booking.com"
         )
         self.assertEqual(emails, ["reissitua@gmail.com"])
+
+    def test_prefer_usable_over_relay(self):
+        self.assertEqual(
+            prefer_usable_invoice_email("reissitua@gmail.com", "x@guest.booking.com"),
+            "reissitua@gmail.com",
+        )
+        self.assertEqual(
+            prefer_usable_invoice_email("x@guest.booking.com", "new@gmail.com"),
+            "new@gmail.com",
+        )
+        self.assertEqual(
+            prefer_usable_invoice_email("keep@gmail.com", "other@gmail.com"),
+            "other@gmail.com",
+        )
 
 
 class GuestInvoicePatternTests(TestCase):
@@ -114,6 +131,19 @@ class GuestInvoiceInboundTests(TestCase):
 
     def test_resolve_skips_relay(self):
         self.assertIsNone(resolve_invoice_recipient(self.reservation))
+
+    def test_resolve_falls_back_to_usable_primary_guest(self):
+        self.guest.email = "reissitua@gmail.com"
+        self.guest.save(update_fields=["email", "updated_at"])
+        self.assertTrue(has_usable_invoice_recipient(self.reservation))
+        self.assertEqual(
+            first_usable_invoice_email(self.reservation),
+            "reissitua@gmail.com",
+        )
+        self.assertEqual(
+            resolve_invoice_recipient(self.reservation),
+            "reissitua@gmail.com",
+        )
 
     @patch("apps.communications.guest_invoice_inbound.send_guest_message")
     def test_no_overwrite_when_not_waiting(self, mock_send):

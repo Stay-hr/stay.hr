@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from apps.communications.guest_email_quality import (
     extract_usable_invoice_emails,
+    first_usable_invoice_email,
     is_usable_invoice_email,
 )
 from apps.reservations.models import Guest, Reservation
@@ -63,17 +64,12 @@ def start_waiting_for_invoice_email(reservation: Reservation) -> None:
 
 
 def current_invoice_recipient(reservation: Reservation) -> str:
-    email = (reservation.booker_email or "").strip()
-    if email:
-        return email
-    primary = reservation.guests.filter(is_primary=True).first()
-    if primary and (primary.email or "").strip():
-        return (primary.email or "").strip()
-    return ""
+    """First usable invoice address (booker, then primary guest). Empty if none usable."""
+    return first_usable_invoice_email(reservation) or ""
 
 
 def has_usable_invoice_recipient(reservation: Reservation) -> bool:
-    return is_usable_invoice_email(current_invoice_recipient(reservation))
+    return bool(current_invoice_recipient(reservation))
 
 
 @transaction.atomic

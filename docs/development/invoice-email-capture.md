@@ -16,6 +16,8 @@ Capability: **prikupiti usable email za dostavu računa**. Izdavanje, fiskalizac
 | Overwrite | Auto-update samo dok je `WAITING_FOR_EMAIL`. Usable email van ciklusa se ne prepisuje (`invoice_email_not_requested`). |
 | Više adresa | Ne bira se automatski; `invoice_email_ambiguous` + molba za jednu adresu. `invoice_email_received` samo za točno jedan usable email. |
 | Timeout | `INVOICE_EMAIL_WAITING_TIMEOUT_DAYS` (default 14). |
+| Recipient | `resolve_invoice_recipient` / `has_usable_invoice_recipient` biraju prvi usable (booker, zatim primary guest) — relay booker ne blokira usable guest email. |
+| Channex | Revision ne smije prepisati usable email s OTA relay/praznim (`prefer_usable_invoice_email`). |
 
 ## Kod
 

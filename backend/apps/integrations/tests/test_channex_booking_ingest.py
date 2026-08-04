@@ -203,6 +203,44 @@ class ChannexBookingIngestTests(TestCase):
         mock_client.acknowledge_booking_revision.assert_called_once()
 
     @patch("apps.integrations.channex.booking_service.ChannexClient")
+    def test_revision_preserves_usable_email_over_ota_relay(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.get_booking_revision.return_value = self.revision_payload
+        mock_client_cls.return_value = mock_client
+
+        reservation = process_channex_booking_revision(
+            self.integration,
+            self.revision_id,
+        )
+        reservation.booker_email = "reissitua@gmail.com"
+        reservation.save(update_fields=["booker_email", "updated_at"])
+        guest = Guest.objects.get(reservation=reservation, is_primary=True)
+        guest.email = "reissitua@gmail.com"
+        guest.save(update_fields=["email", "updated_at"])
+
+        relay_payload = dict(self.revision_payload)
+        relay_payload["id"] = "relay-overwrite-revision"
+        relay_payload["attributes"] = {
+            **self.revision_payload["attributes"],
+            "status": "modified",
+            "customer": {
+                **self.revision_payload["attributes"]["customer"],
+                "mail": "bfouqu.690243@guest.booking.com",
+            },
+        }
+        mock_client.get_booking_revision.return_value = relay_payload
+
+        updated = process_channex_booking_revision(
+            self.integration,
+            "relay-overwrite-revision",
+        )
+        updated.refresh_from_db()
+        guest.refresh_from_db()
+        self.assertEqual(updated.pk, reservation.pk)
+        self.assertEqual(updated.booker_email, "reissitua@gmail.com")
+        self.assertEqual(guest.email, "reissitua@gmail.com")
+
+    @patch("apps.integrations.channex.booking_service.ChannexClient")
     def test_cancelled_revision_updates_status(self, mock_client_cls):
         cancelled = dict(self.revision_payload)
         cancelled["attributes"] = dict(self.revision_payload["attributes"])
