@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 from decimal import Decimal
 from pathlib import Path
 
@@ -14,6 +15,9 @@ from xhtml2pdf import pisa
 
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
 from apps.billing.services.qr import build_invoice_qr_url
+
+_STYLE_RE = re.compile(r"<style[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
+_BODY_RE = re.compile(r"<body[^>]*>(.*?)</body>", re.IGNORECASE | re.DOTALL)
 
 FONTS_DIR = Path(__file__).resolve().parent.parent / "static" / "fonts"
 FONT_REGULAR = FONTS_DIR / "DejaVuSans.ttf"
@@ -111,6 +115,18 @@ def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -
 def render_invoice_html(invoice: Invoice, settings: TenantFiscalSettings) -> str:
     context = invoice_template_context(invoice, settings)
     return render_to_string("billing/invoice.html", context)
+
+
+def split_rendered_invoice_html(html: str) -> tuple[str, str]:
+    """Extract style CSS and body inner HTML from render_invoice_html() output.
+
+    Guest portal wraps these parts; PDF keeps the full document. Legal layout
+    stays in billing/invoice.html only.
+    """
+    styles = "\n".join(match.strip() for match in _STYLE_RE.findall(html))
+    body_match = _BODY_RE.search(html)
+    body_html = body_match.group(1).strip() if body_match else html
+    return styles, body_html
 
 
 def render_invoice_pdf(invoice: Invoice, settings: TenantFiscalSettings) -> None:

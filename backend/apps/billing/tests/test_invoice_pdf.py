@@ -10,7 +10,12 @@ from apps.billing.services.invoice_builder import (
     build_invoice_from_reservation,
     resolve_buyer_identity,
 )
-from apps.billing.services.pdf import invoice_template_context, render_invoice_html, render_invoice_pdf
+from apps.billing.services.pdf import (
+    invoice_template_context,
+    render_invoice_html,
+    render_invoice_pdf,
+    split_rendered_invoice_html,
+)
 from apps.properties.models import Property
 from apps.reservations.models import Guest, Reservation
 from apps.tenants.models import Tenant
@@ -118,6 +123,16 @@ class InvoicePdfTests(TestCase):
         self.assertIn("Broj rezervacije: 5898434847", html)
         self.assertIn("Država: Belgija", html)
         self.assertIn("Bruxellesstraat 1", html)
+        self.assertIn('class="invoice-document"', html)
+
+    def test_split_rendered_invoice_html_preserves_document(self):
+        html = render_invoice_html(self.invoice, self.settings)
+        styles, body = split_rendered_invoice_html(html)
+        self.assertIn("DejaVuSans", styles)
+        self.assertIn("invoice-document", body)
+        self.assertIn("Noćenje", body)
+        self.assertNotIn("<html", body.lower())
+        self.assertNotIn("<body", body.lower())
 
     def test_invoice_template_context_utf8(self):
         context = invoice_template_context(self.invoice, self.settings)
