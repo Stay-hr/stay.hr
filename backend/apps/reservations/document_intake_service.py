@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from django.core.files.base import ContentFile
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
@@ -19,8 +19,20 @@ from apps.ai.document_ocr import (
     run_document_batch_ocr,
     run_orphan_document_ocr,
 )
-from apps.reservations.document_intake_ocr_fixup import fixup_document_ocr_result
+from apps.reservations.document_intake_ocr_fixup import (
+    fixup_document_ocr_result,
+    normalize_document_number,
+)
 from apps.reservations.document_intake_context import DocumentIntakeContext
+from apps.reservations.document_intake_identity import (
+    REASON_ALREADY_PROCESSED,
+    REASON_DUPLICATE_IDENTITY,
+    REASON_MRZ_INCONSISTENT,
+    classify_identity_collision,
+    emit_identity_collision_audit,
+    person_document_number,
+    validate_person_against_mrz,
+)
 from apps.reservations.document_expectations import expected_document_count
 from apps.reservations.document_intake_preprocess import (
     build_dropped_to_canonical_map,
@@ -427,23 +439,6 @@ def apply_document_intake_job(
         if isinstance(item, dict) and "person_index" in item
     }
 
-    if not selection_map:
-        from apps.reservations.document_intake_web_guest import (
-            is_web_guest_slot_forced_job,
-            run_web_guest_matching_pipeline,
-        )
-
-        if is_web_guest_slot_forced_job(ctx):
-            matches = run_web_guest_matching_pipeline(ctx=ctx, persons=persons)
-        else:
-            matches = _prepare_intake_matches(
-                ctx=ctx,
-                persons=persons,
-                matches=matches,
-            )
-        job.matches = matches
-        job.save(update_fields=["matches", "updated_at"])
-
     previously_applied_guest_ids = {
         int(item["guest_id"])
         for item in (job.applied_result or [])
@@ -451,25 +446,50 @@ def apply_document_intake_job(
     }
 
     applied: list[dict[str, Any]] = []
-    completeness = None
-    if allow_partial and ctx.is_reservation_scoped:
-        from apps.reservations.document_intake_completeness import evaluate_completeness
-
-        reservation = ctx.reservation
-        completeness = evaluate_completeness(
-            reservation=reservation,
-            persons=persons,
-            matches=matches,
-            images=images,
-        )
+    identity_outcomes: list[dict[str, Any]] = []
 
     with transaction.atomic():
+        if ctx.is_reservation_scoped and ctx.reservation is not None:
+            Reservation.objects.select_for_update().get(pk=ctx.reservation.pk)
+            # Refresh guests under lock for identity classify.
+            ctx.reservation.refresh_from_db()
+            _ = list(ctx.reservation.guests.all())
+
+        if not selection_map:
+            from apps.reservations.document_intake_web_guest import (
+                is_web_guest_slot_forced_job,
+                run_web_guest_matching_pipeline,
+            )
+
+            if is_web_guest_slot_forced_job(ctx):
+                matches = run_web_guest_matching_pipeline(ctx=ctx, persons=persons)
+            else:
+                matches = _prepare_intake_matches(
+                    ctx=ctx,
+                    persons=persons,
+                    matches=matches,
+                )
+            job.matches = matches
+            job.save(update_fields=["matches", "updated_at"])
+
+        completeness = None
+        if allow_partial and ctx.is_reservation_scoped:
+            from apps.reservations.document_intake_completeness import evaluate_completeness
+
+            reservation = ctx.reservation
+            completeness = evaluate_completeness(
+                reservation=reservation,
+                persons=persons,
+                matches=matches,
+                images=images,
+            )
+
         for match in matches:
             idx = int(match.get("person_index", -1))
             if idx < 0 or idx >= len(persons):
                 continue
 
-            person = persons[idx]
+            person = persons[idx] if isinstance(persons[idx], dict) else {}
             sel = selection_map.get(idx)
             reservation_id = None
             guest_id = None
@@ -480,6 +500,24 @@ def apply_document_intake_job(
             elif match.get("auto_apply"):
                 reservation_id = match.get("reservation_id")
                 guest_id = match.get("guest_id")
+            elif match.get("identity_status") in {
+                REASON_ALREADY_PROCESSED,
+                REASON_DUPLICATE_IDENTITY,
+            }:
+                identity_outcomes.append(
+                    {
+                        "person_index": idx,
+                        "guest_id": match.get("guest_id") or match.get("existing_guest_id"),
+                        "reservation_id": match.get("reservation_id"),
+                        "identity_status": match.get("identity_status"),
+                        "reject_reason": match.get("reject_reason"),
+                        "existing_guest_id": match.get("existing_guest_id"),
+                        "existing_guest_name": match.get("existing_guest_name") or "",
+                        "face_photo_saved": False,
+                        "updated_fields": [],
+                    }
+                )
+                continue
 
             if not reservation_id or not guest_id:
                 continue
@@ -499,24 +537,139 @@ def apply_document_intake_job(
             )
             reservation = guest.reservation
 
-            result = _apply_person_to_guest(
-                person=person,
-                person_index=idx,
-                guest=guest,
+            # Re-classify under lock (defense in depth for races / WEB_GUEST).
+            collision = classify_identity_collision(
                 reservation=reservation,
-                images=images,
-                device_id=device_id or job.device_id,
+                person=person,
+                target_guest_id=guest.pk,
             )
+            if collision.status != "none":
+                emit_identity_collision_audit(
+                    reservation_id=reservation.pk,
+                    job_id=job.pk,
+                    existing_guest_id=collision.existing_guest_id,
+                    target_guest_id=guest.pk,
+                    document_number=person_document_number(person),
+                    reason=collision.reason,
+                )
+                identity_outcomes.append(
+                    {
+                        "person_index": idx,
+                        "guest_id": collision.existing_guest_id or guest.pk,
+                        "reservation_id": reservation.pk,
+                        "identity_status": collision.status,
+                        "reject_reason": collision.reason,
+                        "existing_guest_id": collision.existing_guest_id,
+                        "existing_guest_name": (
+                            collision.existing_guest.name
+                            if collision.existing_guest is not None
+                            else ""
+                        ),
+                        "face_photo_saved": False,
+                        "updated_fields": [],
+                    }
+                )
+                continue
+
+            mrz_mismatches = validate_person_against_mrz(person)
+            if mrz_mismatches:
+                emit_identity_collision_audit(
+                    reservation_id=reservation.pk,
+                    job_id=job.pk,
+                    existing_guest_id=guest.pk,
+                    target_guest_id=guest.pk,
+                    document_number=person_document_number(person),
+                    reason=REASON_MRZ_INCONSISTENT,
+                )
+                identity_outcomes.append(
+                    {
+                        "person_index": idx,
+                        "guest_id": guest.pk,
+                        "reservation_id": reservation.pk,
+                        "identity_status": REASON_MRZ_INCONSISTENT,
+                        "reject_reason": REASON_MRZ_INCONSISTENT,
+                        "mrz_mismatches": mrz_mismatches,
+                        "face_photo_saved": False,
+                        "updated_fields": [],
+                    }
+                )
+                continue
+
+            try:
+                with transaction.atomic():
+                    result = _apply_person_to_guest(
+                        person=person,
+                        person_index=idx,
+                        guest=guest,
+                        reservation=reservation,
+                        images=images,
+                        device_id=device_id or job.device_id,
+                    )
+            except IntegrityError:
+                reservation.refresh_from_db()
+                collision = classify_identity_collision(
+                    reservation=reservation,
+                    person=person,
+                    target_guest_id=guest.pk,
+                )
+                if collision.status == "none":
+                    collision = classify_identity_collision(
+                        reservation=reservation,
+                        person=person,
+                        target_guest_id=None,
+                    )
+                reason = collision.reason or REASON_DUPLICATE_IDENTITY
+                emit_identity_collision_audit(
+                    reservation_id=reservation.pk,
+                    job_id=job.pk,
+                    existing_guest_id=collision.existing_guest_id,
+                    target_guest_id=guest.pk,
+                    document_number=person_document_number(person),
+                    reason=reason,
+                )
+                identity_outcomes.append(
+                    {
+                        "person_index": idx,
+                        "guest_id": collision.existing_guest_id or guest.pk,
+                        "reservation_id": reservation.pk,
+                        "identity_status": collision.status
+                        if collision.status != "none"
+                        else REASON_DUPLICATE_IDENTITY,
+                        "reject_reason": reason,
+                        "existing_guest_id": collision.existing_guest_id,
+                        "existing_guest_name": (
+                            collision.existing_guest.name
+                            if collision.existing_guest is not None
+                            else ""
+                        ),
+                        "face_photo_saved": False,
+                        "updated_fields": [],
+                    }
+                )
+                continue
+
             if request is not None:
                 result["face_photo_url"] = guest_face_photo_url(guest, request)
             applied.append(result)
 
-        if applied:
+        outcomes = applied + identity_outcomes
+        if outcomes:
             merged = list(job.applied_result or [])
-            merged_by_guest = {int(item["guest_id"]): item for item in merged if item.get("guest_id")}
-            for item in applied:
-                merged_by_guest[int(item["guest_id"])] = item
-            job.applied_result = list(merged_by_guest.values())
+            # Identity rejects keyed by person_index; successful applies by guest_id.
+            by_key: dict[str, dict] = {}
+            for item in merged:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("identity_status"):
+                    by_key[f"person:{item.get('person_index')}"] = item
+                elif item.get("guest_id"):
+                    by_key[f"guest:{item['guest_id']}"] = item
+            for item in outcomes:
+                if item.get("identity_status"):
+                    by_key[f"person:{item.get('person_index')}"] = item
+                elif item.get("guest_id"):
+                    by_key[f"guest:{item['guest_id']}"] = item
+            job.applied_result = list(by_key.values())
 
         if allow_partial and ctx.is_reservation_scoped:
             if completeness is None:
@@ -529,12 +682,17 @@ def apply_document_intake_job(
                     matches=matches,
                     images=images,
                 )
-            if completeness.is_complete:
+            if completeness.is_complete and applied:
                 job.status = DocumentIntakeJobStatus.APPLIED
             else:
                 job.status = DocumentIntakeJobStatus.DONE
-        else:
+        elif applied and not identity_outcomes:
             job.status = DocumentIntakeJobStatus.APPLIED
+        elif applied:
+            job.status = DocumentIntakeJobStatus.APPLIED
+        else:
+            # Identity-only outcomes: keep DONE so poll can surface identity_status.
+            job.status = DocumentIntakeJobStatus.DONE
         job.save(update_fields=["applied_result", "status", "updated_at"])
 
     if whatsapp_reply:
@@ -542,7 +700,7 @@ def apply_document_intake_job(
 
         maybe_send_document_apply_whatsapp_reply(ctx, applied=applied)
 
-    return applied
+    return applied + identity_outcomes
 
 
 
@@ -782,7 +940,7 @@ def _guest_updates_from_payload(raw_payload: dict) -> tuple[dict, dict]:
     if last_name:
         updates["last_name"] = last_name
 
-    doc_no = as_str("broj_dokumenta")
+    doc_no = normalize_document_number(as_str("broj_dokumenta"))
     if doc_no:
         updates["document_number"] = doc_no
 

@@ -35,5 +35,6 @@ Reference maturation path: eVisitor v1 → [ADR 0016: External Integration Patte
 | ADR | Title | Notes |
 |-----|-------|-------|
 | [0016](0016-external-integration-pattern.md) | External Integration Pattern | Stable standard for outbound integrations |
+| [0017](0017-document-intake-identity-consistency.md) | Document intake identity consistency | Cross-job identity hard match + UNIQUE |
 
 Other ADRs in this folder decide specific modules or evolutions; they are not automatically “platform standards” until they have been proven and explicitly marked as such.

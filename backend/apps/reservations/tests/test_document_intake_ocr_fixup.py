@@ -75,6 +75,9 @@ class DocumentIntakeOcrFixupTests(TestCase):
     def test_normalize_document_number_strips_spaces(self):
         self.assertEqual(normalize_document_number("DGN 767255"), "DGN767255")
 
+    def test_normalize_document_number_strips_hyphen_and_case(self):
+        self.assertEqual(normalize_document_number("ab-123 456"), "AB123456")
+
     def test_german_id_mrz_surname_not_birth_name(self):
         mrz = ["IDD<L5M4ZJ1450<<<<<<<<<<<<<<<", "8403179<3307102D<2108<8", "ENGELAND<JASMIN<<<<<<<<<<<<<"]
         self.assertEqual(_surname_from_mrz_lines(mrz), "ENGELAND")

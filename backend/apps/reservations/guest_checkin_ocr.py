@@ -210,6 +210,8 @@ def serialize_public_job(
     person = persons[0] if persons and isinstance(persons[0], dict) else {}
     matches = job.matches if isinstance(job.matches, list) else []
     match = matches[0] if matches and isinstance(matches[0], dict) else {}
+    applied_rows = job.applied_result if isinstance(job.applied_result, list) else []
+    applied0 = applied_rows[0] if applied_rows and isinstance(applied_rows[0], dict) else {}
 
     payload: dict[str, Any] = {
         "job_id": job.pk,
@@ -219,10 +221,32 @@ def serialize_public_job(
         "processed_at": job.processed_at.isoformat() if job.processed_at else None,
     }
 
+    identity_status = (
+        applied0.get("identity_status")
+        or match.get("identity_status")
+        or ""
+    )
+    if identity_status:
+        payload["identity_status"] = identity_status
+        existing_id = applied0.get("existing_guest_id") or match.get("existing_guest_id")
+        if existing_id:
+            payload["existing_guest_id"] = int(existing_id)
+        existing_name = (
+            applied0.get("existing_guest_name") or match.get("existing_guest_name") or ""
+        )
+        if existing_name:
+            payload["existing_guest_name"] = existing_name
+        if identity_status == "duplicate_identity" and existing_id:
+            payload["detail"] = f"Document already belongs to guest #{existing_id}"
+        elif identity_status == "already_processed":
+            payload["detail"] = "Document already processed for this guest"
+        elif identity_status == "mrz_inconsistent":
+            payload["detail"] = "OCR fields inconsistent with MRZ"
+
     if job.status in {
         DocumentIntakeJobStatus.DONE,
         DocumentIntakeJobStatus.APPLIED,
-    } and person:
+    } and person and not identity_status:
         payload["guest_preview"] = person_to_guest_preview(person)
         payload["field_confidence"] = build_field_confidence(
             person=person,

@@ -210,6 +210,25 @@ export function GuestCheckInWizard({ token }: Props) {
   );
 
   const applyJobResult = useCallback((data: GuestCheckInJobResponse) => {
+    if (data.identity_status === "duplicate_identity") {
+      setError(
+        data.detail ||
+          (data.existing_guest_name
+            ? `Document already belongs to ${data.existing_guest_name}`
+            : t("scanFailed")),
+      );
+      setEntryMode("form");
+      return;
+    }
+    if (data.identity_status === "already_processed") {
+      setError(data.detail || "Document already processed for this guest");
+    } else if (data.identity_status === "mrz_inconsistent") {
+      setError(data.detail || t("scanFailed"));
+      setEntryMode("form");
+      return;
+    } else {
+      setError("");
+    }
     if (data.field_confidence) {
       setFieldConfidence(data.field_confidence);
     }
@@ -244,7 +263,7 @@ export function GuestCheckInWizard({ token }: Props) {
       });
     }
     setEntryMode("form");
-  }, [session]);
+  }, [session, t]);
 
   const pollJob = useCallback(
     async (jobId: number) => {
@@ -255,7 +274,8 @@ export function GuestCheckInWizard({ token }: Props) {
         detail?: string;
         error?: string;
       };
-      if (!res.ok) {
+      // 409 duplicate_identity still carries a useful payload for the UI.
+      if (!res.ok && data.identity_status !== "duplicate_identity") {
         throw new Error(data.detail || data.error || t("scanFailed"));
       }
       return data;

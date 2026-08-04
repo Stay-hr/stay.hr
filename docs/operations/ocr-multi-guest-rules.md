@@ -15,11 +15,30 @@ Operativna pravila za WhatsApp / Hospira batch OCR (`document-intake` API). Ažu
 Kad `DocumentIntakeJob.source == web_guest` i `guest_checkin_slot_position = N`:
 
 1. Gost uploada slike na `POST /public/check-in/{token}/slots/{N}/documents/`.
-2. OCR pipeline isti kao batch — ali matching **ne koristi** fuzzy ime / „Novi gost”.
-3. `person_index=0` se **forsira** na gosta na slotu `N` (`expected_document_slots(reservation)[N-1]`).
-4. Poll `GET /public/check-in/{token}/jobs/{id}/` auto-apply kad je job `done`.
+2. OCR pipeline isti kao batch — ali matching **ne koristi** fuzzy ime / „Novi gost” dok identity ne prođe.
+3. Prije slot-force: identity classify (`document_number` / MRZ na rezervaciji).
+   - isti gost već ima identitet → `already_processed` (HTTP 200, bez Guest/IdDocument/face write)
+   - drugi gost ima isti dokument → `duplicate_identity` (poll **HTTP 409**)
+4. Tek ako nema collisiona, `person_index=0` se forsira na gosta na slotu `N`.
+5. Poll `GET /public/check-in/{token}/jobs/{id}/` auto-apply kad je job `done` (pod `select_for_update` na rezervaciji).
 
-Ovo sprječava bug tipa „Novi gost (1. odrasli)” kad primarni gost nema ime u OCR-u.
+Vidi [ADR 0017](../architecture/adr/0017-document-intake-identity-consistency.md).
+
+---
+
+## Identity confidence (matching prioritet)
+
+Jedan redoslijed za sve intake putanje (`IDENTITY_MATCH_ORDER`):
+
+1. `document_number` (normaliziran — `normalize_document_number`, jedina funkcija)
+2. MRZ
+3. OCR name + DOB
+4. fuzzy name
+5. empty / „Novi gost” slot
+
+Viši nivo je **terminalan** (STOP). Prazan slot nije kandidat ako identitet već postoji na rezervaciji. Partial UNIQUE `(reservation, document_number)` na `Guest` je DB safety net; `IntegrityError` → `duplicate_identity` (nikad 500).
+
+**Deploy / monitoring / rollback:** vidi [ADR 0017 — Deploy checklist](../architecture/adr/0017-document-intake-identity-consistency.md#deploy-checklist-operativa).
 
 ---
 
@@ -46,9 +65,11 @@ Create path mora odmah postaviti `tenant_id=reservation.tenant_id` (job, session
 3. **non_document** — ugovori, pisma, članice (ADAC) označavaju se u `images[]`; ne ulaze u `persons[]`.
 4. **Orphan re-OCR** — kad `ocr_under_extracted` (manje osoba nego odrasli, ili ≥2 neiskorištene slike), drugi LLM poziv samo na neiskorištene indekse.
 5. **Partial apply** — prepoznati gosti se apply-aju odmah; job ostaje `DONE` dok svi odrasli nemaju dokument.
-6. **Matching** — po osobi:
-   - prvo **ime** (fuzzy match na gosta rezervacije),
-   - zatim **prazan slot** — preferira **„Novi gost”** placeholder, ne primary booker bez dokumenta,
+6. **Matching** — po osobi (identity confidence):
+   - prvo **document_number** (terminalni hard match),
+   - zatim **MRZ**,
+   - zatim **ime + DOB**, zatim fuzzy ime,
+   - zatim **prazan slot** — preferira **„Novi gost”** placeholder,
    - unutar batcha **ne dodjeljuje isti guest_id** dvjema osobama.
 7. **auto_apply** — primjenjuje se kad je kandidat jedinstven, ili kad je cijeli batch očito na **jednu rezervaciju** (name match na primary + suputnici na istoj rezervaciji).
 8. **Guest slotovi pri apply** — `max(adults_count, persons_count, broj OCR osoba)`; ako treba, kreira se dodatni **Novi gost**.

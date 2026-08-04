@@ -132,6 +132,10 @@ export type GuestCheckInJobResponse = {
   guest_preview?: GuestCheckInGuestFields;
   field_confidence?: FieldConfidence;
   applied?: boolean;
+  identity_status?: string;
+  existing_guest_id?: number;
+  existing_guest_name?: string;
+  detail?: string;
   effective_status?: string;
   ready_slots?: number;
   can_complete?: boolean;

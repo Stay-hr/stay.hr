@@ -143,6 +143,45 @@ class GuestCheckInOrchestrator:
         }
 
         guest = _guest_at_position(reservation, position)
+
+        # Identity collision on manual document_number PATCH (same normalizer as OCR).
+        if "document_number" in fields and fields.get("document_number"):
+            from apps.reservations.document_intake_identity import (
+                REASON_DUPLICATE_IDENTITY,
+                classify_identity_collision,
+                emit_identity_collision_audit,
+                person_document_number,
+            )
+            from apps.reservations.document_intake_ocr_fixup import (
+                normalize_document_number,
+            )
+
+            normalized = normalize_document_number(str(fields.get("document_number") or ""))
+            fields = {**fields, "document_number": normalized}
+            collision = classify_identity_collision(
+                reservation=reservation,
+                person={"document_number": normalized},
+                target_guest_id=guest.pk,
+            )
+            if collision.status == "duplicate_identity":
+                emit_identity_collision_audit(
+                    reservation_id=reservation.pk,
+                    job_id=None,
+                    existing_guest_id=collision.existing_guest_id,
+                    target_guest_id=guest.pk,
+                    document_number=person_document_number(
+                        {"document_number": normalized}
+                    ),
+                    reason=REASON_DUPLICATE_IDENTITY,
+                )
+                raise GuestCheckInOrchestratorError(
+                    "duplicate_identity",
+                    message=(
+                        f"Document already belongs to guest #{collision.existing_guest_id}"
+                    ),
+                    http_status=409,
+                )
+
         _apply_guest_fields(guest, fields)
         touch_session_activity(session)
 
