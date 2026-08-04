@@ -264,11 +264,21 @@ def ingest_parsed_email(
         channel="email",
     )
     if arrival_result is None:
-        maybe_handle_guest_parking_inbound(
+        from apps.communications.guest_invoice_inbound import (
+            maybe_handle_guest_invoice_inbound,
+        )
+
+        invoice_result = maybe_handle_guest_invoice_inbound(
             reservation,
             parsed.body_text,
             channel="email",
         )
+        if invoice_result is None:
+            maybe_handle_guest_parking_inbound(
+                reservation,
+                parsed.body_text,
+                channel="email",
+            )
 
     touch_reservation_version(
         reservation.pk,

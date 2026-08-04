@@ -11,17 +11,36 @@ from django.utils import timezone
 
 from apps.billing.models import Invoice
 from apps.communications.guest_email import (
-    _guest_recipient,
     _language_for_reservation,
     _sender_for_reservation,
     _smtp_connection_for_reservation,
+)
+from apps.communications.guest_email_quality import (
+    first_usable_invoice_email,
+    invoice_email_candidates,
+    is_ota_relay_email,
 )
 
 logger = logging.getLogger(__name__)
 
 
 def resolve_invoice_recipient(reservation) -> str | None:
-    return _guest_recipient(reservation)
+    usable = first_usable_invoice_email(reservation)
+    if usable:
+        return usable
+    for candidate in invoice_email_candidates(reservation):
+        if is_ota_relay_email(candidate):
+            logger.info(
+                "invoice_email_skipped_relay reservation_id=%s",
+                reservation.pk,
+                extra={
+                    "event": "invoice_email_skipped_relay",
+                    "reservation_id": reservation.pk,
+                    "recipient": candidate,
+                },
+            )
+            break
+    return None
 
 
 def _public_invoice_urls(invoice: Invoice) -> tuple[str, str]:
@@ -79,4 +98,16 @@ def send_invoice_email(invoice_id: int) -> dict:
     invoice.email_recipient = recipient
     invoice.email_sent_at = timezone.now()
     invoice.save(update_fields=["email_recipient", "email_sent_at", "updated_at"])
+    logger.info(
+        "invoice_sent invoice_id=%s reservation_id=%s recipient=%s",
+        invoice_id,
+        reservation.pk,
+        recipient,
+        extra={
+            "event": "invoice_sent",
+            "invoice_id": invoice_id,
+            "reservation_id": reservation.pk,
+            "recipient": recipient,
+        },
+    )
     return {"status": "sent", "invoice_id": invoice_id, "recipient": recipient}

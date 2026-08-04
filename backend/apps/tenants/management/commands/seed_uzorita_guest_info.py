@@ -58,6 +58,7 @@ class Command(BaseCommand):
         prop.after_hours_contact_phone = "+385998388513"
         prop.guest_arrival_auto_reply_enabled = True
         prop.guest_parking_auto_reply_enabled = True
+        prop.guest_invoice_auto_reply_enabled = True
         # PR-C: key guide visible on Tuesdays only (Python weekday 1).
         prop.self_service_mode = SelfServiceMode.SCHEDULE
         prop.self_service_config = {"weekdays": [1]}
@@ -77,6 +78,7 @@ class Command(BaseCommand):
                 "after_hours_contact_phone",
                 "guest_arrival_auto_reply_enabled",
                 "guest_parking_auto_reply_enabled",
+                "guest_invoice_auto_reply_enabled",
                 "self_service_mode",
                 "self_service_config",
                 "updated_at",

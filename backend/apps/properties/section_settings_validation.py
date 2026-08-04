@@ -221,5 +221,12 @@ def validate_automation_settings_payload(data: dict[str, Any]) -> None:
             errors=errors,
         )
 
+    if "guest_invoice_auto_reply_enabled" in data:
+        _parse_bool_field(
+            data.get("guest_invoice_auto_reply_enabled"),
+            field="guest_invoice_auto_reply_enabled",
+            errors=errors,
+        )
+
     if errors:
         raise SectionSettingsValidationError(errors)

@@ -62,6 +62,9 @@ def get_automation_settings_dto(property: Property) -> dict[str, Any]:
         "guest_parking_auto_reply_enabled": bool(
             property.guest_parking_auto_reply_enabled
         ),
+        "guest_invoice_auto_reply_enabled": bool(
+            property.guest_invoice_auto_reply_enabled
+        ),
     }
 
 
@@ -71,6 +74,7 @@ def _diff_change_summary(before: dict[str, Any], after: dict[str, Any]) -> list[
         "after_hours_contact_phone",
         "guest_arrival_auto_reply_enabled",
         "guest_parking_auto_reply_enabled",
+        "guest_invoice_auto_reply_enabled",
     )
     return [key for key in keys if before.get(key) != after.get(key)]
 
@@ -126,6 +130,12 @@ class AutomationSettingsService:
                 default=True,
             )
             update_fields.append("guest_parking_auto_reply_enabled")
+        if "guest_invoice_auto_reply_enabled" in data:
+            locked.guest_invoice_auto_reply_enabled = _as_bool(
+                data.get("guest_invoice_auto_reply_enabled"),
+                default=True,
+            )
+            update_fields.append("guest_invoice_auto_reply_enabled")
 
         locked.settings_version = current_version + 1
         locked.save(update_fields=list(dict.fromkeys(update_fields)))

@@ -93,6 +93,11 @@ class Reservation(TenantScopedModel):
     )
     guest_stated_arrival_at = models.DateTimeField(null=True, blank=True)
     guest_stated_arrival_text = models.CharField(max_length=255, blank=True)
+    invoice_email_waiting_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When set, inbound capture waits for a single usable invoice email.",
+    )
     booking_payout_received_at = models.DateField(null=True, blank=True, db_index=True)
     booking_payout_id = models.CharField(max_length=64, blank=True, db_index=True)
     booking_payout_net = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)

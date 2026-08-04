@@ -24,6 +24,7 @@ from apps.integrations.channex.booking_room_mismatch import (
     flag_channex_ingest_room_warnings,
     should_preserve_units_on_channex_ingest,
 )
+from apps.communications.guest_email_quality import prefer_usable_invoice_email
 from apps.reservations.overbooking import flag_ingest_overbooking
 from apps.tenants.models import Tenant
 
@@ -331,6 +332,17 @@ def _upsert_reservation_from_revision(
     ):
         mapped_status = Reservation.Status.NO_SHOW
 
+    incoming_mail = str(customer.get("mail") or "").strip()
+    booker_email = incoming_mail
+    guest_email = incoming_mail
+    if existing is not None:
+        booker_email = prefer_usable_invoice_email(existing.booker_email, incoming_mail)
+        primary_guest = existing.guests.filter(is_primary=True).first()
+        if primary_guest is not None:
+            guest_email = prefer_usable_invoice_email(primary_guest.email, incoming_mail)
+        else:
+            guest_email = booker_email
+
     defaults: dict[str, Any] = {
         "property": property,
         "check_in": check_in,
@@ -338,7 +350,7 @@ def _upsert_reservation_from_revision(
         "status": mapped_status,
         "booking_status": str(attrs.get("status") or ""),
         "booker_name": _customer_name(customer),
-        "booker_email": str(customer.get("mail") or "").strip(),
+        "booker_email": booker_email,
         "booker_phone": normalize_booker_phone(str(customer.get("phone") or "")),
         "booker_country": _customer_country_iso2(customer),
         "booker_address": str(customer.get("address") or "").strip(),
@@ -460,7 +472,7 @@ def _upsert_reservation_from_revision(
             "first_name": first,
             "last_name": last,
             "name": _customer_name(customer),
-            "email": str(customer.get("mail") or "").strip(),
+            "email": guest_email,
             "phone": str(customer.get("phone") or "").strip()[:32],
             "address": str(customer.get("address") or "").strip(),
             "is_primary": True,

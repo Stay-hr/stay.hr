@@ -422,15 +422,25 @@ def process_channex_message_webhook(
             channel="booking",
         )
         if arrival_result is None:
-            from apps.communications.guest_parking_inbound import (
-                maybe_handle_guest_parking_inbound,
+            from apps.communications.guest_invoice_inbound import (
+                maybe_handle_guest_invoice_inbound,
             )
 
-            maybe_handle_guest_parking_inbound(
+            invoice_result = maybe_handle_guest_invoice_inbound(
                 reservation,
                 row.body,
                 channel="booking",
             )
+            if invoice_result is None:
+                from apps.communications.guest_parking_inbound import (
+                    maybe_handle_guest_parking_inbound,
+                )
+
+                maybe_handle_guest_parking_inbound(
+                    reservation,
+                    row.body,
+                    channel="booking",
+                )
     return {
         "message_id": row.channex_message_id,
         "created": created,

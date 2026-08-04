@@ -62,6 +62,13 @@ class Property(TenantScopedModel):
         default=True,
         help_text="Auto-reply when guest asks about parking (WhatsApp, email, Channex).",
     )
+    guest_invoice_auto_reply_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Auto-reply when guest asks for an invoice and capture a usable email "
+            "(WhatsApp, email, Channex). Checkout still issues/sends the invoice."
+        ),
+    )
     self_service_mode = models.CharField(
         max_length=16,
         choices=SelfServiceMode.choices,
