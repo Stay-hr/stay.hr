@@ -504,17 +504,29 @@ def process_inbound_message(message_id: int, *, profile_name: str = "") -> dict:
             if arrival_result is not None:
                 reply_result = arrival_result
             else:
-                from apps.communications.guest_parking_inbound import (
-                    maybe_handle_guest_parking_inbound,
+                from apps.communications.guest_invoice_inbound import (
+                    maybe_handle_guest_invoice_inbound,
                 )
 
-                parking_result = maybe_handle_guest_parking_inbound(
+                invoice_result = maybe_handle_guest_invoice_inbound(
                     reservation,
                     action_text,
                     channel="whatsapp",
                 )
-                if parking_result is not None:
-                    reply_result = parking_result
+                if invoice_result is not None:
+                    reply_result = invoice_result
+                else:
+                    from apps.communications.guest_parking_inbound import (
+                        maybe_handle_guest_parking_inbound,
+                    )
+
+                    parking_result = maybe_handle_guest_parking_inbound(
+                        reservation,
+                        action_text,
+                        channel="whatsapp",
+                    )
+                    if parking_result is not None:
+                        reply_result = parking_result
 
         if reply_result is None:
             if maintenance_active and reservation is not None:

@@ -4,6 +4,8 @@
 
 **Backend:** [`reception_guest_messages_views.py`](../../backend/apps/api/reception_guest_messages_views.py), [`guest_message_send.py`](../../backend/apps/communications/guest_message_send.py), [`guest_compose.py`](../../backend/apps/communications/guest_compose.py)
 
+**Invoice email capture (auto-reply):** [`invoice-email-capture.md`](invoice-email-capture.md)
+
 **Reception web referenca (gotovo):** [`GuestMessagesPanel.tsx`](../../web/reception/app/_components/GuestMessagesPanel.tsx)
 
 **Operativni runbook:** [`guest-messages-channels.md`](../operations/guest-messages-channels.md)

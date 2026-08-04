@@ -80,9 +80,10 @@ class ReservationVersionWriterHooksTestCase(TestCase):
         ).first()
         return row.version if row else 0
 
+    @patch("apps.communications.guest_invoice_inbound.maybe_handle_guest_invoice_inbound", return_value=None)
     @patch("apps.communications.guest_parking_inbound.maybe_handle_guest_parking_inbound")
     @patch("apps.communications.guest_arrival_inbound.maybe_handle_guest_arrival_inbound", return_value=None)
-    def test_email_inbound_touches_messages_version(self, _arrival, _parking):
+    def test_email_inbound_touches_messages_version(self, _arrival, _parking, _invoice):
         parsed = ParsedGuestEmail(
             message_id="email-hook-1",
             raw_from="Guest <guest@example.com>",

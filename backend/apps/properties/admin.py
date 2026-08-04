@@ -115,6 +115,7 @@ class PropertyAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
                     "after_hours_contact_phone",
                     "guest_arrival_auto_reply_enabled",
                     "guest_parking_auto_reply_enabled",
+                    "guest_invoice_auto_reply_enabled",
                     "self_service_mode",
                     "self_service_config",
                 ),

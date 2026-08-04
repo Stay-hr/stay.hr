@@ -16,12 +16,31 @@ from apps.communications.guest_email import (
     _sender_for_reservation,
     _smtp_connection_for_reservation,
 )
+from apps.communications.guest_email_quality import (
+    is_ota_relay_email,
+    is_usable_invoice_email,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def resolve_invoice_recipient(reservation) -> str | None:
-    return _guest_recipient(reservation)
+    recipient = _guest_recipient(reservation)
+    if not recipient:
+        return None
+    if not is_usable_invoice_email(recipient):
+        if is_ota_relay_email(recipient):
+            logger.info(
+                "invoice_email_skipped_relay reservation_id=%s",
+                reservation.pk,
+                extra={
+                    "event": "invoice_email_skipped_relay",
+                    "reservation_id": reservation.pk,
+                    "recipient": recipient,
+                },
+            )
+        return None
+    return recipient
 
 
 def _public_invoice_urls(invoice: Invoice) -> tuple[str, str]:
@@ -79,4 +98,16 @@ def send_invoice_email(invoice_id: int) -> dict:
     invoice.email_recipient = recipient
     invoice.email_sent_at = timezone.now()
     invoice.save(update_fields=["email_recipient", "email_sent_at", "updated_at"])
+    logger.info(
+        "invoice_sent invoice_id=%s reservation_id=%s recipient=%s",
+        invoice_id,
+        reservation.pk,
+        recipient,
+        extra={
+            "event": "invoice_sent",
+            "invoice_id": invoice_id,
+            "reservation_id": reservation.pk,
+            "recipient": recipient,
+        },
+    )
     return {"status": "sent", "invoice_id": invoice_id, "recipient": recipient}
