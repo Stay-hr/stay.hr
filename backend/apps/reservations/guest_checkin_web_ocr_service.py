@@ -167,11 +167,18 @@ def poll_and_apply_web_guest_job(
         persons = (job.ocr_result or {}).get("persons") or []
         matches = job.matches or []
         if persons and matches:
+            # Lock reservation for identity classify / apply race safety.
+            Reservation.objects.select_for_update().get(pk=reservation.pk)
             applied = apply_document_intake_job(
                 ctx,
                 whatsapp_reply=False,
             )
-            if applied:
+            successful = [
+                row
+                for row in applied
+                if isinstance(row, dict) and not row.get("identity_status")
+            ]
+            if successful:
                 person = persons[0] if isinstance(persons[0], dict) else {}
                 match = matches[0] if matches and isinstance(matches[0], dict) else {}
                 confidence = build_field_confidence(
@@ -180,7 +187,9 @@ def poll_and_apply_web_guest_job(
                     match=match,
                 )
                 merged = list(job.applied_result or [])
-                if merged and isinstance(merged[0], dict):
+                if merged and isinstance(merged[0], dict) and not merged[0].get(
+                    "identity_status"
+                ):
                     merged[0] = {**merged[0], "field_confidence": confidence}
                     job.applied_result = merged
                     job.save(update_fields=["applied_result", "updated_at"])

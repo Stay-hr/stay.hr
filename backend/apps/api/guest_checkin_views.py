@@ -340,4 +340,7 @@ class GuestCheckInJobPollView(APIView):
             **serialize_public_job(job, reservation=reservation, position=position),
             "slot": _serialize_web_guest_slot(reservation=reservation, position=position),
         }
-        return Response(payload)
+        http_status = status.HTTP_200_OK
+        if payload.get("identity_status") == "duplicate_identity":
+            http_status = status.HTTP_409_CONFLICT
+        return Response(payload, status=http_status)

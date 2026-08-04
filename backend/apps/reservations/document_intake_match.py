@@ -1,6 +1,12 @@
 """Match OCR persons to active reservations and guest slots.
 
-# TODO(ADR): score-based guest matching (+60 first name, +30 surname, +20 dob, +20 document number)
+Identity confidence order (terminal STOP at first hit) — ADR 0017:
+
+1. document_number (highest)
+2. MRZ
+3. OCR name + DOB
+4. fuzzy name
+5. empty slot (lowest)
 """
 
 from __future__ import annotations
@@ -10,13 +16,13 @@ from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 
 from apps.reservations.booking_xls_import import (
     _guest_display_name,
     _normalize_guest_name_key,
 )
 from apps.reservations.guest_slots import PLACEHOLDER_NAME, is_unfilled_guest
-from apps.reservations.document_intake_ocr_fixup import normalize_document_number
 from apps.reservations.models import Guest, Reservation
 
 ZAGREB = ZoneInfo("Europe/Zagreb")
@@ -26,6 +32,18 @@ ACTIVE_STATUSES = frozenset(
         Reservation.Status.CHECKED_IN,
     }
 )
+
+# Explicit priority ladder — do not reorder casually.
+IDENTITY_MATCH_ORDER = (
+    "document_number",
+    "mrz",
+    "name_dob",
+    "name",
+    "unfilled_slot",
+)
+
+_HARD_IDENTITY_TYPES = frozenset({"document_number", "mrz"})
+_STRONG_MATCH_TYPES = frozenset({"document_number", "mrz", "name_dob", "name"})
 
 
 def _person_full_name(person: dict) -> str:
@@ -341,7 +359,7 @@ def _reservations_with_name_matches(results: list[dict]) -> set[int]:
     ids: set[int] = set()
     for result in results:
         for candidate in result.get("candidates") or []:
-            if candidate.get("match_type") == "name":
+            if candidate.get("match_type") in {"name", "name_dob", "document_number", "mrz"}:
                 ids.add(int(candidate["reservation_id"]))
     return ids
 
@@ -400,22 +418,91 @@ def _apply_batch_reservation_heuristic(
 
 
 
-def _guest_by_document_number(
+def _person_dob(person: dict):
+    raw = str(person.get("date_of_birth") or "").strip()
+    if not raw:
+        return None
+    return parse_date(raw)
+
+
+def _guest_by_name_and_dob(
     reservation: Reservation,
+    keys: set[str],
     person: dict,
     *,
     exclude: set[int] | None = None,
 ) -> Guest | None:
-    doc_no = normalize_document_number(str(person.get("document_number") or ""))
-    if not doc_no:
+    """Priority 3: name keys + matching date_of_birth when both sides have DOB."""
+    person_dob = _person_dob(person)
+    if person_dob is None or not keys:
         return None
     blocked = exclude or set()
     for guest in reservation.guests.all():
         if guest.pk in blocked:
             continue
-        if normalize_document_number(guest.document_number) == doc_no:
+        if guest.date_of_birth is None:
+            continue
+        if guest.date_of_birth != person_dob:
+            continue
+        if _guest_name_matches(guest, keys):
             return guest
     return None
+
+
+def _match_guest_for_reservation(
+    reservation: Reservation,
+    person: dict,
+    *,
+    keys: set[str],
+    person_surnames: set[str],
+    exclude: set[int],
+    scoped_single_reservation: bool,
+) -> tuple[Guest | None, str]:
+    """Apply IDENTITY_MATCH_ORDER; hard identity is terminal (no lower steps)."""
+    from apps.reservations.document_intake_identity import (
+        find_guest_by_identity,
+        record_hard_match_metric,
+    )
+
+    guest, match_type = find_guest_by_identity(
+        reservation, person, exclude=exclude
+    )
+    if guest is not None:
+        record_hard_match_metric(match_type, reservation_id=reservation.pk)
+        return guest, match_type
+
+    guest = _guest_by_name_and_dob(
+        reservation, keys, person, exclude=exclude
+    )
+    if guest is not None:
+        return guest, "name_dob"
+
+    if keys:
+        guest = _fuzzy_guest_match(
+            reservation,
+            keys,
+            person=person,
+            person_surnames=person_surnames,
+            exclude=exclude,
+        )
+        if guest is not None:
+            return guest, "name"
+
+    guest = _find_unfilled_slot(reservation, exclude=exclude)
+    if guest is not None:
+        if (
+            not scoped_single_reservation
+            and not _unfilled_slot_allowed_for_person(
+                reservation,
+                person,
+                keys,
+                person_surnames,
+            )
+        ):
+            return None, ""
+        return guest, "unfilled_slot"
+
+    return None, ""
 
 
 def match_persons_to_guests(
@@ -446,44 +533,15 @@ def match_persons_to_guests(
         candidates: list[dict] = []
 
         for reservation in reservations:
-            guest = None
-            match_type = ""
-            if len(reservations) == 1:
-                guest = _guest_by_document_number(
-                    reservations[0],
-                    person,
-                    exclude=assigned_guest_ids,
-                )
-                if guest:
-                    match_type = "document_number"
-            if keys:
-                guest = _fuzzy_guest_match(
-                    reservation,
-                    keys,
-                    person=person,
-                    person_surnames=person_surnames,
-                    exclude=assigned_guest_ids,
-                )
-                if guest:
-                    match_type = "name"
+            guest, match_type = _match_guest_for_reservation(
+                reservation,
+                person,
+                keys=keys,
+                person_surnames=person_surnames,
+                exclude=assigned_guest_ids,
+                scoped_single_reservation=scoped_single_reservation,
+            )
             if guest is None:
-                guest = _find_unfilled_slot(reservation, exclude=assigned_guest_ids)
-                if guest:
-                    match_type = "unfilled_slot"
-
-            if guest is None:
-                continue
-
-            if (
-                match_type == "unfilled_slot"
-                and not scoped_single_reservation
-                and not _unfilled_slot_allowed_for_person(
-                    reservation,
-                    person,
-                    keys,
-                    person_surnames,
-                )
-            ):
                 continue
 
             candidates.append(
@@ -497,16 +555,16 @@ def match_persons_to_guests(
                 }
             )
 
-        name_matches = [
-            c for c in candidates if c.get("match_type") in {"name", "document_number"}
+        strong_matches = [
+            c for c in candidates if c.get("match_type") in _STRONG_MATCH_TYPES
         ]
-        if name_matches:
-            # Jedinstveni name match — ne miješaj s praznim slotovima drugih rezervacija.
-            candidates = name_matches
+        if strong_matches:
+            # Prefer identity/name over empty slots on other reservations.
+            candidates = strong_matches
 
         confidence = _confidence_for_candidates(candidates, keys)
-        if len(name_matches) == 1:
-            best = name_matches[0]
+        if len(strong_matches) == 1:
+            best = strong_matches[0]
             auto_apply = True
         elif len(candidates) == 1:
             best = candidates[0]
@@ -529,6 +587,7 @@ def match_persons_to_guests(
                 "guest_id": best["guest_id"] if best else None,
                 "guest_name": best["guest_name"] if best else "",
                 "reservation_label": best["reservation_label"] if best else "",
+                "match_type": best.get("match_type") if best else "",
             }
         )
 
@@ -579,14 +638,12 @@ def _reservation_label(reservation: Reservation) -> str:
 def _confidence_for_candidates(candidates: list[dict], keys: set[str]) -> str:
     if not candidates:
         return "none"
-    if len(candidates) == 1 and candidates[0].get("match_type") in {"name", "document_number"}:
+    if len(candidates) == 1 and candidates[0].get("match_type") in _STRONG_MATCH_TYPES:
         return "high"
     if len(candidates) == 1:
         return "medium"
-    name_matches = [
-        c for c in candidates if c.get("match_type") in {"name", "document_number"}
-    ]
-    if len(name_matches) == 1:
+    strong = [c for c in candidates if c.get("match_type") in _STRONG_MATCH_TYPES]
+    if len(strong) == 1:
         return "high"
     return "low"
 

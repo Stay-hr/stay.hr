@@ -251,6 +251,11 @@ class Guest(TenantScopedModel):
                 condition=models.Q(legacy_id__isnull=False),
                 name="reservations_guest_unique_tenant_legacy_id",
             ),
+            models.UniqueConstraint(
+                fields=["reservation", "document_number"],
+                condition=~models.Q(document_number=""),
+                name="reservations_guest_unique_doc_per_reservation",
+            ),
         ]
 
     def __str__(self) -> str:

@@ -274,4 +274,9 @@ def fixup_document_ocr_result(ocr_result: dict) -> dict:
 
 
 def normalize_document_number(value: str) -> str:
-    return re.sub(r"\s+", "", str(value or "").upper())
+    """Canonical document number for identity compare / storage.
+
+    Sole normalizer for intake identity — use everywhere (match, collision,
+    migration, API validation). ``AB-123456``, ``ab 123456`` → ``AB123456``.
+    """
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
