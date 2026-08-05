@@ -229,17 +229,15 @@ export default function TimelinePage() {
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className="w-[3.25rem] text-right text-sm tabular-nums text-muted"
+                          title={arrivalLabel ? arrivalTitle : undefined}
+                        >
+                          {arrivalLabel ?? ""}
+                        </span>
                         <span className={`badge ${reservationStatusClass(r.status)}`}>
                           {statusLabel(r.status)}
                         </span>
-                        {arrivalLabel ? (
-                          <span
-                            className="text-sm tabular-nums text-muted"
-                            title={arrivalTitle}
-                          >
-                            {arrivalLabel}
-                          </span>
-                        ) : null}
                       </div>
                     </Link>
                   </li>
