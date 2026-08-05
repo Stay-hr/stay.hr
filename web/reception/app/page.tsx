@@ -17,6 +17,7 @@ import {
   addMonthsIso,
   startOfIsoWeekIso,
   startOfMonthIso,
+  formatArrivalTime,
   todayIso,
 } from "@/lib/utils";
 
@@ -202,28 +203,46 @@ export default function TimelinePage() {
               {monthLabel(day)} · {t("arrivalOn", { date: day })}
             </h2>
             <ul className="space-y-2">
-              {items.map((r) => (
-                <li key={r.id}>
-                  <Link
-                    href={`/reservations/${r.id}`}
-                    className="card card-hover flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2 font-semibold text-stay-navy">
-                        <CountryFlag iso2={r.primary_guest_nationality_iso2} />
-                        <span>{r.primary_guest_name || r.room_name}</span>
+              {items.map((r) => {
+                const arrivalLabel = r.expected_arrival_at
+                  ? formatArrivalTime(r.expected_arrival_at)
+                  : null;
+                const statedText = r.guest_stated_arrival_text?.trim() || "";
+                const arrivalTitle =
+                  statedText && statedText !== arrivalLabel ? statedText : undefined;
+                return (
+                  <li key={r.id}>
+                    <Link
+                      href={`/reservations/${r.id}`}
+                      className="card card-hover flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2 font-semibold text-stay-navy">
+                          <CountryFlag iso2={r.primary_guest_nationality_iso2} />
+                          <span>{r.primary_guest_name || r.room_name}</span>
+                        </div>
+                        <div className="text-sm text-muted">
+                          {r.room_name} · {r.check_in_date} → {r.check_out_date} ·{" "}
+                          {tc("guestsCount", { count: r.guests_count })}
+                        </div>
                       </div>
-                      <div className="text-sm text-muted">
-                        {r.room_name} · {r.check_in_date} → {r.check_out_date} ·{" "}
-                        {tc("guestsCount", { count: r.guests_count })}
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className={`badge ${reservationStatusClass(r.status)}`}>
+                          {statusLabel(r.status)}
+                        </span>
+                        {arrivalLabel ? (
+                          <span
+                            className="text-sm tabular-nums text-muted"
+                            title={arrivalTitle}
+                          >
+                            {arrivalLabel}
+                          </span>
+                        ) : null}
                       </div>
-                    </div>
-                    <span className={`badge ${reservationStatusClass(r.status)}`}>
-                      {statusLabel(r.status)}
-                    </span>
-                  </Link>
-                </li>
-              ))}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </section>
             ))

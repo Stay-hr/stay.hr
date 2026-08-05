@@ -32,6 +32,9 @@ export type Reservation = {
   guests_count: number;
   primary_guest_name: string;
   primary_guest_nationality_iso2: string;
+  expected_arrival_at?: string;
+  guest_stated_arrival_at?: string | null;
+  guest_stated_arrival_text?: string;
 };
 
 export type Room = {

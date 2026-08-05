@@ -43,3 +43,13 @@ export function flagClass(iso2?: string | null): string | null {
   if (!/^[a-z]{2}$/.test(cc)) return null;
   return cc;
 }
+
+/** Property-local HH:mm for arrival times (backend is source of truth). */
+export function formatArrivalTime(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: PROPERTY_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
+}
