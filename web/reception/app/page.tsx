@@ -204,9 +204,11 @@ export default function TimelinePage() {
             </h2>
             <ul className="space-y-2">
               {items.map((r) => {
-                const arrivalLabel = r.expected_arrival_at
-                  ? formatArrivalTime(r.expected_arrival_at)
-                  : null;
+                // Arrival time is only operationally useful while still expected.
+                const arrivalLabel =
+                  r.status === "expected" && r.expected_arrival_at
+                    ? formatArrivalTime(r.expected_arrival_at)
+                    : null;
                 const statedText = r.guest_stated_arrival_text?.trim() || "";
                 const arrivalTitle =
                   statedText && statedText !== arrivalLabel ? statedText : undefined;
