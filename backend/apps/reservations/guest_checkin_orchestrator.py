@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from django.db import transaction
+from django.db.models import F
 
+from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
 from apps.reservations.checkin_readiness import (
     CheckInReadinessDTO,
     build_checkin_readiness,
@@ -13,9 +15,13 @@ from apps.reservations.checkin_readiness import (
     readiness_snapshot,
     slot_validation_results,
 )
-from apps.reservations.document_expectations import expected_document_slots
+from apps.reservations.document_expectations import (
+    booked_adults_ceiling,
+    expected_document_slots,
+)
 from apps.reservations.guest_checkin_events import (
     emit_guest_checkin_link_regenerated,
+    emit_guest_checkin_occupancy_changed,
     emit_guest_session_completed,
     emit_guest_session_ready,
     emit_guest_slot_ready,
@@ -29,9 +35,9 @@ from apps.reservations.guest_checkin_session import (
     regenerate_session,
     touch_session_activity,
 )
-from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
-from apps.reservations.guest_validation import SlotReadinessStatus
-from apps.reservations.models import Guest, GuestCheckInSession, GuestCheckInSessionStatus, Reservation
+from apps.reservations.guest_slots import remove_unfilled_secondary_guests
+from apps.reservations.guest_validation import GuestValidator, SlotReadinessStatus
+from apps.reservations.models import Guest, GuestCheckInSession, Reservation
 
 _GUEST_PATCHABLE_FIELDS = frozenset(
     {
@@ -61,10 +67,19 @@ _GUEST_PATCHABLE_FIELDS = frozenset(
 
 
 class GuestCheckInOrchestratorError(Exception):
-    def __init__(self, code: str, message: str = "", *, http_status: int = 400):
+    def __init__(
+        self,
+        code: str,
+        message: str = "",
+        *,
+        http_status: int = 400,
+        payload: dict | None = None,
+    ):
         super().__init__(message or code)
         self.code = code
+        self.message = message
         self.http_status = http_status
+        self.payload = payload or {}
 
 
 @dataclass(frozen=True)
@@ -77,6 +92,20 @@ class EnsureSessionResult:
 class PatchSlotResult:
     readiness: CheckInReadinessDTO
     access: SessionAccessResult
+
+
+@dataclass(frozen=True)
+class CommitSlotResult:
+    readiness: CheckInReadinessDTO
+    access: SessionAccessResult
+    position: int
+
+
+@dataclass(frozen=True)
+class OccupancyResult:
+    readiness: CheckInReadinessDTO
+    access: SessionAccessResult
+    session: GuestCheckInSession
 
 
 @dataclass(frozen=True)
@@ -209,9 +238,136 @@ class GuestCheckInOrchestrator:
 
     @staticmethod
     @transaction.atomic
+    def commit_slot(
+        session: GuestCheckInSession,
+        reservation: Reservation,
+        *,
+        position: int,
+        ops_version: int | None,
+        require_ops_version: bool = True,
+    ) -> CommitSlotResult:
+        access = evaluate_session_access(session, reservation)
+        if not access.allowed:
+            raise GuestCheckInOrchestratorError(
+                access.gate_status,
+                http_status=access.http_status,
+            )
+        _require_ops_version(
+            session, ops_version, required=require_ops_version
+        )
+
+        guest = _guest_at_position(reservation, position)
+        validation = GuestValidator.validate(guest, position=position)
+        if validation.status != SlotReadinessStatus.READY:
+            raise GuestCheckInOrchestratorError(
+                "not_ready",
+                message="Guest slot is missing required fields.",
+                http_status=409,
+                payload={
+                    "position": position,
+                    "guest_id": guest.pk,
+                    "status": validation.status.value,
+                    "missing_fields": list(validation.missing_fields),
+                    "field_errors": validation.field_errors_dict(),
+                    "ops_version": int(session.ops_version or 0),
+                },
+            )
+
+        before_all_ready, _ = readiness_snapshot(reservation)
+        emit_guest_slot_ready(
+            session=session,
+            reservation=reservation,
+            position=position,
+            guest_id=guest.pk,
+        )
+        after_all_ready, _ = readiness_snapshot(reservation)
+        if not before_all_ready and after_all_ready:
+            emit_guest_session_ready(session=session, reservation=reservation)
+
+        _bump_ops_version(session)
+        touch_session_activity(session)
+        readiness = build_checkin_readiness(session, reservation)
+        return CommitSlotResult(readiness=readiness, access=access, position=position)
+
+    @staticmethod
+    @transaction.atomic
+    def patch_occupancy(
+        session: GuestCheckInSession,
+        reservation: Reservation,
+        *,
+        expected_checkin_adults,
+        ops_version: int | None,
+        reason: str = "guest_self_service",
+        require_ops_version: bool = True,
+    ) -> OccupancyResult:
+        access = evaluate_session_access(session, reservation)
+        if not access.allowed:
+            raise GuestCheckInOrchestratorError(
+                access.gate_status,
+                http_status=access.http_status,
+            )
+        _require_ops_version(
+            session, ops_version, required=require_ops_version
+        )
+
+        old_value = reservation.expected_checkin_adults
+        ceiling = booked_adults_ceiling(reservation)
+
+        if expected_checkin_adults is None:
+            new_value = None
+            reason = "guest_reset_to_ota" if reason == "guest_self_service" else reason
+        else:
+            try:
+                new_value = int(expected_checkin_adults)
+            except (TypeError, ValueError) as exc:
+                raise GuestCheckInOrchestratorError(
+                    "invalid_occupancy",
+                    message="expected_checkin_adults must be an integer or null.",
+                    http_status=400,
+                ) from exc
+            if new_value < 1:
+                raise GuestCheckInOrchestratorError(
+                    "invalid_occupancy",
+                    message="expected_checkin_adults must be >= 1.",
+                    http_status=400,
+                )
+            if ceiling > 0 and new_value > ceiling:
+                raise GuestCheckInOrchestratorError(
+                    "invalid_occupancy",
+                    message=(
+                        f"expected_checkin_adults cannot exceed booked adults ({ceiling})."
+                    ),
+                    http_status=400,
+                )
+
+        if old_value == new_value:
+            readiness = build_checkin_readiness(session, reservation)
+            return OccupancyResult(readiness=readiness, access=access, session=session)
+
+        reservation.expected_checkin_adults = new_value
+        reservation.save(update_fields=["expected_checkin_adults", "updated_at"])
+        remove_unfilled_secondary_guests(reservation)
+
+        emit_guest_checkin_occupancy_changed(
+            session=session,
+            reservation=reservation,
+            old_value=old_value,
+            new_value=new_value,
+            reason=reason,
+        )
+        _bump_ops_version(session)
+        touch_session_activity(session)
+        readiness = build_checkin_readiness(session, reservation)
+        return OccupancyResult(readiness=readiness, access=access, session=session)
+
+    @staticmethod
+    @transaction.atomic
     def complete_session(
         session: GuestCheckInSession,
         reservation: Reservation,
+        *,
+        ops_version: int | None = None,
+        require_ops_version: bool = False,
     ) -> CompleteSessionResult:
         access = evaluate_session_access(session, reservation)
         if not access.allowed:
@@ -219,6 +375,9 @@ class GuestCheckInOrchestrator:
                 access.gate_status,
                 http_status=access.http_status,
             )
+        _require_ops_version(
+            session, ops_version, required=require_ops_version
+        )
 
         if effective_session_status(session, reservation) != "ready":
             raise GuestCheckInOrchestratorError(
@@ -228,6 +387,7 @@ class GuestCheckInOrchestrator:
             )
 
         mark_session_completed(session)
+        _bump_ops_version(session)
         emit_guest_session_completed(session=session, reservation=reservation)
         readiness = build_checkin_readiness(session, reservation)
 
@@ -261,6 +421,47 @@ def _guest_at_position(reservation: Reservation, position: int) -> Guest:
     if position > len(slots):
         raise GuestCheckInOrchestratorError("invalid_position", http_status=404)
     return slots[position - 1]
+
+
+def _require_ops_version(
+    session: GuestCheckInSession,
+    ops_version: int | None,
+    *,
+    required: bool = True,
+) -> None:
+    current = int(session.ops_version or 0)
+    if ops_version is None:
+        if required:
+            raise GuestCheckInOrchestratorError(
+                "session_conflict",
+                message="ops_version is required.",
+                http_status=409,
+                payload={"ops_version": current},
+            )
+        return
+    try:
+        provided = int(ops_version)
+    except (TypeError, ValueError) as exc:
+        raise GuestCheckInOrchestratorError(
+            "session_conflict",
+            message="ops_version must be an integer.",
+            http_status=409,
+            payload={"ops_version": current},
+        ) from exc
+    if provided != current:
+        raise GuestCheckInOrchestratorError(
+            "session_conflict",
+            message="Session was updated elsewhere. Reload and retry.",
+            http_status=409,
+            payload={"ops_version": current},
+        )
+
+
+def _bump_ops_version(session: GuestCheckInSession) -> None:
+    GuestCheckInSession.objects.filter(pk=session.pk).update(
+        ops_version=F("ops_version") + 1
+    )
+    session.refresh_from_db(fields=["ops_version", "updated_at", "last_activity_at"])
 
 
 def _apply_guest_fields(guest: Guest, fields: dict) -> None:

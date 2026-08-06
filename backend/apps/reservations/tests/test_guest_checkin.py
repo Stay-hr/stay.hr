@@ -128,8 +128,9 @@ class GuestCheckInSessionTests(TestCase):
             self.reservation,
             created_from=GuestCheckInSessionCreatedFrom.EMAIL,
         )
-        self._fill_guest(self.reservation.guests.order_by("-is_primary").first(), suffix="1")
-        self._fill_guest(self.reservation.guests.order_by("is_primary").last(), suffix="2")
+        guests = list(self.reservation.guests.order_by("-is_primary", "pk"))
+        self._fill_guest(guests[0], suffix="1")
+        self._fill_guest(guests[1], suffix="2")
 
         self.assertTrue(all_required_slots_ready(self.reservation))
         self.assertEqual(effective_session_status(session, self.reservation), "ready")

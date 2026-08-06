@@ -73,6 +73,22 @@ class PolicyInvariantsTests(TestCase):
         self.assertEqual(expected_document_count(reservation), 4)
         self.assertEqual(len(expected_document_slots(reservation)), 4)
 
+    def test_expected_checkin_adults_overrides_ota_adults(self):
+        reservation = _make_reservation(
+            tenant=self.tenant,
+            property=self.property,
+            adults_count=2,
+            persons_count=2,
+            guest_specs=[{"is_primary": True}, {"is_primary": False}],
+        )
+        self.assertEqual(expected_document_count(reservation), 2)
+        reservation.expected_checkin_adults = 1
+        reservation.save(update_fields=["expected_checkin_adults"])
+        self.assertEqual(expected_document_count(reservation), 1)
+        reservation.expected_checkin_adults = None
+        reservation.save(update_fields=["expected_checkin_adults"])
+        self.assertEqual(expected_document_count(reservation), 2)
+
     def test_hierarchy_missing_never_exceeds_slots(self):
         reservation = _make_reservation(
             tenant=self.tenant,

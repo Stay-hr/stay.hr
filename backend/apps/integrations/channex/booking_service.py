@@ -315,6 +315,8 @@ def _upsert_reservation_from_revision(
     infant_count = int(occupancy.get("infants") or 0)
     occupancy_counts: dict[str, int | None] = {}
     if occupancy:
+        # OTA booked occupancy only. Never write expected_checkin_adults —
+        # that field is check-in domain (guest/reception override).
         occupancy_counts = {
             "adults_count": adults,
             "children_count": child_count,

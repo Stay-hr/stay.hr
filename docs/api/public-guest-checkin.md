@@ -38,10 +38,13 @@ Unknown token → **404** (no body contract).
 |-------|------|-------------|
 | `status` | string | Persisted DB session status |
 | `effective_status` | string | Business view: `active`, `ready`, or terminal status |
-| `required_slots` | int | Expected guest/document slots for reservation |
+| `required_slots` | int | Expected guest/document slots (`expected_checkin_adults` ?? OTA adults) |
 | `ready_slots` | int | Slots passing `GuestValidator` |
 | `can_complete` | bool | `true` when `effective_status === "ready"` |
 | `waiting_positions` | int[] | Slot positions not yet `ready` (full session only) |
+| `ops_version` | int | Optimistic-lock revision (occupancy / commit / complete) |
+| `expected_checkin_adults` | int \| null | Check-in occupancy override; `null` = use OTA |
+| `adults_count` | int \| null | OTA booked adults (read-only projection) |
 
 ### Slot
 
@@ -51,6 +54,7 @@ Unknown token → **404** (no body contract).
 | `guest_id` | int | Internal guest PK (stable for session) |
 | `status` | string | `partial` \| `ready` |
 | `missing_fields` | string[] | Validator field keys still required |
+| `field_errors` | object | Optional map `field → message` (e.g. invalid address format) |
 | `field_confidence` | object | Map `field_name → "high"\|"medium"\|"low"` (OCR telemetry; empty if manual only) |
 | `guest` | object | Public guest field subset (see PATCH) |
 
@@ -156,6 +160,30 @@ Unknown token → **404** (no body contract).
 
 ---
 
+### `PATCH /public/check-in/{token}/occupancy/`
+
+**Purpose:** Set check-in occupancy override (`expected_checkin_adults`) without changing OTA `adults_count`. Used for “I'm traveling alone”.
+
+**Request:**
+
+```json
+{ "expected_checkin_adults": 1, "ops_version": 0 }
+```
+
+Reset to OTA booked count:
+
+```json
+{ "expected_checkin_adults": null, "ops_version": 3 }
+```
+
+Rules: integer `1…booked adults`, or `null`. Prunes unfilled secondary guests. Bumps `ops_version`. Emits occupancy audit log.
+
+**Response 200:** Full session payload (same shape as GET session).
+
+**Errors:** 400 `invalid_occupancy`, 409 `session_conflict` (stale/missing `ops_version`).
+
+---
+
 ### `PATCH /public/check-in/{token}/slots/{position}/`
 
 **Purpose:** Autosave manual guest fields for one slot. Frontend debounce ~500 ms recommended.
@@ -210,13 +238,40 @@ Date fields accept ISO `YYYY-MM-DD` strings.
 | 409 | — | Rare orchestrator conflicts |
 | 410 | `completed` / `expired` / `revoked` | Terminal session |
 
+Does **not** require or bump `ops_version` (draft autosave).
+
+---
+
+### `POST /public/check-in/{token}/slots/{position}/commit/`
+
+**Purpose:** Business validation for one slot (`GuestValidator`). Wizard calls this on “Next” after flushing draft PATCH.
+
+**Request:**
+
+```json
+{ "ops_version": 0 }
+```
+
+**Response 200:** Progress + `slot` (same as PATCH slot response); bumps `ops_version`.
+
+**Errors:**
+
+| HTTP | Code | When |
+|------|------|------|
+| 409 | `not_ready` | Missing/invalid fields — body includes `missing_fields`, `field_errors` |
+| 409 | `session_conflict` | Stale/missing `ops_version` |
+
 ---
 
 ### `POST /public/check-in/{token}/complete/`
 
 **Purpose:** Guest explicitly confirms check-in. Only when `effective_status === "ready"`.
 
-**Request:** Empty body.
+**Request:**
+
+```json
+{ "ops_version": 0 }
+```
 
 **Response 200:**
 

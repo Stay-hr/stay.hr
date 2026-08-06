@@ -59,12 +59,33 @@ DB statuses: `active` | `completed` | `expired` | `revoked` only.
 
 `ready_at` (PR-D) is set **once** on first transition to derived ready (analytics only).
 
+### Booked occupancy vs check-in occupancy (2026-08 amendment)
+
+Two bounded contexts — do not mix:
+
+| Domain | Fields | Writer |
+|--------|--------|--------|
+| **OTA booked** | `adults_count`, `persons_count`, children/infants | Channex / Booking PDF / XLS inbound only |
+| **Check-in ops** | `expected_checkin_adults`, slot draft/commit, `ops_version` | Guest web / reception check-in only |
+
+**Invariant:** `expected_checkin_adults` is check-in domain exclusively. **No OTA importer, channel sync, or reservation refresh may write or clear it.**
+
+`expected_document_count` = `expected_checkin_adults` if set, else OTA `adults_count` (fallback persons/guests).
+
+Public API:
+
+- `PATCH …/occupancy/` — set override or `null` to reset to OTA; prunes unfilled secondary guests; emits occupancy audit
+- `POST …/slots/{n}/commit/` — business validation (`GuestValidator`); draft `PATCH` remains autosave only
+- `ops_version` — optimistic lock for occupancy / commit / complete (not bumped on draft autosave)
+
 ### `GuestCheckInOrchestrator`
 
 Single cross-channel coordinator (`guest_checkin_orchestrator.py`):
 
 - ensure session + URL
-- slot PATCH autosave → validator → emit events
+- slot PATCH autosave → readiness recompute (draft)
+- slot commit → `GuestValidator` gate + `ops_version` bump
+- occupancy PATCH → `expected_checkin_adults` + prune secondaries
 - OCR apply callback
 - POST complete
 

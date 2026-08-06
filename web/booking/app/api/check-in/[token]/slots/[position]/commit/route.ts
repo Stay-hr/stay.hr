@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
-type Params = { params: Promise<{ token: string }> };
+type Params = { params: Promise<{ token: string; position: string }> };
 
 function internalApiBase(): string {
   return (process.env.STAY_API_INTERNAL_URL || "http://stay-django:8000").replace(/\/+$/, "");
@@ -43,10 +43,10 @@ async function proxyCheckIn(path: string, init?: RequestInit): Promise<NextRespo
 }
 
 export async function POST(request: Request, { params }: Params) {
-  const { token } = await params;
+  const { token, position } = await params;
   const body = await request.text();
-  return proxyCheckIn(`/api/v1/public/check-in/${encodeURIComponent(token)}/complete/`, {
-    method: "POST",
-    body: body || "{}",
-  });
+  return proxyCheckIn(
+    `/api/v1/public/check-in/${encodeURIComponent(token)}/slots/${encodeURIComponent(position)}/commit/`,
+    { method: "POST", body: body || "{}" },
+  );
 }

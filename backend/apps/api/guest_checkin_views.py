@@ -74,12 +74,16 @@ def _serialize_readiness(readiness: CheckInReadinessDTO) -> dict:
         "ready_slots": readiness.ready_slots,
         "can_complete": readiness.can_complete,
         "waiting_positions": list(readiness.waiting_positions),
+        "ops_version": readiness.ops_version,
+        "expected_checkin_adults": readiness.expected_checkin_adults,
+        "adults_count": readiness.adults_count,
         "slots": [
             {
                 "position": slot.position,
                 "guest_id": slot.guest_id,
                 "status": slot.status,
                 "missing_fields": list(slot.missing_fields),
+                "field_errors": dict(slot.field_errors),
             }
             for slot in readiness.slots
         ],
@@ -93,6 +97,30 @@ def _serialize_progress(readiness: CheckInReadinessDTO) -> dict:
         "required_slots": readiness.required_slots,
         "ready_slots": readiness.ready_slots,
         "can_complete": readiness.can_complete,
+        "ops_version": readiness.ops_version,
+        "expected_checkin_adults": readiness.expected_checkin_adults,
+        "adults_count": readiness.adults_count,
+    }
+
+
+def _slot_payload_from_readiness(
+    readiness: CheckInReadinessDTO,
+    *,
+    reservation,
+    position: int,
+) -> dict:
+    slot = next((item for item in readiness.slots if item.position == position), None)
+    if slot is None:
+        return {}
+    guests_by_id = {guest.pk: guest for guest in expected_document_slots(reservation)}
+    guest = guests_by_id.get(slot.guest_id)
+    return {
+        "position": slot.position,
+        "guest_id": slot.guest_id,
+        "status": slot.status,
+        "missing_fields": list(slot.missing_fields),
+        "field_errors": dict(slot.field_errors),
+        "guest": _serialize_guest_fields(guest) if guest is not None else {},
     }
 
 
@@ -112,6 +140,7 @@ def _serialize_session(
                 "guest_id": slot.guest_id,
                 "status": slot.status,
                 "missing_fields": list(slot.missing_fields),
+                "field_errors": dict(slot.field_errors),
                 "guest": _serialize_guest_fields(guest) if guest is not None else {},
             }
         )
@@ -157,6 +186,7 @@ def _serialize_web_guest_slot(*, reservation, position: int) -> dict:
         "guest_id": slot.guest_id,
         "status": slot.status.value,
         "missing_fields": list(slot.missing_fields),
+        "field_errors": dict(slot.field_errors),
         "guest": _serialize_guest_fields(guest) if guest is not None else {},
     }
     confidence = field_confidence_for_slot(reservation, position=position)
@@ -170,6 +200,22 @@ def _session_gate_or_response(session, reservation):
     if not access.allowed:
         return None, _access_error_response(access)
     return readiness, None
+
+
+def _orchestrator_error_response(exc: GuestCheckInOrchestratorError, *, session=None) -> Response:
+    if exc.code in {"not_open_yet", "completed", "expired", "revoked"}:
+        payload: dict = {"status": exc.code}
+        if exc.code == "not_open_yet" and session is not None and session.opens_at:
+            payload["opens_at"] = session.opens_at.isoformat()
+        if exc.message:
+            payload["detail"] = exc.message
+        return Response(payload, status=exc.http_status)
+    payload = {"detail": exc.code, "status": exc.code}
+    if exc.message:
+        payload["detail"] = exc.message
+        payload["error"] = exc.code
+    payload.update(exc.payload)
+    return Response(payload, status=exc.http_status)
 
 
 class GuestCheckInSessionView(APIView):
@@ -196,6 +242,50 @@ class GuestCheckInProgressView(APIView):
         return Response(_serialize_progress(readiness))
 
 
+class GuestCheckInOccupancyView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def patch(self, request, token):
+        session, reservation = _load_session_or_404(token)
+        data = request.data if isinstance(request.data, dict) else {}
+        if "expected_checkin_adults" not in data:
+            return Response(
+                {"detail": "expected_checkin_adults is required (integer or null)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            result = GuestCheckInOrchestrator.patch_occupancy(
+                session,
+                reservation,
+                expected_checkin_adults=data.get("expected_checkin_adults"),
+                ops_version=data.get("ops_version"),
+            )
+        except GuestCheckInOrchestratorError as exc:
+            if exc.code == "session_conflict":
+                readiness, _ = GuestCheckInOrchestrator.get_readiness(session, reservation)
+                payload = {
+                    **_serialize_session(
+                        reservation=reservation,
+                        session=session,
+                        readiness=readiness,
+                    ),
+                    "status": "session_conflict",
+                    "error": "session_conflict",
+                    "detail": exc.message or "session_conflict",
+                }
+                return Response(payload, status=exc.http_status)
+            return _orchestrator_error_response(exc, session=session)
+
+        return Response(
+            _serialize_session(
+                reservation=reservation,
+                session=result.session,
+                readiness=result.readiness,
+            )
+        )
+
+
 class GuestCheckInSlotView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -210,28 +300,51 @@ class GuestCheckInSlotView(APIView):
                 fields=request.data if isinstance(request.data, dict) else {},
             )
         except GuestCheckInOrchestratorError as exc:
-            if exc.code in {"not_open_yet", "completed", "expired", "revoked"}:
-                payload: dict = {"status": exc.code}
-                if exc.code == "not_open_yet" and session.opens_at:
-                    payload["opens_at"] = session.opens_at.isoformat()
-                return Response(payload, status=exc.http_status)
-            return Response({"detail": exc.code}, status=exc.http_status)
+            return _orchestrator_error_response(exc, session=session)
 
-        guest = next(
-            (g for g in expected_document_slots(reservation) if g.pk == result.readiness.slots[position - 1].guest_id),
-            None,
-        )
-        slot_payload = {
-            "position": position,
-            "guest_id": result.readiness.slots[position - 1].guest_id,
-            "status": result.readiness.slots[position - 1].status,
-            "missing_fields": list(result.readiness.slots[position - 1].missing_fields),
-            "guest": _serialize_guest_fields(guest) if guest is not None else {},
-        }
         return Response(
             {
                 **_serialize_progress(result.readiness),
-                "slot": slot_payload,
+                "slot": _slot_payload_from_readiness(
+                    result.readiness, reservation=reservation, position=position
+                ),
+            }
+        )
+
+
+class GuestCheckInSlotCommitView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request, token, position: int):
+        session, reservation = _load_session_or_404(token)
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            result = GuestCheckInOrchestrator.commit_slot(
+                session,
+                reservation,
+                position=position,
+                ops_version=data.get("ops_version"),
+            )
+        except GuestCheckInOrchestratorError as exc:
+            if exc.code == "session_conflict":
+                readiness, _ = GuestCheckInOrchestrator.get_readiness(session, reservation)
+                payload = {
+                    **_serialize_progress(readiness),
+                    "status": "session_conflict",
+                    "error": "session_conflict",
+                    "detail": exc.message or "session_conflict",
+                    "ops_version": readiness.ops_version,
+                }
+                return Response(payload, status=exc.http_status)
+            return _orchestrator_error_response(exc, session=session)
+
+        return Response(
+            {
+                **_serialize_progress(result.readiness),
+                "slot": _slot_payload_from_readiness(
+                    result.readiness, reservation=reservation, position=position
+                ),
             }
         )
 
@@ -242,22 +355,22 @@ class GuestCheckInCompleteView(APIView):
 
     def post(self, request, token):
         session, reservation = _load_session_or_404(token)
+        data = request.data if isinstance(request.data, dict) else {}
         try:
-            result = GuestCheckInOrchestrator.complete_session(session, reservation)
+            result = GuestCheckInOrchestrator.complete_session(
+                session,
+                reservation,
+                ops_version=data.get("ops_version"),
+                require_ops_version=True,
+            )
         except GuestCheckInOrchestratorError as exc:
-            if exc.code in {"not_open_yet", "completed", "expired", "revoked", "not_ready"}:
-                payload: dict = {"status": exc.code}
-                if exc.code == "not_open_yet" and session.opens_at:
-                    payload["opens_at"] = session.opens_at.isoformat()
-                if exc.message:
-                    payload["detail"] = exc.message
-                return Response(payload, status=exc.http_status)
-            return Response({"detail": exc.code}, status=exc.http_status)
+            return _orchestrator_error_response(exc, session=session)
 
         return Response(
             {
                 "status": result.session.status,
                 "effective_status": result.readiness.effective_status,
+                "ops_version": result.readiness.ops_version,
                 "completed_at": (
                     result.session.completed_at.isoformat()
                     if result.session.completed_at

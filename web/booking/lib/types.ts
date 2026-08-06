@@ -96,6 +96,7 @@ export type GuestCheckInSlot = {
   guest_id: number;
   status: string;
   missing_fields: string[];
+  field_errors?: Record<string, string>;
   field_confidence?: FieldConfidence;
   guest: GuestCheckInGuestFields;
 };
@@ -107,6 +108,9 @@ export type GuestCheckInSessionResponse = {
   ready_slots: number;
   can_complete: boolean;
   waiting_positions: number[];
+  ops_version: number;
+  expected_checkin_adults: number | null;
+  adults_count: number | null;
   booking_code: string;
   property_name: string;
   check_in: string;
@@ -122,6 +126,9 @@ export type GuestCheckInProgressResponse = {
   required_slots: number;
   ready_slots: number;
   can_complete: boolean;
+  ops_version?: number;
+  expected_checkin_adults?: number | null;
+  adults_count?: number | null;
 };
 
 export type GuestCheckInJobResponse = {

@@ -81,7 +81,7 @@
     "docIdentityCard": "Personalausweis",
     "docPassport": "Reisepass",
     "documentNumber": "Dokumentnummer",
-    "address": "Adresse (Stadt, Straße)",
+    "address": "Wohnadresse",
     "select": "Auswählen",
     "back": "Zurück",
     "next": "Weiter",
@@ -113,7 +113,7 @@
     "validationHint": "Füllen Sie die markierten Felder aus, bevor Sie fortfahren.",
     "fieldRequired": "Pflichtfeld",
     "fieldErrorNationality": "Geben Sie einen 2-stelligen Ländercode ein (z. B. DE)",
-    "fieldErrorAddress": "Geben Sie Stadt und Straße ein (z. B. Berlin, Hauptstraße 1)",
+    "fieldErrorAddress": "Stadt, Straße und Nummer eingeben (z. B. Zagreb, Ilica 15)",
     "fieldLabels": {
       "first_name": "Vorname",
       "last_name": "Nachname",
@@ -123,7 +123,14 @@
       "document_type": "Dokumenttyp",
       "document_number": "Dokumentnummer",
       "address": "Adresse"
-    }
+    },
+    "addressHint": "Stadt, Straße und Hausnummer (für eVisitor).",
+    "addressExample": "Zagreb, Ilica 15",
+    "addressExampleLabel": "Beispiel",
+    "travelingAlone": "Ich reise allein — andere Gäste entfernen",
+    "resetOccupancy": "Auf Buchungsanzahl zurücksetzen",
+    "sessionConflict": "Check-in wurde woanders aktualisiert. Neu geladen — bitte erneut versuchen.",
+    "commitFailed": "Gästedaten konnten nicht geprüft werden."
   },
   "common": {
     "error": "Fehler"

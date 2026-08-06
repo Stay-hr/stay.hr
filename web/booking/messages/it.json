@@ -81,7 +81,7 @@
     "docIdentityCard": "Carta d'identità",
     "docPassport": "Passaporto",
     "documentNumber": "Numero documento",
-    "address": "Indirizzo (città, via)",
+    "address": "Indirizzo di residenza",
     "select": "Seleziona",
     "back": "Indietro",
     "next": "Avanti",
@@ -113,7 +113,7 @@
     "validationHint": "Completa i campi evidenziati prima di continuare.",
     "fieldRequired": "Campo obbligatorio",
     "fieldErrorNationality": "Inserisci un codice paese a 2 lettere (es. IT)",
-    "fieldErrorAddress": "Inserisci città e via (es. Roma, Via Nazionale 1)",
+    "fieldErrorAddress": "Inserisci città, via e numero (es. Zagreb, Ilica 15)",
     "fieldLabels": {
       "first_name": "nome",
       "last_name": "cognome",
@@ -123,7 +123,14 @@
       "document_type": "tipo di documento",
       "document_number": "numero documento",
       "address": "indirizzo"
-    }
+    },
+    "addressHint": "Città, via e numero civico (richiesto per eVisitor).",
+    "addressExample": "Zagreb, Ilica 15",
+    "addressExampleLabel": "Esempio",
+    "travelingAlone": "Viaggio da solo/a — rimuovi altri ospiti",
+    "resetOccupancy": "Ripristina il numero della prenotazione",
+    "sessionConflict": "Il check-in è stato aggiornato altrove. Ricaricato — riprova.",
+    "commitFailed": "Impossibile convalidare i dati dell'ospite."
   },
   "common": {
     "error": "Errore"

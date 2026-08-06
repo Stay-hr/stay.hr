@@ -682,6 +682,7 @@ def _reservation_field_updates_from_row(
         "units_count": row.units_count,
         "persons_count": row.persons_count,
         "adults_count": row.adults_count,
+        # OTA booked occupancy only — never write expected_checkin_adults.
         "children_count": row.children_count,
         "children_ages": row.children_ages,
         "commission_percent": row.commission_percent,

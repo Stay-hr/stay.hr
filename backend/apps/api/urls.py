@@ -20,8 +20,10 @@ from apps.api.guest_checkin_views import (
     GuestCheckInCompleteView,
     GuestCheckInDocumentUploadView,
     GuestCheckInJobPollView,
+    GuestCheckInOccupancyView,
     GuestCheckInProgressView,
     GuestCheckInSessionView,
+    GuestCheckInSlotCommitView,
     GuestCheckInSlotView,
 )
 from apps.api.guest_portal_views import (
@@ -83,9 +85,19 @@ urlpatterns = [
         name="public-guest-checkin-progress",
     ),
     path(
+        "public/check-in/<uuid:token>/occupancy/",
+        GuestCheckInOccupancyView.as_view(),
+        name="public-guest-checkin-occupancy",
+    ),
+    path(
         "public/check-in/<uuid:token>/slots/<int:position>/",
         GuestCheckInSlotView.as_view(),
         name="public-guest-checkin-slot",
+    ),
+    path(
+        "public/check-in/<uuid:token>/slots/<int:position>/commit/",
+        GuestCheckInSlotCommitView.as_view(),
+        name="public-guest-checkin-slot-commit",
     ),
     path(
         "public/check-in/<uuid:token>/slots/<int:position>/documents/",
