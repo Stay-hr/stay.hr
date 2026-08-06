@@ -69,6 +69,9 @@ class GuestCheckInPublicAPITests(TestCase):
         self.assertEqual(data["required_slots"], 1)
         self.assertFalse(data["can_complete"])
         self.assertEqual(len(data["slots"]), 1)
+        self.assertEqual(data["ops_version"], 0)
+        self.assertIsNone(data["expected_checkin_adults"])
+        self.assertEqual(data["adults_count"], 1)
 
     def test_get_progress_is_lightweight(self):
         url = reverse("public-guest-checkin-progress", kwargs={"token": self.token})
@@ -77,6 +80,7 @@ class GuestCheckInPublicAPITests(TestCase):
         data = response.json()
         self.assertIn("effective_status", data)
         self.assertIn("can_complete", data)
+        self.assertIn("ops_version", data)
         self.assertNotIn("booking_code", data)
 
     def test_patch_slot_autosaves_and_returns_readiness(self):
@@ -103,10 +107,123 @@ class GuestCheckInPublicAPITests(TestCase):
         self.assertEqual(data["effective_status"], "ready")
         self.assertTrue(data["can_complete"])
         self.assertEqual(data["slot"]["guest"]["first_name"], "Ana")
+        self.assertEqual(data["ops_version"], 0)
+
+    def test_commit_slot_requires_ready_fields(self):
+        url = reverse(
+            "public-guest-checkin-slot-commit",
+            kwargs={"token": self.token, "position": 1},
+        )
+        response = self.client.post(url, {"ops_version": 0}, format="json")
+        self.assertEqual(response.status_code, 409)
+        data = response.json()
+        self.assertEqual(data["error"], "not_ready")
+        self.assertIn("missing_fields", data)
+
+    def test_commit_slot_success_bumps_ops_version(self):
+        patch_url = reverse(
+            "public-guest-checkin-slot",
+            kwargs={"token": self.token, "position": 1},
+        )
+        self.client.patch(
+            patch_url,
+            {
+                "first_name": "Ana",
+                "last_name": "Anić",
+                "date_of_birth": "1990-01-15",
+                "nationality": "HR",
+                "sex": "female",
+                "document_number": "12345678901",
+                "document_type": "identity_card",
+                "address": "Zagreb, Ulica 1",
+            },
+            format="json",
+        )
+        commit_url = reverse(
+            "public-guest-checkin-slot-commit",
+            kwargs={"token": self.token, "position": 1},
+        )
+        response = self.client.post(commit_url, {"ops_version": 0}, format="json")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["slot"]["status"], "ready")
+        self.assertEqual(data["ops_version"], 1)
+
+    def test_occupancy_traveling_alone_prunes_secondary(self):
+        self.reservation.adults_count = 2
+        self.reservation.persons_count = 2
+        self.reservation.save(update_fields=["adults_count", "persons_count", "updated_at"])
+        Guest.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            first_name="Novi",
+            last_name="gost",
+            name="Novi gost",
+            is_primary=False,
+        )
+        session_url = reverse("public-guest-checkin-session", kwargs={"token": self.token})
+        before = self.client.get(session_url).json()
+        self.assertEqual(before["required_slots"], 2)
+
+        occupancy_url = reverse(
+            "public-guest-checkin-occupancy", kwargs={"token": self.token}
+        )
+        response = self.client.patch(
+            occupancy_url,
+            {"expected_checkin_adults": 1, "ops_version": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["expected_checkin_adults"], 1)
+        self.assertEqual(data["adults_count"], 2)
+        self.assertEqual(data["required_slots"], 1)
+        self.assertEqual(data["ops_version"], 1)
+        self.assertEqual(self.reservation.guests.count(), 1)
+
+        # Reset to OTA
+        response = self.client.patch(
+            occupancy_url,
+            {"expected_checkin_adults": None, "ops_version": 1},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsNone(data["expected_checkin_adults"])
+        self.assertEqual(data["required_slots"], 2)
+        self.assertEqual(data["ops_version"], 2)
+
+    def test_occupancy_stale_ops_version_conflicts(self):
+        occupancy_url = reverse(
+            "public-guest-checkin-occupancy", kwargs={"token": self.token}
+        )
+        response = self.client.patch(
+            occupancy_url,
+            {"expected_checkin_adults": 1, "ops_version": 99},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["status"], "session_conflict")
+
+    def test_ota_occupancy_write_does_not_clear_override(self):
+        self.reservation.expected_checkin_adults = 1
+        self.reservation.adults_count = 2
+        self.reservation.save(
+            update_fields=["expected_checkin_adults", "adults_count", "updated_at"]
+        )
+        # Simulate Channex booked occupancy overwrite only.
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            adults_count=2, persons_count=2
+        )
+        self.reservation.refresh_from_db()
+        self.assertEqual(self.reservation.expected_checkin_adults, 1)
+        from apps.reservations.document_expectations import expected_document_count
+
+        self.assertEqual(expected_document_count(self.reservation), 1)
 
     def test_complete_requires_ready(self):
         url = reverse("public-guest-checkin-complete", kwargs={"token": self.token})
-        response = self.client.post(url)
+        response = self.client.post(url, {"ops_version": 0}, format="json")
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["status"], "not_ready")
 
@@ -130,7 +247,7 @@ class GuestCheckInPublicAPITests(TestCase):
             format="json",
         )
         complete_url = reverse("public-guest-checkin-complete", kwargs={"token": self.token})
-        response = self.client.post(complete_url)
+        response = self.client.post(complete_url, {"ops_version": 0}, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], GuestCheckInSessionStatus.COMPLETED)
 
@@ -250,12 +367,27 @@ class GuestCheckInWebOcrAPITests(TestCase):
                         "nationality": "FRA",
                         "date_of_birth": "1988-03-15",
                         "sex": "F",
-                        "address": "38 RUE LÉONIE CHAUVEAU, 38300 BOURGOIN-JALLIEU",
+                        "address": "Zagreb, Ilica 15",
                         "front_image_index": 0,
                     }
                 ],
             },
-            matches=[],
+            matches=[
+                {
+                    "person_index": 0,
+                    "auto_apply": True,
+                    "guest_id": self.guest.pk,
+                    "reservation_id": self.reservation.pk,
+                    "confidence": "high",
+                    "candidates": [
+                        {
+                            "guest_id": self.guest.pk,
+                            "reservation_id": self.reservation.pk,
+                            "match_type": "web_guest_slot",
+                        }
+                    ],
+                }
+            ],
         )
         DocumentIntakeImage.objects.create(
             tenant=self.tenant,

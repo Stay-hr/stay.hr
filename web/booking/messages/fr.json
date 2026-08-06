@@ -81,7 +81,7 @@
     "docIdentityCard": "Carte d'identité",
     "docPassport": "Passeport",
     "documentNumber": "Numéro de document",
-    "address": "Adresse (ville, rue)",
+    "address": "Adresse de résidence",
     "select": "Sélectionner",
     "back": "Retour",
     "next": "Suivant",
@@ -113,7 +113,7 @@
     "validationHint": "Complétez les champs surlignés avant de continuer.",
     "fieldRequired": "Champ obligatoire",
     "fieldErrorNationality": "Entrez un code pays à 2 lettres (p. ex. FR)",
-    "fieldErrorAddress": "Entrez la ville et la rue (p. ex. Paris, Rue de Rivoli 1)",
+    "fieldErrorAddress": "Indiquez ville, rue et numéro (ex. Zagreb, Ilica 15)",
     "fieldLabels": {
       "first_name": "prénom",
       "last_name": "nom",
@@ -123,7 +123,14 @@
       "document_type": "type de document",
       "document_number": "numéro de document",
       "address": "adresse"
-    }
+    },
+    "addressHint": "Ville, rue et numéro (requis pour eVisitor).",
+    "addressExample": "Zagreb, Ilica 15",
+    "addressExampleLabel": "Exemple",
+    "travelingAlone": "Je voyage seul(e) — retirer les autres voyageurs",
+    "resetOccupancy": "Revenir au nombre de la réservation",
+    "sessionConflict": "Le check-in a été mis à jour ailleurs. Rechargé — réessayez.",
+    "commitFailed": "Impossible de valider les données du voyageur."
   },
   "common": {
     "error": "Erreur"

@@ -20,6 +20,10 @@ class SlotValidationResult:
     guest_id: int
     status: SlotReadinessStatus
     missing_fields: tuple[str, ...]
+    field_errors: tuple[tuple[str, str], ...] = ()
+
+    def field_errors_dict(self) -> dict[str, str]:
+        return dict(self.field_errors)
 
 
 def _has_text(value: str | None) -> bool:
@@ -69,6 +73,7 @@ class GuestValidator:
     @classmethod
     def validate(cls, guest: Guest, *, position: int) -> SlotValidationResult:
         missing: list[str] = []
+        field_errors: list[tuple[str, str]] = []
 
         if not _has_text(guest.first_name):
             missing.append("first_name")
@@ -86,8 +91,16 @@ class GuestValidator:
             missing.append("document_type")
         if not _has_text(guest.address):
             missing.append("address")
-        elif not validate_evisitor_residence_address(guest.address).valid:
-            missing.append("address")
+        else:
+            address_result = validate_evisitor_residence_address(guest.address)
+            if not address_result.valid:
+                missing.append("address")
+                msg = (
+                    address_result.errors[0]
+                    if address_result.errors
+                    else "Nije moguće odrediti grad prebivališta (CityOfResidence)."
+                )
+                field_errors.append(("address", msg))
 
         status = SlotReadinessStatus.READY if not missing else SlotReadinessStatus.PARTIAL
         return SlotValidationResult(
@@ -95,4 +108,5 @@ class GuestValidator:
             guest_id=guest.pk,
             status=status,
             missing_fields=tuple(missing),
+            field_errors=tuple(field_errors),
         )

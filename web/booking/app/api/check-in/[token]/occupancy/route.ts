@@ -42,11 +42,11 @@ async function proxyCheckIn(path: string, init?: RequestInit): Promise<NextRespo
   return NextResponse.json(data, { status: res.status });
 }
 
-export async function POST(request: Request, { params }: Params) {
+export async function PATCH(request: Request, { params }: Params) {
   const { token } = await params;
   const body = await request.text();
-  return proxyCheckIn(`/api/v1/public/check-in/${encodeURIComponent(token)}/complete/`, {
-    method: "POST",
+  return proxyCheckIn(`/api/v1/public/check-in/${encodeURIComponent(token)}/occupancy/`, {
+    method: "PATCH",
     body: body || "{}",
   });
 }

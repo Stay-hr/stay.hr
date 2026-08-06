@@ -177,7 +177,7 @@ export function GuestCheckInWizard({ token }: Props) {
         );
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error((data.error as string) || t("saveFailed"));
+          throw new Error((data.error as string) || (data.detail as string) || t("saveFailed"));
         }
         const slot = data.slot as GuestCheckInSlot;
         const canComplete = Boolean(data.can_complete);
@@ -191,6 +191,7 @@ export function GuestCheckInWizard({ token }: Props) {
             required_slots: data.required_slots as number,
             ready_slots: data.ready_slots as number,
             can_complete: canComplete,
+            ops_version: typeof data.ops_version === "number" ? data.ops_version : prev.ops_version,
             slots,
           };
         });
@@ -207,6 +208,142 @@ export function GuestCheckInWizard({ token }: Props) {
       }
     },
     [token, t],
+  );
+
+  const applySessionPayload = useCallback(
+    (data: GuestCheckInSessionResponse) => {
+      setSession(data);
+      setStep((prev) => {
+        if (data.slots.length === 0) return 0;
+        const nextStep = Math.min(prev, data.slots.length - 1);
+        const slot = data.slots[nextStep];
+        if (slot) {
+          setForm(guestFromSlot(slot));
+          setFieldConfidence(slot.field_confidence || {});
+          setPhotoFront(null);
+          setPhotoBack(null);
+          setOcrJobId(null);
+          setOcrScanning(false);
+          setEntryMode(slot.status === "ready" ? "form" : "choose");
+        }
+        return nextStep;
+      });
+    },
+    [],
+  );
+
+  const commitSlot = useCallback(
+    async (
+      position: number,
+      opsVersion: number,
+    ): Promise<{ ok: boolean; slot: GuestCheckInSlot | null; canComplete: boolean }> => {
+      setSaving(true);
+      try {
+        const res = await fetch(
+          `/api/check-in/${encodeURIComponent(token)}/slots/${position}/commit`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ops_version: opsVersion }),
+          },
+        );
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409 && data.status === "session_conflict") {
+          const refreshed = await loadSession();
+          applySessionPayload(refreshed);
+          throw new Error(t("sessionConflict"));
+        }
+        if (!res.ok) {
+          const serverMissing = Array.isArray(data.missing_fields)
+            ? (data.missing_fields as string[])
+            : [];
+          const fieldErrors = (data.field_errors || {}) as Record<string, string>;
+          if (fieldErrors.address) {
+            throw new Error(fieldErrors.address);
+          }
+          if (serverMissing.length > 0) {
+            const labels = serverMissing
+              .map((key) => {
+                try {
+                  return t(`fieldLabels.${key}` as "fieldLabels.first_name");
+                } catch {
+                  return key;
+                }
+              })
+              .join(", ");
+            throw new Error(
+              `${t("validationHint")} ${t("validationSummary", { fields: labels })}`,
+            );
+          }
+          throw new Error((data.detail as string) || (data.error as string) || t("commitFailed"));
+        }
+        const slot = data.slot as GuestCheckInSlot;
+        const canComplete = Boolean(data.can_complete);
+        setSession((prev) => {
+          if (!prev) return prev;
+          const slots = prev.slots.map((s) => (s.position === slot.position ? { ...s, ...slot } : s));
+          return {
+            ...prev,
+            status: data.status as string,
+            effective_status: data.effective_status as string,
+            required_slots: data.required_slots as number,
+            ready_slots: data.ready_slots as number,
+            can_complete: canComplete,
+            ops_version: typeof data.ops_version === "number" ? data.ops_version : prev.ops_version,
+            expected_checkin_adults:
+              data.expected_checkin_adults !== undefined
+                ? (data.expected_checkin_adults as number | null)
+                : prev.expected_checkin_adults,
+            adults_count:
+              data.adults_count !== undefined
+                ? (data.adults_count as number | null)
+                : prev.adults_count,
+            slots,
+          };
+        });
+        setError("");
+        return { ok: true, slot, canComplete };
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("commitFailed"));
+        return { ok: false, slot: null, canComplete: false };
+      } finally {
+        setSaving(false);
+      }
+    },
+    [token, t, loadSession, applySessionPayload],
+  );
+
+  const patchOccupancy = useCallback(
+    async (expectedCheckinAdults: number | null) => {
+      if (!session) return;
+      setSaving(true);
+      setError("");
+      try {
+        const res = await fetch(`/api/check-in/${encodeURIComponent(token)}/occupancy`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            expected_checkin_adults: expectedCheckinAdults,
+            ops_version: session.ops_version,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409 && data.status === "session_conflict") {
+          const refreshed = await loadSession();
+          applySessionPayload(refreshed);
+          throw new Error(t("sessionConflict"));
+        }
+        if (!res.ok) {
+          throw new Error((data.detail as string) || (data.error as string) || t("saveFailed"));
+        }
+        applySessionPayload(data as GuestCheckInSessionResponse);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("saveFailed"));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [session, token, t, loadSession, applySessionPayload],
   );
 
   const applyJobResult = useCallback((data: GuestCheckInJobResponse) => {
@@ -371,7 +508,10 @@ export function GuestCheckInWizard({ token }: Props) {
       saveTimer.current = null;
     }
 
-    const result = await patchSlot(currentSlot.position, form);
+    const patched = await patchSlot(currentSlot.position, form);
+    if (!patched.ok) return;
+
+    const result = await commitSlot(currentSlot.position, session.ops_version);
     if (!result.ok) return;
 
     const slotReady = result.slot?.status === "ready";
@@ -401,8 +541,15 @@ export function GuestCheckInWizard({ token }: Props) {
     try {
       const res = await fetch(`/api/check-in/${encodeURIComponent(token)}/complete`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ops_version: session.ops_version }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.status === "session_conflict") {
+        const refreshed = await loadSession();
+        applySessionPayload(refreshed);
+        throw new Error(t("sessionConflict"));
+      }
       if (!res.ok) {
         throw new Error((data.detail as string) || (data.error as string) || t("completeFailed"));
       }
@@ -414,6 +561,8 @@ export function GuestCheckInWizard({ token }: Props) {
               status: data.status as string,
               effective_status: data.effective_status as string,
               can_complete: false,
+              ops_version:
+                typeof data.ops_version === "number" ? data.ops_version : prev.ops_version,
             }
           : prev,
       );
@@ -543,6 +692,26 @@ export function GuestCheckInWizard({ token }: Props) {
             <span className="badge">{t("statusPartial")}</span>
           )}
         </div>
+        {session.required_slots > 1 ? (
+          <button
+            type="button"
+            className="text-sm text-stay-blue underline"
+            disabled={saving}
+            onClick={() => void patchOccupancy(1)}
+          >
+            {t("travelingAlone")}
+          </button>
+        ) : null}
+        {session.expected_checkin_adults != null ? (
+          <button
+            type="button"
+            className="text-sm text-muted underline"
+            disabled={saving}
+            onClick={() => void patchOccupancy(null)}
+          >
+            {t("resetOccupancy")}
+          </button>
+        ) : null}
       </div>
 
       {entryMode === "choose" ? (
@@ -807,13 +976,18 @@ export function GuestCheckInWizard({ token }: Props) {
               <label className="label" htmlFor="address">
                 {t("address")}
               </label>
+              <p className="mt-1 text-xs text-muted">{t("addressHint")}</p>
               <textarea
                 id="address"
                 className={`input mt-1 min-h-20 ${confidenceClass(fieldConfidence.address)}`}
                 value={form.address}
+                placeholder={t("addressExample")}
                 onChange={(e) => updateField("address", e.target.value)}
                 required
               />
+              <p className="mt-1 text-xs text-muted">
+                {t("addressExampleLabel")}: {t("addressExample")}
+              </p>
               {confidenceHint("address") ? (
                 <p className="mt-1 text-xs text-amber-700">{confidenceHint("address")}</p>
               ) : null}

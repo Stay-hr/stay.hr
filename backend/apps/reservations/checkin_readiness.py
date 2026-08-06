@@ -17,6 +17,7 @@ class SlotReadinessDTO:
     guest_id: int
     status: str
     missing_fields: tuple[str, ...]
+    field_errors: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,9 @@ class CheckInReadinessDTO:
     can_complete: bool
     slots: tuple[SlotReadinessDTO, ...]
     waiting_positions: tuple[int, ...]
+    ops_version: int = 0
+    expected_checkin_adults: int | None = None
+    adults_count: int | None = None
 
 
 def effective_session_status(
@@ -78,6 +82,7 @@ def build_checkin_readiness(
             guest_id=slot.guest_id,
             status=slot.status.value,
             missing_fields=slot.missing_fields,
+            field_errors=slot.field_errors,
         )
         for slot in validations
     )
@@ -89,6 +94,9 @@ def build_checkin_readiness(
         can_complete=effective == "ready",
         slots=slot_dtos,
         waiting_positions=waiting,
+        ops_version=int(session.ops_version or 0),
+        expected_checkin_adults=reservation.expected_checkin_adults,
+        adults_count=reservation.adults_count,
     )
 
 

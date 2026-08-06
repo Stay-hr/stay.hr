@@ -347,7 +347,7 @@
     "docIdentityCard": "Osobna iskaznica",
     "docPassport": "Putovnica",
     "documentNumber": "Broj dokumenta",
-    "address": "Adresa (Grad, ulica)",
+    "address": "Adresa prebivališta",
     "select": "Odaberite",
     "back": "Natrag",
     "next": "Dalje",
@@ -379,7 +379,7 @@
     "validationHint": "Ispunite označena polja prije nastavka.",
     "fieldRequired": "Obavezno polje",
     "fieldErrorNationality": "Unesite ISO kod države (npr. HR)",
-    "fieldErrorAddress": "Unesite grad i ulicu (npr. Zagreb, Ilica 1)",
+    "fieldErrorAddress": "Unesite grad, ulicu i broj (npr. Zagreb, Ilica 15)",
     "fieldLabels": {
       "first_name": "ime",
       "last_name": "prezime",
@@ -389,7 +389,14 @@
       "document_type": "vrsta dokumenta",
       "document_number": "broj dokumenta",
       "address": "adresa"
-    }
+    },
+    "addressHint": "Grad, ulica i kućni broj (za eVisitor).",
+    "addressExample": "Zagreb, Ilica 15",
+    "addressExampleLabel": "Primjer",
+    "travelingAlone": "Putujem sam — ukloni ostale goste",
+    "resetOccupancy": "Vrati na broj osoba s rezervacije",
+    "sessionConflict": "Check-in je ažuriran na drugom uređaju. Ponovno učitano — pokušajte opet.",
+    "commitFailed": "Provjera podataka nije uspjela."
   },
   "guestPortal": {
     "subtitle": "Informacije za vaš boravak",

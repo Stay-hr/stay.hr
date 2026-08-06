@@ -38,6 +38,15 @@ class GuestCheckInLinkRegeneratedEvent:
     reservation: Reservation
 
 
+@dataclass(frozen=True)
+class GuestCheckInOccupancyChangedEvent:
+    session: GuestCheckInSession
+    reservation: Reservation
+    old_value: int | None
+    new_value: int | None
+    reason: str
+
+
 def emit_guest_slot_ready(
     *,
     session: GuestCheckInSession,
@@ -86,6 +95,24 @@ def emit_guest_checkin_link_regenerated(
     _dispatch_guest_checkin_link_regenerated(event)
 
 
+def emit_guest_checkin_occupancy_changed(
+    *,
+    session: GuestCheckInSession,
+    reservation: Reservation,
+    old_value: int | None,
+    new_value: int | None,
+    reason: str,
+) -> None:
+    event = GuestCheckInOccupancyChangedEvent(
+        session=session,
+        reservation=reservation,
+        old_value=old_value,
+        new_value=new_value,
+        reason=reason,
+    )
+    _dispatch_guest_checkin_occupancy_changed(event)
+
+
 def _dispatch_guest_slot_ready(event: GuestSlotReadyEvent) -> None:
     logger.info(
         "guest_checkin slot_ready reservation=%s session=%s position=%s guest=%s",
@@ -129,6 +156,19 @@ def _dispatch_guest_checkin_link_regenerated(event: GuestCheckInLinkRegeneratedE
         handler(event)
 
 
+def _dispatch_guest_checkin_occupancy_changed(event: GuestCheckInOccupancyChangedEvent) -> None:
+    logger.info(
+        "guest_checkin occupancy_changed reservation=%s session=%s from=%s to=%s reason=%s",
+        event.reservation.pk,
+        event.session.pk,
+        event.old_value,
+        event.new_value,
+        event.reason,
+    )
+    for handler in _GUEST_CHECKIN_OCCUPANCY_CHANGED_HANDLERS:
+        handler(event)
+
+
 def on_guest_slot_ready(handler):
     _GUEST_SLOT_READY_HANDLERS.append(handler)
     return handler
@@ -149,10 +189,16 @@ def on_guest_checkin_link_regenerated(handler):
     return handler
 
 
+def on_guest_checkin_occupancy_changed(handler):
+    _GUEST_CHECKIN_OCCUPANCY_CHANGED_HANDLERS.append(handler)
+    return handler
+
+
 _GUEST_SLOT_READY_HANDLERS: list = []
 _GUEST_SESSION_READY_HANDLERS: list = []
 _GUEST_SESSION_COMPLETED_HANDLERS: list = []
 _GUEST_CHECKIN_LINK_REGENERATED_HANDLERS: list = []
+_GUEST_CHECKIN_OCCUPANCY_CHANGED_HANDLERS: list = []
 
 
 @on_guest_session_ready
@@ -179,4 +225,15 @@ def log_checkin_link_regenerated(event: GuestCheckInLinkRegeneratedEvent) -> Non
         "guest_checkin audit link_regenerated reservation=%s token=%s",
         event.reservation.pk,
         event.new_session.token,
+    )
+
+
+@on_guest_checkin_occupancy_changed
+def bump_checkin_version_on_occupancy_changed(
+    event: GuestCheckInOccupancyChangedEvent,
+) -> None:
+    touch_reservation_version(
+        event.reservation.pk,
+        ReservationVersionScope.CHECKIN,
+        reason="guest_checkin_occupancy_changed",
     )

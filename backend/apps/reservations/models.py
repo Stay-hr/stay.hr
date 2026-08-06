@@ -58,6 +58,14 @@ class Reservation(TenantScopedModel):
     adults_count = models.PositiveSmallIntegerField(null=True, blank=True)
     children_count = models.PositiveSmallIntegerField(null=True, blank=True)
     infants_count = models.PositiveSmallIntegerField(null=True, blank=True)
+    expected_checkin_adults = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Check-in domain override: adults expected to submit identity documents. "
+            "Null means use OTA adults_count. OTA importers must never write this field."
+        ),
+    )
     children_ages = models.CharField(max_length=128, blank=True)
     commission_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -736,6 +744,13 @@ class GuestCheckInSession(TenantScopedModel):
     created_from = models.CharField(
         max_length=32,
         choices=GuestCheckInSessionCreatedFrom.choices,
+    )
+    ops_version = models.PositiveIntegerField(
+        default=0,
+        help_text=(
+            "Optimistic-lock revision for occupancy/commit/complete. "
+            "Not bumped on draft autosave PATCH."
+        ),
     )
     last_activity_at = models.DateTimeField(auto_now=True)
     wa_id = models.CharField(max_length=32, blank=True)

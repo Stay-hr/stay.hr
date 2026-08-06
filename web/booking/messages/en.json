@@ -347,7 +347,7 @@
     "docIdentityCard": "Identity card",
     "docPassport": "Passport",
     "documentNumber": "Document number",
-    "address": "Address (City, street)",
+    "address": "Residence address",
     "select": "Select",
     "back": "Back",
     "next": "Next",
@@ -379,7 +379,7 @@
     "validationHint": "Complete the highlighted fields before continuing.",
     "fieldRequired": "Required",
     "fieldErrorNationality": "Enter a 2-letter country code (e.g. HR)",
-    "fieldErrorAddress": "Enter city and street (e.g. Zagreb, Ilica 1)",
+    "fieldErrorAddress": "Enter city, street and number (e.g. Zagreb, Ilica 15)",
     "fieldLabels": {
       "first_name": "first name",
       "last_name": "last name",
@@ -389,7 +389,14 @@
       "document_type": "document type",
       "document_number": "document number",
       "address": "address"
-    }
+    },
+    "addressHint": "City, street and house number (required for eVisitor).",
+    "addressExample": "Zagreb, Ilica 15",
+    "addressExampleLabel": "Example",
+    "travelingAlone": "I'm traveling alone — remove other guests",
+    "resetOccupancy": "Reset to booking guest count",
+    "sessionConflict": "Check-in was updated elsewhere. Reloaded — please try again.",
+    "commitFailed": "Could not validate guest details."
   },
   "guestPortal": {
     "subtitle": "Stay information for your reservation",

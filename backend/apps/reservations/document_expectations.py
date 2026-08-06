@@ -31,10 +31,17 @@ class MissingGuest:
 
 
 def expected_document_count(reservation: Reservation) -> int:
-    """How many identity documents are expected during intake.
+    """How many identity documents are expected during intake / web check-in.
 
-    Sole place for count rules — uses adults_count when set.
+    Sole place for count rules:
+    1. ``expected_checkin_adults`` (check-in ops override) when set
+    2. else OTA ``adults_count`` / ``persons_count`` / guest rows
+
+    OTA importers must never write ``expected_checkin_adults``.
     """
+    override = reservation.expected_checkin_adults
+    if override is not None:
+        return max(int(override), 0)
     adults = reservation.adults_count
     if adults is not None:
         return max(int(adults), 0)
@@ -45,6 +52,17 @@ def expected_document_count(reservation: Reservation) -> int:
     if guest_count > 0:
         return guest_count
     return 1
+
+
+def booked_adults_ceiling(reservation: Reservation) -> int:
+    """OTA booked adults upper bound for check-in occupancy PATCH."""
+    adults = reservation.adults_count
+    if adults is not None:
+        return max(int(adults), 0)
+    persons = reservation.persons_count
+    if persons is not None and int(persons) > 0:
+        return int(persons)
+    return max(reservation.guests.count(), 1)
 
 
 def expected_document_slots(reservation: Reservation) -> list[Guest]:
