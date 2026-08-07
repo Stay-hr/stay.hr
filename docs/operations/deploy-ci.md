@@ -1,6 +1,33 @@
 # Deploy from GitHub Actions (main → dedicated-hel1)
 
-## What runs
+## PR CI vs deploy CI
+
+| | PR CI | Deploy |
+|--|--|--|
+| Workflow | [`.github/workflows/pr-ci.yml`](../../.github/workflows/pr-ci.yml) | [`.github/workflows/deploy-production.yml`](../../.github/workflows/deploy-production.yml) |
+| When | every `pull_request` | `push` to `main` / `workflow_dispatch` |
+| Purpose | merge gate (tests) | production roll-out |
+| Required check name | **`PR CI / backend`** (stable; suite content may evolve) | — |
+
+Local `./scripts/run-tests-postgis.sh` (default: `apps.integrations.tests`) is for developers; it is **not** a substitute for green PR CI.
+
+**PR CI smoke (v1):** `manage.py check`, migrate + migrate `--check`, reception health test. Full `apps.integrations.tests` on Actions is a follow-up (env/isolation parity with `django-run`). Capability-based suites and `makemigrations --check` land in later PRs after pending model/index drift on `main` is committed.
+
+### Branch protection (`main`) — enable right after PR CI merges
+
+Settings → Branches → Branch protection rule for `main`:
+
+1. Require a pull request before merging
+2. Require status checks to pass → **`PR CI / backend`**
+3. Require branches to be up to date before merging
+4. Dismiss stale pull request approvals when new commits are pushed
+5. Require linear history (if the repo uses squash merge)
+6. Do not allow bypassing the above settings (admins included, if the plan allows)
+7. Block force pushes and branch deletions
+
+Do **not** wait for capability-based CI (follow-up PR) before turning this on — later PRs must already go through the gate.
+
+## What runs (deploy)
 
 Workflow [`.github/workflows/deploy-production.yml`](../../.github/workflows/deploy-production.yml):
 
