@@ -113,6 +113,8 @@ def build_field_confidence(
 
 def person_to_guest_preview(person: dict) -> dict[str, Any]:
     """Map OCR person dict to guest public field names for wizard pre-fill."""
+    from apps.reservations.address_normalizer import normalize_address
+
     doc_type = str(person.get("document_type") or "national_id").lower()
     guest_doc_type = "passport" if doc_type == "passport" else "identity_card"
     sex_raw = str(person.get("sex") or "").strip().upper()
@@ -132,7 +134,9 @@ def person_to_guest_preview(person: dict) -> dict[str, Any]:
     else:
         nationality = nat[:2]
 
-    return {
+    address_raw = str(person.get("address") or "").strip()
+    address = address_raw
+    preview: dict[str, Any] = {
         "first_name": str(person.get("given_names") or "").strip(),
         "last_name": str(person.get("surnames") or "").strip(),
         "email": "",
@@ -141,9 +145,17 @@ def person_to_guest_preview(person: dict) -> dict[str, Any]:
         "document_number": str(person.get("document_number") or "").strip(),
         "nationality": nationality,
         "sex": sex,
-        "address": str(person.get("address") or "").strip(),
+        "address": address,
         "document_type": guest_doc_type,
     }
+    if address_raw:
+        norm = normalize_address(address_raw, source="ocr")
+        if norm.applied and norm.normalized:
+            preview["address"] = norm.normalized
+            preview["ocr_address_original"] = norm.original
+            preview["ocr_address_normalized"] = norm.normalized
+            preview["ocr_address_strategy"] = norm.strategy
+    return preview
 
 
 def latest_applied_web_guest_job(

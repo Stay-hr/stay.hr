@@ -153,9 +153,9 @@ jobs:
           suites=()
 
           # CI-safe labels only (expand when packages are green on Actions).
-          # After OCR address PR merges, add apps.reservations.tests.test_address_normalizer.
           add_reservations() {
             suites+=(
+              apps.reservations.tests.test_address_normalizer
               apps.reservations.tests.test_mrz_parse
               apps.reservations.tests.test_phone_validation
               apps.reservations.tests.test_nationality_display

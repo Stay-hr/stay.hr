@@ -55,6 +55,7 @@ from apps.reservations.document_intake_telemetry import (
 )
 from apps.reservations.guest_slots import ensure_guest_slots_for_intake
 from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
+from apps.reservations.address_normalizer import normalize_address
 from apps.reservations.mrz_parse import parse_sex_from_mrz
 from apps.reservations.nationality_display import guest_nationality_iso2, normalize_country_iso2
 from apps.reservations.document_photo_storage import (
@@ -853,7 +854,7 @@ def _apply_person_to_guest(
 
     _sync_reservation_country_from_guest(guest=guest, reservation=reservation)
 
-    return {
+    applied: dict[str, Any] = {
         "person_index": person_index,
         "guest_id": guest.pk,
         "reservation_id": reservation.pk,
@@ -864,6 +865,14 @@ def _apply_person_to_guest(
         "updated_fields": list(guest_updates.keys()),
         "face_photo_saved": face_content is not None,
     }
+    for key in (
+        "ocr_address_original",
+        "ocr_address_normalized",
+        "ocr_address_strategy",
+    ):
+        if suggested.get(key):
+            applied[key] = suggested[key]
+    return applied
 
 
 def _sync_reservation_country_from_guest(*, guest: Guest, reservation: Reservation) -> None:
@@ -975,12 +984,21 @@ def _guest_updates_from_payload(raw_payload: dict) -> tuple[dict, dict]:
 
     adresa = as_str("adresa")
     address_for_suggest = adresa
+    address_norm_meta: dict[str, str] = {}
     if adresa:
-        address_result = validate_evisitor_residence_address(adresa)
+        norm = normalize_address(adresa, source="ocr")
+        adresa_for_validate = norm.normalized if (norm.applied and norm.normalized) else adresa
+        address_result = validate_evisitor_residence_address(adresa_for_validate)
         if address_result.valid:
             updates["address"] = address_result.normalized_address
             address_for_suggest = address_result.normalized_address
         # Invalid: do not persist bad address; keep prior guest.address.
+        if norm.applied and norm.normalized:
+            address_norm_meta = {
+                "ocr_address_original": norm.original,
+                "ocr_address_normalized": address_for_suggest or norm.normalized,
+                "ocr_address_strategy": norm.strategy,
+            }
 
     meta = raw_payload.get("metapodaci") or {}
     tip = str(meta.get("tip_dokumenta") or "").lower()
@@ -1005,6 +1023,7 @@ def _guest_updates_from_payload(raw_payload: dict) -> tuple[dict, dict]:
         "nationality": iso2,
         "date_of_birth": dob,
         "address": address_for_suggest,
+        **address_norm_meta,
     }
     suggested = {k: v for k, v in suggested.items() if v}
     return updates, suggested
