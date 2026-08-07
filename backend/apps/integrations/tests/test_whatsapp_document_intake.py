@@ -33,10 +33,7 @@ class WhatsAppDocumentIntakeTaskTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": "d360-test",
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "auto_reply": False,
             }
         )

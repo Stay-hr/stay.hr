@@ -13,7 +13,7 @@ from apps.properties.models import Property
 from apps.reservations.models import EvisitorGuestStatus, Guest, Reservation
 from apps.tenants.models import Tenant
 
-TEST_D360_KEY = "test-d360-key"
+TEST_WHATSAPP_ACCESS_TOKEN = "test-whatsapp-access-token"
 
 
 @override_settings(
@@ -31,10 +31,7 @@ class WhatsAppEvisitorRegisteredReplyTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "auto_reply": False,
             }
         )
@@ -95,13 +92,13 @@ class WhatsAppEvisitorRegisteredReplyTests(TestCase):
         self.assertIn("You are now registered in eVisitor", text)
         self.assertIn("pleasant stay", text)
 
-    @patch.dict("os.environ", {"WHATSAPP_EVISITOR_REGISTERED_REPLY": "true", "D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_EVISITOR_REGISTERED_REPLY": "true", "WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     def test_skips_when_evisitor_incomplete(self):
         result = maybe_send_evisitor_registered_whatsapp_reply(self.reservation)
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "evisitor_incomplete")
 
-    @patch.dict("os.environ", {"WHATSAPP_EVISITOR_REGISTERED_REPLY": "true", "D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_EVISITOR_REGISTERED_REPLY": "true", "WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.evisitor_reply.send_text_message")
     def test_sends_when_all_required_guests_sent(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.out.evisitor"}]}
@@ -115,7 +112,7 @@ class WhatsAppEvisitorRegisteredReplyTests(TestCase):
         body = mock_send.call_args.kwargs["body"]
         self.assertIn("You are now registered in eVisitor", body)
 
-    @patch.dict("os.environ", {"WHATSAPP_EVISITOR_REGISTERED_REPLY": "true", "D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_EVISITOR_REGISTERED_REPLY": "true", "WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.evisitor_reply.send_text_message")
     def test_skips_duplicate(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.out.evisitor"}]}

@@ -24,7 +24,7 @@ from apps.reservations.models import (
 )
 from apps.tenants.models import Tenant
 
-TEST_D360_KEY = "test-d360-key"
+TEST_WHATSAPP_ACCESS_TOKEN = "test-whatsapp-access-token"
 
 
 @override_settings(
@@ -154,7 +154,7 @@ class OperatorJobCompleteTests(TestCase):
         self.assertEqual(scoped["tenant_id"], self.tenant.pk)
         self.assertEqual(scoped["reservation"].pk, self.reservation.pk)
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.operator_job_complete._notify_operator")
     @patch("apps.integrations.whatsapp.operator_job_complete.notify_guest_operator_checkin_complete")
     @patch("apps.integrations.whatsapp.operator_job_complete.submit_evisitor_for_reservation")

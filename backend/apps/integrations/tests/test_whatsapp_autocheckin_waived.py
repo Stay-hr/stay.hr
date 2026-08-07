@@ -14,7 +14,7 @@ from apps.properties.models import Property
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
 
-TEST_D360_KEY = "test-d360-key"
+TEST_WHATSAPP_ACCESS_TOKEN = "test-whatsapp-access-token"
 
 
 @override_settings(
@@ -34,10 +34,7 @@ class WhatsAppAutocheckinWaivedTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "auto_reply": True,
             }
         )
@@ -56,7 +53,7 @@ class WhatsAppAutocheckinWaivedTests(TestCase):
         waive_whatsapp_autocheckin(self.reservation)
         self.reservation.refresh_from_db()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.tasks.send_text_message")
     def test_waived_auto_checkin_button_skips_documents(self, mock_send):
         inbound = WhatsAppMessage.objects.create(
@@ -81,7 +78,7 @@ class WhatsAppAutocheckinWaivedTests(TestCase):
         self.assertEqual(result["reason"], "autocheckin_waived")
         mock_send.assert_not_called()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.guest_arrival_inbound.send_guest_message")
     def test_waived_arrival_text_sends_thanks_only(self, mock_send):
         mock_send.return_value = MagicMock(pk=1)
@@ -129,7 +126,7 @@ class WhatsAppAutocheckinWaivedTests(TestCase):
         self.assertEqual(result["reason"], "waived")
         mock_fetch.assert_not_called()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.tasks.send_text_message")
     def test_waived_random_text_skips(self, mock_send):
         inbound = WhatsAppMessage.objects.create(
@@ -151,7 +148,7 @@ class WhatsAppAutocheckinWaivedTests(TestCase):
         self.assertEqual(result["reason"], "autocheckin_waived")
         mock_send.assert_not_called()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.autocheckin_waive.send_guest_message")
     def test_send_autocheckin_waived_sets_waived_at(self, mock_send):
         fresh = Reservation.objects.create(

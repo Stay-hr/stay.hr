@@ -30,7 +30,7 @@ from apps.reservations.models import (
 )
 from apps.tenants.models import Tenant
 
-TEST_D360_KEY = "test-d360-key"
+TEST_WHATSAPP_ACCESS_TOKEN = "test-whatsapp-access-token"
 ZAGREB = ZoneInfo("Europe/Zagreb")
 
 
@@ -53,10 +53,7 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "display_phone_number": "+385911111111",
                 "auto_reply": False,
                 "whatsapp_templates": {
@@ -101,7 +98,7 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
         due = iter_due_autocheckin_reservations()
         self.assertEqual(due, [])
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     @patch("apps.communications.whatsapp_autocheckin_tasks.property_local_now")
     def test_send_welcome_marks_sent(self, mock_now, mock_send):
@@ -117,17 +114,14 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
         self.assertEqual(kwargs["template_name"], "stay_welcome_hr")
         self.assertEqual(kwargs["body_parameters"][0], "Ana")
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     def test_send_welcome_pl_payload_with_incomplete_config(self, mock_send):
         """Phase 5 E2E: incomplete map still sends stay_welcome_pl + language pl (#1020)."""
         # Config omits pl — old bug chose stay_welcome_en while keeping meta language pl.
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "display_phone_number": "+385911111111",
                 "auto_reply": False,
                 "whatsapp_templates": {
@@ -160,16 +154,13 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
         self.assertEqual(kwargs["language_code"], "pl")
         self.assertEqual(kwargs["body_parameters"][0], "Jan")
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     def test_dry_run_welcome_pl_payload_with_incomplete_config(self, mock_send):
         """Dry-run also resolves pl via registry when config map omits pl."""
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "auto_reply": False,
                 "whatsapp_templates": {
                     "welcome": {
@@ -196,7 +187,7 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
         mock_send.assert_not_called()
         self.reservation.refresh_from_db()
         self.assertIsNone(self.reservation.whatsapp_welcome_sent_at)
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     @patch("apps.communications.whatsapp_autocheckin_tasks.property_local_now")
     def test_idempotent_second_run(self, mock_now, mock_send):
@@ -271,7 +262,7 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
         self.assertNotIn("<script", body_html.lower())
         self.assertIn(html.escape(self.reservation.booking_code), body_html)
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     def test_skip_welcome_when_guest_engaged(self, mock_send):
         self.reservation.whatsapp_autocheckin_engaged_at = datetime(2026, 6, 7, 7, 0, tzinfo=ZAGREB)
@@ -304,7 +295,7 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
             created_from=created_from,
         )
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     def test_skip_welcome_when_web_checkin_completed_channex(self, mock_send):
         self._create_completed_web_checkin(created_from=GuestCheckInSessionCreatedFrom.CHANNEX)
@@ -317,7 +308,7 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
         self.reservation.refresh_from_db()
         self.assertIsNone(self.reservation.whatsapp_welcome_sent_at)
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     def test_skip_welcome_when_web_checkin_completed_email(self, mock_send):
         self._create_completed_web_checkin(created_from=GuestCheckInSessionCreatedFrom.EMAIL)
@@ -355,7 +346,7 @@ class WhatsAppAutocheckinWelcomeTests(TestCase):
         mock_email.assert_not_called()
 
     @patch("apps.communications.guest_message_send.send_guest_text_email")
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     @patch("apps.communications.whatsapp_autocheckin_tasks.property_local_now")
     def test_run_sends_intro_then_welcome(self, mock_now, mock_welcome, mock_email):
@@ -394,10 +385,7 @@ class WhatsAppImmediateAutocheckinTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "auto_reply": False,
                 "whatsapp_templates": {
                     "welcome": {"hr": "stay_welcome_hr"},
@@ -447,7 +435,7 @@ class WhatsAppImmediateAutocheckinTests(TestCase):
         reservation = self._create_reservation()
         self.assertFalse(is_immediate_autocheckin_eligible(reservation))
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     @patch("apps.communications.whatsapp_autocheckin_tasks.property_local_now")
     def test_immediate_task_sends_when_eligible(self, mock_now, mock_send):
@@ -471,7 +459,7 @@ class WhatsAppImmediateAutocheckinTests(TestCase):
         self.assertEqual(result["status"], "skipped")
         mock_intro.assert_not_called()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     @patch("apps.communications.whatsapp_autocheckin_tasks.property_local_now")
     def test_immediate_task_skips_before_time(self, mock_now, mock_send):
@@ -483,7 +471,7 @@ class WhatsAppImmediateAutocheckinTests(TestCase):
         self.assertEqual(result["status"], "skipped")
         mock_send.assert_not_called()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.whatsapp_autocheckin_tasks.send_template_message")
     @patch("apps.communications.whatsapp_autocheckin_tasks.property_local_now")
     def test_immediate_task_already_sent(self, mock_now, mock_send):

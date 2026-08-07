@@ -1,6 +1,6 @@
 # WhatsApp setup (Meta Cloud API)
 
-Stay.hr uses **Meta WhatsApp Cloud API** only (Graph API). There is no BSP/360dialog path.
+Stay.hr uses **Meta WhatsApp Cloud API** only (Graph API).
 
 ## Webhook
 

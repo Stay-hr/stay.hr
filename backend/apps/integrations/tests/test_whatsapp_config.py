@@ -14,18 +14,6 @@ class WhatsAppConfigTests(SimpleTestCase):
     def test_access_token_from_env(self):
         self.assertEqual(access_token_from_env(), "test-token")
 
-    @patch.dict("os.environ", {"D360_API_KEY": "legacy-d360"}, clear=True)
-    def test_access_token_falls_back_to_d360_api_key(self):
-        self.assertEqual(access_token_from_env(), "legacy-d360")
-
-    @patch.dict(
-        "os.environ",
-        {"WHATSAPP_ACCESS_TOKEN": "primary", "D360_API_KEY": "legacy"},
-        clear=True,
-    )
-    def test_access_token_prefers_whatsapp_access_token(self):
-        self.assertEqual(access_token_from_env(), "primary")
-
     @patch.dict("os.environ", {}, clear=True)
     def test_webhook_signature_enabled_by_default(self):
         self.assertTrue(webhook_verify_signature_from_env())

@@ -19,7 +19,7 @@ from apps.properties.models import Property
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
 
-TEST_D360_KEY = "test-d360-key"
+TEST_WHATSAPP_ACCESS_TOKEN = "test-whatsapp-access-token"
 ZAGREB = ZoneInfo("Europe/Zagreb")
 
 
@@ -43,10 +43,7 @@ class AutocheckinDocsDeadlineTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
             }
         )
         self.integration.save()
@@ -88,7 +85,7 @@ class AutocheckinDocsDeadlineTests(TestCase):
         self.reservation.refresh_from_db()
         self.assertIsNotNone(self.reservation.whatsapp_autocheckin_docs_deadline_at)
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.autocheckin_docs_deadline.notify_guest_docs_awaiting_arrival")
     @patch("apps.integrations.whatsapp.evisitor_reply.send_text_message")
     @patch("apps.integrations.whatsapp.autocheckin_docs_deadline.waive_whatsapp_autocheckin")

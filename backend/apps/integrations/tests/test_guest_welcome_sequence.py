@@ -13,7 +13,7 @@ from apps.properties.models import Property
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
 
-TEST_D360_KEY = "test-d360-key"
+TEST_WHATSAPP_ACCESS_TOKEN = "test-whatsapp-access-token"
 
 
 @override_settings(STAY_INTEGRATION_FERNET_KEY=TEST_FERNET_KEY)
@@ -34,10 +34,7 @@ class GuestWelcomeSequenceTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
             }
         )
         self.integration.save()
@@ -63,7 +60,7 @@ class GuestWelcomeSequenceTests(TestCase):
             raw_payload={},
         )
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.guest_welcome_sequence.send_whatsapp_ask_arrival_time")
     @patch("apps.integrations.whatsapp.guest_welcome_sequence._send_checkin_complete_entrance_image")
     @patch("apps.integrations.whatsapp.evisitor_reply.send_text_message")
