@@ -11,7 +11,8 @@
 
 Local `./scripts/run-tests-postgis.sh` (default: `apps.integrations.tests`) is for developers; it is **not** a substitute for green PR CI.
 
-**PR CI capability (v2):** always `check` + migrate + health. Path filters select **CI-safe** suites (e.g. `reservations` → `test_address_normalizer`; `billing` → ePorezna tests). Shared `core` / `config` / `requirements.txt` → expanded safe suite. Full `apps.integrations.tests` / full `apps.reservations.tests` remain local (`./scripts/run-tests-postgis.sh`) until Actions parity (and known import debts like `expire_stale_sessions`) are fixed. `makemigrations --check` deferred for pending model/index drift.
+**PR CI capability (v2):** always `check` + migrate + health. Path filters select **CI-safe** suites (e.g. `reservations` → mrz/phone/nationality unit tests; `billing` → ePorezna). Shared `core` / `config` / `requirements.txt` → expanded safe suite. Full package suites remain local until Actions parity. After the OCR address normalizer lands, add `test_address_normalizer` to the reservations map.
+
 
 
 ### Branch protection (`main`)
