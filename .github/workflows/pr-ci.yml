@@ -6,7 +6,9 @@ name: PR CI
 # Deploy stays on main only (deploy-production.yml). Local ./scripts/run-tests-postgis.sh
 # is not a substitute for this workflow.
 #
-# Interim suite: apps.integrations.tests until capability-based path filters land.
+# Interim smoke: Django check + migrations + health. Full apps.integrations.tests is
+# still the local quality gate; wiring it here is a follow-up once Actions env matches
+# docker-compose test-run (credentials / isolation). Capability-based suites = PR2.
 
 on:
   pull_request:
@@ -51,8 +53,6 @@ jobs:
       DB_PASSWORD: stay
       TEST_DB_NAME: stay_platform_test_db
       FCM_PUSH_ENABLED: "false"
-      # Match config.settings.test_postgis — integration suite exercises WA paths.
-      GUEST_CHECKIN_WEB_ONLY: "false"
 
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +99,6 @@ jobs:
 
       # makemigrations --check --dry-run: deferred — main currently has pending
       # model/index drift (communications, properties, integrations, reservations).
-      # Re-enable in a follow-up once those migrations are committed.
 
       - name: Apply migrations
         run: |
@@ -111,12 +110,9 @@ jobs:
           set -euo pipefail
           python manage.py migrate --check
 
-      # One invocation so --keepdb is consistent (avoid back-to-back test runs
-      # leaving partial tenant fixtures that collide on unique slugs).
-      - name: PostGIS smoke
+      - name: Health smoke
         run: |
           set -euo pipefail
           python manage.py test \
             apps.api.tests.test_reception_api.ReceptionAPITests.test_health_unauthenticated \
-            apps.integrations.tests \
             -v 2 --keepdb

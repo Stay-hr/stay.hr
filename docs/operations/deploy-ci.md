@@ -9,11 +9,9 @@
 | Purpose | merge gate (tests) | production roll-out |
 | Required check name | **`PR CI / backend`** (stable; suite content may evolve) | — |
 
-Local `./scripts/run-tests-postgis.sh` is for developers; it is **not** a substitute for green PR CI.
+Local `./scripts/run-tests-postgis.sh` (default: `apps.integrations.tests`) is for developers; it is **not** a substitute for green PR CI.
 
-**Follow-up (not in the first PR CI workflow):** re-enable `makemigrations --check --dry-run` after committing pending model/index migration drift on `main` (communications, properties, integrations, reservations). Until then that step would fail every PR.
-
-`config.settings.test_postgis` sets `GUEST_CHECKIN_WEB_ONLY=False` so the integrations smoke can exercise WhatsApp automation paths (production default remains web-only via `.env`).
+**PR CI smoke (v1):** `manage.py check`, migrate + migrate `--check`, reception health test. Full `apps.integrations.tests` on Actions is a follow-up (env/isolation parity with `django-run`). Capability-based suites and `makemigrations --check` land in later PRs after pending model/index drift on `main` is committed.
 
 ### Branch protection (`main`) — enable right after PR CI merges
 
