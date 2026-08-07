@@ -48,6 +48,8 @@ jobs:
       DB_PASSWORD: stay
       TEST_DB_NAME: stay_platform_test_db
       FCM_PUSH_ENABLED: "false"
+      GUEST_CHECKIN_WEB_ONLY: "false"
+      WHATSAPP_AUTOCHECKIN_MAINTENANCE: "false"
       OPS_CI_ARTIFACT_DIR: ${{ github.workspace }}/ci-artifacts
 
     steps:

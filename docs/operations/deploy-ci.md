@@ -13,7 +13,7 @@ Local `./scripts/run-tests-postgis.sh` (default: `apps.integrations.tests`) is f
 
 **PR CI capability (v2):** always `check` + migrate + health. Path filters select **CI-safe** suites (e.g. `reservations` → address normalizer + mrz/phone/nationality; `billing` → ePorezna). Shared `core` / `config` / `requirements.txt` → expanded safe suite. Full package suites remain local until Actions parity.
 
-**Nightly:** [`.github/workflows/nightly.yml`](../../.github/workflows/nightly.yml) runs broader PostGIS suites on a schedule (`0 3 * * *` UTC) and `workflow_dispatch`. It is **not** a required check; failures stay red and upload a log artifact (ADR [0018](../architecture/adr/0018-continuous-integration-policy.md)).
+**Nightly:** [`.github/workflows/nightly.yml`](../../.github/workflows/nightly.yml) runs broader PostGIS suites on a schedule (`0 3 * * *` UTC) and `workflow_dispatch`. It is **not** a required check; failures stay red and upload a log artifact (ADR [0018](../architecture/adr/0018-continuous-integration-policy.md)). `test_postgis` sets `GUEST_CHECKIN_WEB_ONLY=False` so lifecycle suites match local docker-run expectations.
 
 
 

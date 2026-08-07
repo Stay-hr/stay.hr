@@ -136,6 +136,20 @@ def reservation_has_completed_web_checkin(reservation: Reservation) -> bool:
 
 
 @transaction.atomic
+def expire_stale_sessions(*, now: datetime | None = None) -> dict:
+    """Mark ACTIVE sessions past ``expires_at`` as EXPIRED. Used by Celery beat."""
+    now = now or timezone.now()
+    stale = GuestCheckInSession.objects.filter(
+        status=GuestCheckInSessionStatus.ACTIVE,
+        expires_at__lt=now,
+    )
+    expired = stale.update(status=GuestCheckInSessionStatus.EXPIRED)
+    if expired:
+        logger.info("guest_checkin expired_stale_sessions count=%s", expired)
+    return {"expired": expired}
+
+
+@transaction.atomic
 def ensure_active_session(
     reservation: Reservation,
     *,
