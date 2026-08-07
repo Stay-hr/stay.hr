@@ -9,7 +9,9 @@ from config.settings.base import *  # noqa: F403
 _TEST_DB_NAME = env("TEST_DB_NAME", default="stay_platform_test_db")
 
 DATABASES["default"]["NAME"] = _TEST_DB_NAME
-DATABASES["default"]["TEST"] = {"NAME": _TEST_DB_NAME}
+# Separate test DB so manage.py migrate on NAME does not share state with
+# TestCase/TransactionTestCase runs (critical for GitHub Actions keepdb).
+DATABASES["default"]["TEST"] = {"NAME": f"test_{_TEST_DB_NAME}"}
 DATABASES.pop("uzorita_legacy", None)
 
 STAY_INTEGRATION_FERNET_KEY = "M8U_DJpQILQrKpxTOVtRrQp3nR0LJHAl2X0x-7JOH5k="
