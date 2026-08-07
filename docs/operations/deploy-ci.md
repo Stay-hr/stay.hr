@@ -13,6 +13,8 @@ Local `./scripts/run-tests-postgis.sh` is for developers; it is **not** a substi
 
 **Follow-up (not in the first PR CI workflow):** re-enable `makemigrations --check --dry-run` after committing pending model/index migration drift on `main` (communications, properties, integrations, reservations). Until then that step would fail every PR.
 
+`config.settings.test_postgis` sets `GUEST_CHECKIN_WEB_ONLY=False` so the integrations smoke can exercise WhatsApp automation paths (production default remains web-only via `.env`).
+
 ### Branch protection (`main`) — enable right after PR CI merges
 
 Settings → Branches → Branch protection rule for `main`:

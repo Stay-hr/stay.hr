@@ -51,6 +51,8 @@ jobs:
       DB_PASSWORD: stay
       TEST_DB_NAME: stay_platform_test_db
       FCM_PUSH_ENABLED: "false"
+      # Match config.settings.test_postgis — integration suite exercises WA paths.
+      GUEST_CHECKIN_WEB_ONLY: "false"
 
     steps:
       - uses: actions/checkout@v4
@@ -109,15 +111,12 @@ jobs:
           set -euo pipefail
           python manage.py migrate --check
 
-      - name: Health smoke
+      # One invocation so --keepdb is consistent (avoid back-to-back test runs
+      # leaving partial tenant fixtures that collide on unique slugs).
+      - name: PostGIS smoke
         run: |
           set -euo pipefail
           python manage.py test \
             apps.api.tests.test_reception_api.ReceptionAPITests.test_health_unauthenticated \
+            apps.integrations.tests \
             -v 2 --keepdb
-
-      # Interim until capability-based path filters (next PR).
-      - name: PostGIS smoke (interim integrations)
-        run: |
-          set -euo pipefail
-          python manage.py test apps.integrations.tests -v 2 --keepdb
