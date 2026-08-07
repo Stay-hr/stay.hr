@@ -11,7 +11,7 @@
 
 Local `./scripts/run-tests-postgis.sh` (default: `apps.integrations.tests`) is for developers; it is **not** a substitute for green PR CI.
 
-**PR CI capability (v2):** always `check` + migrate + health. Path filters select **CI-safe** suites (e.g. `reservations` → mrz/phone/nationality unit tests; `billing` → ePorezna). Shared `core` / `config` / `requirements.txt` → expanded safe suite. Full package suites remain local until Actions parity. After the OCR address normalizer lands, add `test_address_normalizer` to the reservations map.
+**PR CI capability (v2):** always `check` + migrate + health. Path filters select **CI-safe** suites (e.g. `reservations` → address normalizer + mrz/phone/nationality; `billing` → ePorezna). Shared `core` / `config` / `requirements.txt` → expanded safe suite. Full package suites remain local until Actions parity.
 
 **Nightly:** [`.github/workflows/nightly.yml`](../../.github/workflows/nightly.yml) runs broader PostGIS suites on a schedule (`0 3 * * *` UTC) and `workflow_dispatch`. It is **not** a required check; failures stay red and upload a log artifact (ADR [0018](../architecture/adr/0018-continuous-integration-policy.md)).
 
