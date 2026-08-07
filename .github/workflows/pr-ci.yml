@@ -113,7 +113,7 @@ jobs:
         run: |
           set -euo pipefail
           python manage.py test \
-            apps.api.tests.test_reception_api.ReceptionApiTests.test_health_unauthenticated \
+            apps.api.tests.test_reception_api.ReceptionAPITests.test_health_unauthenticated \
             -v 2 --keepdb
 
       # Interim until capability-based path filters (next PR).
