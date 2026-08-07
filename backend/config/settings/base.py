@@ -37,6 +37,11 @@ WHATSAPP_DOCUMENT_INTAKE_LIFECYCLE_GATE = env.bool(
     default=True,
 )
 GUEST_CHECKIN_WEB_ONLY = env.bool("GUEST_CHECKIN_WEB_ONLY", default=True)
+# OCR residence address: FR postal street-first → City, street (fail-closed via eVisitor validator)
+OCR_ADDRESS_NORMALIZATION_ENABLED = env.bool(
+    "OCR_ADDRESS_NORMALIZATION_ENABLED",
+    default=True,
+)
 FCM_PUSH_ALLOWED_TENANT_SLUGS = env.list("FCM_PUSH_ALLOWED_TENANT_SLUGS", default=[])
 DEBUG = env("DJANGO_DEBUG")
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")

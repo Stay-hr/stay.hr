@@ -102,6 +102,8 @@ HR osobna na stražnjoj strani piše `PREBIVALIŠTE: OSIJEK, OSIJEK` + ulica zas
 
 **Ažuriranje (validacija):** street-first adrese (npr. `Dubrovačka 30, Osijek`) sada se **odbijaju lokalno** u [`validate_evisitor_residence_address`](../../backend/apps/integrations/evisitor/residence_address.py) prije eVisitor API-ja — nema automatskog okretanja redoslijeda. Vidi [evisitor.md — Check-in](../development/evisitor.md#check-in-u-evisitor).
 
+**Ažuriranje (OCR, 2026-08):** Francuski ID OCR često emitira `ulica, POSTAL GRAD[, DRŽAVA]`. To **ne** mijenja validator. [`address_normalizer.py`](../../backend/apps/reservations/address_normalizer.py) (`source=ocr`, flag `OCR_ADDRESS_NORMALIZATION_ENABLED`) radi samo deterministički reorder kad postoje street + postal + city, i prihvaća kandidat **samo** ako prođe postojeći validator. Originalni OCR string ostaje u apply auditu (`ocr_address_original`). HR street-first bez postala i dalje ostaje odbijen (#190).
+
 ---
 
 ## Povezani dokumenti i kod
@@ -110,6 +112,7 @@ HR osobna na stražnjoj strani piše `PREBIVALIŠTE: OSIJEK, OSIJEK` + ulica zas
 |-----|------|
 | Ručni OCR runbook | [id-document-import.md](../development/id-document-import.md) |
 | Residence address validator | `backend/apps/integrations/evisitor/residence_address.py` |
+| OCR address normalizer | `backend/apps/reservations/address_normalizer.py` |
 | eVisitor mapper | `backend/apps/integrations/evisitor/mapper.py` |
 | eVisitor servis | `backend/apps/integrations/evisitor/service.py` |
 | Logovi | `docker compose logs django` — tražiti `CheckInTourist`, `evisitor-submit`, guest ID `1194` |
