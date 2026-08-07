@@ -1,14 +1,16 @@
 name: PR CI
 
 # Merge gate for every pull request. Required check display name: "PR CI / backend"
-# (stable — content may evolve in later PRs without changing branch protection).
+# (stable — content may evolve without changing branch protection).
 #
-# Deploy stays on main only (deploy-production.yml). Local ./scripts/run-tests-postgis.sh
-# is not a substitute for this workflow.
+# Deploy stays on main only (deploy-production.yml).
+# Local ./scripts/run-tests-postgis.sh is not a substitute for this workflow.
 #
-# Interim smoke: Django check + migrations + health. Full apps.integrations.tests is
-# still the local quality gate; wiring it here is a follow-up once Actions env matches
-# docker-compose test-run (credentials / isolation). Capability-based suites = PR2.
+# Capability selection (dorny/paths-filter):
+#   - Always: check + migrate + health
+#   - Path → apps.<capability>.tests
+#   - core/config/requirements/pr-ci.yml → full smoke (see below)
+# apps.integrations.tests is still local/nightly until Actions env parity is fixed.
 
 on:
   pull_request:
@@ -19,10 +21,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed capabilities
+    runs-on: ubuntu-latest
+    outputs:
+      reservations: ${{ steps.filter.outputs.reservations }}
+      billing: ${{ steps.filter.outputs.billing }}
+      integrations: ${{ steps.filter.outputs.integrations }}
+      api: ${{ steps.filter.outputs.api }}
+      tenants: ${{ steps.filter.outputs.tenants }}
+      properties: ${{ steps.filter.outputs.properties }}
+      communications: ${{ steps.filter.outputs.communications }}
+      full_smoke: ${{ steps.filter.outputs.full_smoke }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            reservations:
+              - 'backend/apps/reservations/**'
+            billing:
+              - 'backend/apps/billing/**'
+            integrations:
+              - 'backend/apps/integrations/**'
+            api:
+              - 'backend/apps/api/**'
+            tenants:
+              - 'backend/apps/tenants/**'
+            properties:
+              - 'backend/apps/properties/**'
+            communications:
+              - 'backend/apps/communications/**'
+            full_smoke:
+              - 'backend/apps/core/**'
+              - 'backend/config/**'
+              - 'requirements.txt'
+              - '.github/workflows/pr-ci.yml'
+
   backend:
     name: PR CI / backend
+    needs: changes
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
@@ -97,8 +138,7 @@ jobs:
           set -euo pipefail
           python manage.py check
 
-      # makemigrations --check --dry-run: deferred — main currently has pending
-      # model/index drift (communications, properties, integrations, reservations).
+      # makemigrations --check --dry-run: deferred — pending model/index drift on main.
 
       - name: Apply migrations
         run: |
@@ -110,9 +150,63 @@ jobs:
           set -euo pipefail
           python manage.py migrate --check
 
-      - name: Health smoke
+      - name: Select capability test suites
+        id: suites
+        working-directory: .
         run: |
           set -euo pipefail
-          python manage.py test \
-            apps.api.tests.test_reception_api.ReceptionAPITests.test_health_unauthenticated \
-            -v 2 --keepdb
+          suites=()
+
+          full_smoke="${{ needs.changes.outputs.full_smoke }}"
+          if [[ "${full_smoke}" == "true" ]]; then
+            # Shared/cross-cutting → expanded smoke (not a single capability).
+            # integrations.tests omitted until Actions env matches docker-compose test-run.
+            suites+=(
+              apps.reservations.tests
+              apps.api.tests
+              apps.billing.tests
+              apps.tenants.tests
+              apps.properties.tests
+            )
+            echo "full_smoke=true — expanded suite (integrations deferred on Actions)"
+          else
+            [[ "${{ needs.changes.outputs.reservations }}" == "true" ]] && suites+=(apps.reservations.tests)
+            [[ "${{ needs.changes.outputs.billing }}" == "true" ]] && suites+=(apps.billing.tests)
+            [[ "${{ needs.changes.outputs.api }}" == "true" ]] && suites+=(apps.api.tests)
+            [[ "${{ needs.changes.outputs.tenants }}" == "true" ]] && suites+=(apps.tenants.tests)
+            [[ "${{ needs.changes.outputs.properties }}" == "true" ]] && suites+=(apps.properties.tests)
+            [[ "${{ needs.changes.outputs.communications }}" == "true" ]] && suites+=(apps.communications.tests)
+            if [[ "${{ needs.changes.outputs.integrations }}" == "true" ]]; then
+              echo "integrations paths changed — apps.integrations.tests still local/nightly on Actions"
+            fi
+          fi
+
+          # Deduplicate while preserving order
+          declare -A seen=()
+          unique=()
+          for s in "${suites[@]+"${suites[@]}"}"; do
+            [[ -n "${seen[$s]:-}" ]] && continue
+            seen[$s]=1
+            unique+=("$s")
+          done
+
+          if [[ ${#unique[@]} -eq 0 ]]; then
+            echo "suites=" >> "$GITHUB_OUTPUT"
+            echo "No capability suites selected (docs-only or integrations-only) — health only."
+          else
+            echo "suites=${unique[*]}" >> "$GITHUB_OUTPUT"
+            echo "Selected suites: ${unique[*]}"
+          fi
+
+      - name: Health + capability tests
+        run: |
+          set -euo pipefail
+          args=(
+            apps.api.tests.test_reception_api.ReceptionAPITests.test_health_unauthenticated
+          )
+          # shellcheck disable=SC2206
+          extra=( ${{ steps.suites.outputs.suites }} )
+          if [[ ${#extra[@]} -gt 0 && -n "${extra[0]:-}" ]]; then
+            args+=("${extra[@]}")
+          fi
+          python manage.py test "${args[@]}" -v 2 --keepdb

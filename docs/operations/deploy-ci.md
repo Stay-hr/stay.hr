@@ -11,7 +11,7 @@
 
 Local `./scripts/run-tests-postgis.sh` (default: `apps.integrations.tests`) is for developers; it is **not** a substitute for green PR CI.
 
-**PR CI smoke (v1):** `manage.py check`, migrate + migrate `--check`, reception health test. Full `apps.integrations.tests` on Actions is a follow-up (env/isolation parity with `django-run`). Capability-based suites and `makemigrations --check` land in later PRs after pending model/index drift on `main` is committed.
+**PR CI smoke (v1→capability):** always `manage.py check`, migrate + migrate `--check`, reception health. Additionally, path filters select capability suites (`apps.reservations.tests`, …). Shared paths (`backend/apps/core/**`, `backend/config/**`, `requirements.txt`, `.github/workflows/pr-ci.yml`) trigger **full smoke** (expanded multi-app suite). `apps.integrations.tests` remains local / nightly until Actions env parity with `django-run` is fixed. `makemigrations --check` lands after pending model/index drift on `main` is committed.
 
 ### Branch protection (`main`)
 
