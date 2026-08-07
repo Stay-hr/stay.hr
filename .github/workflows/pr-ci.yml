@@ -91,6 +91,9 @@ jobs:
       DB_PASSWORD: stay
       TEST_DB_NAME: stay_platform_test_db
       FCM_PUSH_ENABLED: "false"
+      # Match test_postgis; lifecycle suites expect WA automation paths.
+      GUEST_CHECKIN_WEB_ONLY: "false"
+      WHATSAPP_AUTOCHECKIN_MAINTENANCE: "false"
 
     steps:
       - uses: actions/checkout@v4
