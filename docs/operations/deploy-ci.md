@@ -13,19 +13,40 @@ Local `./scripts/run-tests-postgis.sh` (default: `apps.integrations.tests`) is f
 
 **PR CI smoke (v1):** `manage.py check`, migrate + migrate `--check`, reception health test. Full `apps.integrations.tests` on Actions is a follow-up (env/isolation parity with `django-run`). Capability-based suites and `makemigrations --check` land in later PRs after pending model/index drift on `main` is committed.
 
-### Branch protection (`main`) — enable right after PR CI merges
+### Branch protection (`main`)
 
-Settings → Branches → Branch protection rule for `main`:
+Enable with the idempotent script (preferred over clicking through the UI):
+
+```bash
+./scripts/enable-main-branch-protection.sh
+# optional: APPROVING_REVIEW_COUNT=1 ./scripts/enable-main-branch-protection.sh
+```
+
+The script verifies `gh auth`, confirms a successful **`PR CI / backend`** job exists, PUTs protection, then GETs and prints a short verification summary.
+
+Rules applied:
 
 1. Require a pull request before merging
 2. Require status checks to pass → **`PR CI / backend`**
-3. Require branches to be up to date before merging
+3. Require branches to be up to date before merging (strict)
 4. Dismiss stale pull request approvals when new commits are pushed
-5. Require linear history (if the repo uses squash merge)
-6. Do not allow bypassing the above settings (admins included, if the plan allows)
-7. Block force pushes and branch deletions
+5. Require linear history
+6. Enforce for admins; block force pushes and branch deletions
 
-Do **not** wait for capability-based CI (follow-up PR) before turning this on — later PRs must already go through the gate.
+Do **not** wait for capability-based CI before turning this on — later PRs must already go through the gate.
+
+#### Latest SHA (required checks)
+
+GitHub requires the status check to be green on the **latest commit SHA** of the PR head, not an older push. After a new commit or force-push, re-run **PR CI** (or push again); a green check on a previous SHA does not satisfy the gate.
+
+#### If merge is blocked — do not disable protection
+
+1. Confirm head SHA: `gh pr view <n> --json headRefOid -q .headRefOid`
+2. Confirm the check ran on that SHA: `gh pr checks <n>`
+3. Re-run the failed/missing workflow on the latest SHA
+4. Only then investigate the failure
+
+Do **not** turn off branch protection or remove the required check to “just merge”.
 
 ## What runs (deploy)
 
