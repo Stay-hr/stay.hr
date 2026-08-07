@@ -18,6 +18,8 @@ TEST_D360_KEY = "test-d360-key"
     STAY_INTEGRATION_FERNET_KEY=TEST_FERNET_KEY,
     CELERY_TASK_ALWAYS_EAGER=True,
     CELERY_TASK_EAGER_PROPAGATES=True,
+    # Production guest document channel is web-only; these cases assert that path.
+    GUEST_CHECKIN_WEB_ONLY=True,
 )
 class WhatsAppAutocheckinInboundTests(TestCase):
     def setUp(self):
@@ -155,7 +157,7 @@ class WhatsAppAutocheckinInboundTests(TestCase):
         self.assertIsNotNone(self.reservation.whatsapp_autocheckin_engaged_at)
 
     @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
-    @patch("apps.integrations.whatsapp.tasks.send_text_message")
+    @patch("apps.integrations.whatsapp.whatsapp_web_checkin_redirect.send_text_message")
     @patch("apps.integrations.whatsapp.tasks.on_whatsapp_document_received.delay")
     def test_inbound_image_sends_web_checkin_link(self, mock_doc_task, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.out.web.image"}]}

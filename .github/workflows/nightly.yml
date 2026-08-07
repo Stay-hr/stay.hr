@@ -50,6 +50,8 @@ jobs:
       FCM_PUSH_ENABLED: "false"
       GUEST_CHECKIN_WEB_ONLY: "false"
       WHATSAPP_AUTOCHECKIN_MAINTENANCE: "false"
+      # Meta Graph token (tests also accept legacy D360_API_KEY). Required for send_credentials_ok.
+      WHATSAPP_ACCESS_TOKEN: ci-test-whatsapp-access-token
       OPS_CI_ARTIFACT_DIR: ${{ github.workspace }}/ci-artifacts
 
     steps:

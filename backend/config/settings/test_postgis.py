@@ -3,6 +3,9 @@
 import os
 
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret-key-not-for-production")
+# WhatsApp send paths read os.environ (not Django settings). CI has no host .env token;
+# without this, send_credentials_ok() returns missing_credentials on Actions.
+os.environ.setdefault("WHATSAPP_ACCESS_TOKEN", "ci-test-whatsapp-access-token")
 
 from config.settings.base import *  # noqa: F403
 
