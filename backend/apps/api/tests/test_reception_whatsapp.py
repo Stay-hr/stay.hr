@@ -1,6 +1,3 @@
-import os
-from unittest.mock import patch
-
 from django.test import TestCase, override_settings
 
 from apps.integrations.tests.test_whatsapp_webhook import TEST_FERNET_KEY
@@ -24,7 +21,7 @@ class ReceptionWhatsAppAPITests(TestCase):
         data = response.json()
         self.assertFalse(data["connected"])
 
-    @patch.dict(os.environ, {"META_APP_ID": "123", "WHATSAPP_APP_SECRET": "secret"}, clear=False)
+    @override_settings(META_APP_ID="123", WHATSAPP_APP_SECRET="secret")
     def test_integration_embedded_signup_supported_flag(self):
         response = self.client.get("/api/v1/reception/whatsapp/integration/", **self.auth)
         self.assertTrue(response.json()["embedded_signup_supported"])

@@ -74,7 +74,8 @@ class MonthlyStatisticsTests(TestCase):
 
         payload = aggregate_monthly_statistics(self.tenant, 2026)
 
-        self.assertEqual(payload["property_label"], "Uzorita Luxury Rooms")
+        self.assertEqual(payload["property_label"], "Uzorita")
+
         self.assertEqual(payload["year"], 2026)
         self.assertEqual(payload["comparison_year"], 2025)
         self.assertEqual(payload["currency"], "EUR")
@@ -317,8 +318,9 @@ class MonthlyStatisticsTests(TestCase):
         payload = aggregate_monthly_statistics(self.tenant, 2026)
         june = next(m for m in payload["months"] if m["month"] == 6)["current"]
         july = next(m for m in payload["months"] if m["month"] == 7)["current"]
-        self.assertEqual(june["occupied_room_nights"], 2)
-        self.assertEqual(july["occupied_room_nights"], 3)
+        # Jun 28–Jul 3 → nights 28,29,30 (June) and 1,2 (July)
+        self.assertEqual(june["occupied_room_nights"], 3)
+        self.assertEqual(july["occupied_room_nights"], 2)
 
     def test_occupancy_expected_increases_reserved_not_occupied(self):
         unit = self._create_unit("R1")

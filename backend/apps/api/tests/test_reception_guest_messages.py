@@ -190,7 +190,8 @@ class ReceptionGuestMessagesAPITests(TestCase):
         self.assertIn("Parkiranje", data["body_text"])
 
     @patch.dict(os.environ, {}, clear=False)
-    def test_compose_checkin_language_default_en(self):
+    def test_compose_checkin_language_nl(self):
+        """NL maps to nl; template body stays EN (nl not in TEMPLATE_LANGS)."""
         os.environ.pop("GUEST_COMPOSE_LLM_API_KEY", None)
         self.reservation.booker_country = "NL"
         self.reservation.save(update_fields=["booker_country"])
@@ -202,7 +203,7 @@ class ReceptionGuestMessagesAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 201)
         data = response.json()
-        self.assertEqual(data["language"], "en")
+        self.assertEqual(data["language"], "nl")
         self.assertIn("Parking", data["body_text"])
 
     @patch.dict(os.environ, {}, clear=False)
@@ -244,7 +245,7 @@ class ReceptionGuestMessagesAPITests(TestCase):
 
     @patch.dict(os.environ, {}, clear=False)
     def test_compose_reply_checkin_ready_same_lang_as_checkin(self):
-        """RO guest → en for both checkin and checkin-ready reply."""
+        """RO guest → ro for both checkin and checkin-ready reply (EN template body)."""
         os.environ.pop("GUEST_COMPOSE_LLM_API_KEY", None)
         self.reservation.booker_country = "RO"
         self.reservation.save(update_fields=["booker_country"])
@@ -260,8 +261,8 @@ class ReceptionGuestMessagesAPITests(TestCase):
             format="json",
             **self.auth,
         )
-        self.assertEqual(checkin.json()["language"], "en")
-        self.assertEqual(reply.json()["language"], "en")
+        self.assertEqual(checkin.json()["language"], "ro")
+        self.assertEqual(reply.json()["language"], "ro")
         self.assertIn("Parking", checkin.json()["body_text"])
         self.assertIn("Thank you", reply.json()["body_text"])
 

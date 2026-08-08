@@ -72,7 +72,22 @@ class GuestCheckInReportAPITests(TestCase):
         self.assertEqual(len(data["active_sessions"]), 1)
         self.assertEqual(data["active_sessions"][0]["reservation_id"], self.reservation.pk)
 
-    def test_guest_checkin_report_requires_property(self):
+    def test_guest_checkin_report_defaults_to_sole_property(self):
+        """Omit property_slug when tenant has one property → auto-resolve."""
+        response = self.client.get(
+            "/api/v1/reception/reports/guest-checkin/",
+            {"days": 30},
+            **self.auth,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["property_slug"], self.property.slug)
+
+    def test_guest_checkin_report_requires_property_when_ambiguous(self):
+        Property.objects.create(
+            tenant=self.tenant,
+            name="Second Property",
+            slug="report-property-2",
+        )
         response = self.client.get(
             "/api/v1/reception/reports/guest-checkin/",
             {"days": 30},
