@@ -7,8 +7,9 @@ from django.test import TestCase
 from apps.billing.exceptions import InvoiceBuildError
 from apps.billing.models import InvoiceLine, TenantFiscalSettings
 from apps.billing.services.invoice_builder import build_invoice_from_reservation
+from apps.billing.tests.helpers import make_guest
 from apps.properties.models import Property
-from apps.reservations.models import Guest, Reservation
+from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
 from apps.tourist_tax.management.commands.seed_sibenik_tourist_tax import Command as SeedCommand
 from apps.tourist_tax.models import TouristTaxAccommodationCategory, TouristTaxZone
@@ -50,33 +51,35 @@ class InvoiceBuilderTests(TestCase):
             children_count=2,
             payment_provider="Booking.com",
         )
-        Guest.objects.create(
+        make_guest(
             tenant=self.tenant,
             reservation=reservation,
             first_name="Ana",
             last_name="Anic",
+            date_of_birth=date(1988, 1, 1),
             is_primary=True,
         )
-        Guest.objects.create(
+        make_guest(
             tenant=self.tenant,
             reservation=reservation,
             first_name="Marko",
             last_name="Markic",
             date_of_birth=date(1985, 1, 1),
         )
-        Guest.objects.create(
+        make_guest(
             tenant=self.tenant,
             reservation=reservation,
             first_name="Petra",
             last_name="Petra",
             date_of_birth=date(1990, 1, 1),
         )
-        Guest.objects.create(
+        make_guest(
             tenant=self.tenant,
             reservation=reservation,
             first_name="Luka",
             last_name="Lukic",
-            date_of_birth=date(2012, 1, 1),
+            # Age ≤11 on check_in → free child tourist-tax line (0–11 bracket).
+            date_of_birth=date(2018, 1, 1),
         )
         return reservation
 
@@ -87,7 +90,8 @@ class InvoiceBuilderTests(TestCase):
         self.assertEqual(built.buyer_name, "Ana Anic")
         self.assertEqual(built.buyer_document_number, "")
         self.assertEqual(built.buyer_address, "")
-        self.assertEqual(built.buyer_country, "")
+        # Primary guest nationality from make_guest → HR display name.
+        self.assertEqual(built.buyer_country, "Hrvatska")
         self.assertEqual(built.total, Decimal("150.00"))
         self.assertEqual(len(built.lines), 3)
 
