@@ -90,6 +90,8 @@ jobs:
       DB_USER: stay
       DB_PASSWORD: stay
       TEST_DB_NAME: stay_platform_test_db
+      # Belt-and-suspenders with test_postgis ALLOWED_HOSTS (DisallowedHost → 400).
+      DJANGO_ALLOWED_HOSTS: "testserver,localhost,127.0.0.1,app.stay.hr,admin.stay.hr,api.stay.hr,.stay.hr"
       FCM_PUSH_ENABLED: "false"
       # Match test_postgis; lifecycle suites expect WA automation paths.
       GUEST_CHECKIN_WEB_ONLY: "false"
