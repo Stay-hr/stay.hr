@@ -11,7 +11,7 @@ from apps.properties.models import Property
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
 
-TEST_D360_KEY = "test-d360-key"
+TEST_WHATSAPP_ACCESS_TOKEN = "test-whatsapp-access-token"
 
 
 @override_settings(
@@ -33,10 +33,7 @@ class WhatsAppAutocheckinInboundTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "auto_reply": True,
             }
         )
@@ -58,7 +55,7 @@ class WhatsAppAutocheckinInboundTests(TestCase):
         self.assertTrue(is_auto_checkin_quick_reply("Auto-Check-in"))
         self.assertFalse(is_auto_checkin_quick_reply("Bok"))
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.tasks.send_text_message")
     def test_template_button_sends_documents_text(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.out.doc.button"}]}
@@ -87,7 +84,7 @@ class WhatsAppAutocheckinInboundTests(TestCase):
         body = mock_send.call_args.kwargs["body"]
         self.assertIn("check-in", body.lower())
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.tasks.send_text_message")
     def test_quick_reply_sends_web_checkin_link(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.out.doc"}]}
@@ -119,15 +116,12 @@ class WhatsAppAutocheckinInboundTests(TestCase):
         body = mock_send.call_args.kwargs["body"]
         self.assertIn("check-in", body.lower())
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.tasks.send_text_message")
     def test_template_button_sends_web_checkin_when_auto_reply_disabled(self, mock_send):
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "auto_reply": False,
             }
         )
@@ -156,7 +150,7 @@ class WhatsAppAutocheckinInboundTests(TestCase):
         self.reservation.refresh_from_db()
         self.assertIsNotNone(self.reservation.whatsapp_autocheckin_engaged_at)
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_web_checkin_redirect.send_text_message")
     @patch("apps.integrations.whatsapp.tasks.on_whatsapp_document_received.delay")
     def test_inbound_image_sends_web_checkin_link(self, mock_doc_task, mock_send):
@@ -229,7 +223,7 @@ class WhatsAppAutocheckinInboundTests(TestCase):
         mock_send.assert_not_called()
         mock_interactive.assert_called_once()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_text_message")
     def test_autocheckin_button_when_already_checked_in(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.out.already"}]}

@@ -25,7 +25,7 @@ from apps.reservations.models import Guest, IdDocument, Reservation, WhatsAppGue
 from apps.tenants.models import Tenant
 from django.utils import timezone
 
-TEST_D360_KEY = "test-d360-key"
+TEST_WHATSAPP_ACCESS_TOKEN = "test-whatsapp-access-token"
 ZAGREB = ZoneInfo("Europe/Zagreb")
 
 
@@ -49,10 +49,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
             }
         )
         self.integration.save()
@@ -86,7 +83,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         )
         self.assertTrue(is_guest_auto_checkin_button(text="Auto check-in"))
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_text_message")
     def test_unknown_phone_asks_for_booking_code(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.out.ask"}]}
@@ -121,7 +118,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
             ).exists()
         )
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_interactive_button_message")
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.property_local_now")
     def test_booking_code_resolves_and_sends_prompt(self, mock_now, mock_send):
@@ -156,7 +153,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         buttons = mock_send.call_args.kwargs["buttons"]
         self.assertEqual(buttons[0][0], GUEST_AUTO_CHECKIN_BUTTON_ID)
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_text_message")
     def test_wrong_booking_code_sends_not_found(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.out.notfound"}]}
@@ -189,7 +186,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         body = mock_send.call_args.kwargs["body"]
         self.assertIn("Ne prepoznajem", body)
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_text_message")
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.property_local_now")
     def test_alt_phone_code_match_before_checkin_auto_reply_off(self, mock_now, mock_send):
@@ -263,7 +260,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         )
         return guest
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.communications.guest_arrival_inbound.llm_configured", return_value=False)
     @patch("apps.communications.guest_arrival_inbound.send_guest_message")
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_interactive_button_message")
@@ -299,7 +296,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         self.reservation.refresh_from_db()
         self.assertIsNotNone(self.reservation.guest_stated_arrival_at)
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_text_message")
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_interactive_button_message")
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.property_local_now")
@@ -342,7 +339,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         mock_interactive.assert_not_called()
         mock_send.assert_not_called()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch(
         "apps.integrations.whatsapp.whatsapp_post_checkin_reply.send_whatsapp_entrance_image_from_asset"
     )
@@ -408,7 +405,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         mock_send_guest.assert_called_once()
         mock_entrance.assert_called_once()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_text_message")
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_interactive_button_message")
     def test_checked_in_autocheckin_button_replies_already_checked_in(
@@ -454,7 +451,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         self.reservation.refresh_from_db()
         self.assertIsNotNone(self.reservation.whatsapp_autocheckin_waived_at)
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_text_message")
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_interactive_button_message")
     def test_engaged_reservation_skips_repeat_autocheckin_prompt(
@@ -490,7 +487,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         mock_send.assert_not_called()
         mock_interactive.assert_not_called()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_text_message")
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_interactive_button_message")
     def test_checked_in_unrecognized_question_skips_auto_reply(
@@ -530,7 +527,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         mock_interactive.assert_not_called()
         mock_send.assert_not_called()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch(
         "apps.integrations.whatsapp.whatsapp_post_checkin_reply.send_whatsapp_entrance_image_from_asset"
     )
@@ -597,7 +594,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         mock_send_guest.assert_called_once()
         mock_entrance.assert_called_once()
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_interactive_button_message")
     @patch("apps.integrations.whatsapp.evisitor_reply.send_text_message")
     @patch("apps.integrations.whatsapp.autocheckin_docs_deadline.property_local_now")
@@ -635,7 +632,7 @@ class WhatsAppGuestAutocheckinTests(TestCase):
         body = mock_send.call_args.kwargs["body"]
         self.assertIn("automatski online check-in", body.lower())
 
-    @patch.dict("os.environ", {"D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_interactive_button_message")
     @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.property_local_now")
     def test_incomplete_documents_without_ack_draft_sends_autocheckin(

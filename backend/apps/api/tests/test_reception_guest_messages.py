@@ -972,18 +972,15 @@ class ReceptionGuestMessagesAPITests(TestCase):
         )
         integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": "test-d360-key",
-                "api_base_url": "https://waba-v2.360dialog.io",
             }
         )
         integration.save()
         return integration
 
     @override_settings(STAY_INTEGRATION_FERNET_KEY=TEST_FERNET_KEY)
-    @patch.dict(os.environ, {"D360_API_KEY": "test-d360-key"}, clear=False)
-    @patch("apps.communications.guest_message_send.send_text_message")
+    @patch.dict(os.environ, {"WHATSAPP_ACCESS_TOKEN": "test-whatsapp-access-token"}, clear=False)
+    @patch("apps.communications.guest_message_whatsapp_v2.send_text_message")
     def test_send_whatsapp_api_no_session_handoff(self, mock_send):
         from apps.integrations.models import WhatsAppMessage
 
@@ -1024,16 +1021,14 @@ class ReceptionGuestMessagesAPITests(TestCase):
             format="json",
             **self.auth,
         )
-        self.assertEqual(response.status_code, 201, response.content)
-        data = response.json()
-        self.assertEqual(data["status"], "handoff_whatsapp")
-        self.assertEqual(data["handoff_reason"], "no_session")
-        self.assertIn("wa.me/491701234567", data["wa_me_url"])
+        # v2: free-form outside the CS window requires an approved template.
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn("whatsapp_template_required", response.content.decode())
         mock_send.assert_not_called()
 
     @override_settings(STAY_INTEGRATION_FERNET_KEY=TEST_FERNET_KEY)
-    @patch.dict(os.environ, {"D360_API_KEY": "test-d360-key"}, clear=False)
-    @patch("apps.communications.guest_message_send.send_text_message")
+    @patch.dict(os.environ, {"WHATSAPP_ACCESS_TOKEN": "test-whatsapp-access-token"}, clear=False)
+    @patch("apps.communications.guest_message_whatsapp_v2.send_text_message")
     def test_send_whatsapp_api_with_session_sent(self, mock_send):
         from apps.integrations.models import WhatsAppMessage
 
@@ -1078,14 +1073,25 @@ class ReceptionGuestMessagesAPITests(TestCase):
         mock_send.assert_called_once()
 
     @override_settings(STAY_INTEGRATION_FERNET_KEY=TEST_FERNET_KEY)
-    @patch.dict(os.environ, {"D360_API_KEY": "test-d360-key"}, clear=False)
-    @patch("apps.communications.guest_message_send.send_text_message")
-    def test_send_whatsapp_api_session_error_handoff(self, mock_send):
+    @patch.dict(os.environ, {"WHATSAPP_ACCESS_TOKEN": "test-whatsapp-access-token"}, clear=False)
+    @patch("apps.communications.guest_message_whatsapp_v2.send_template_message")
+    @patch("apps.communications.guest_message_whatsapp_v2.find_message_template")
+    @patch("apps.communications.guest_message_whatsapp_v2.send_text_message")
+    def test_send_whatsapp_api_session_error_handoff(self, mock_send, mock_find, mock_template):
+        """Session API error falls back to template when welcome template is available (v2)."""
         from apps.integrations.models import WhatsAppMessage
 
         os.environ.pop("GUEST_COMPOSE_LLM_API_KEY", None)
-        mock_send.side_effect = WhatsAppApiError("WhatsApp API error 400: 131047 Re-engagement message")
+        mock_send.side_effect = WhatsAppApiError(
+            "WhatsApp API error 400: 131047 Re-engagement message"
+        )
+        mock_find.return_value = {"status": "APPROVED", "name": "welcome_hr"}
+        mock_template.return_value = {"messages": [{"id": "wamid.out.template"}]}
         integration = self._create_whatsapp_integration()
+        cfg = integration.get_config_dict()
+        cfg["waba_id"] = "123456789"
+        integration.set_config_dict(cfg)
+        integration.save()
         WhatsAppMessage.objects.create(
             tenant=self.tenant,
             integration=integration,
@@ -1101,7 +1107,7 @@ class ReceptionGuestMessagesAPITests(TestCase):
 
         compose = self.client.post(
             f"{self.base}/compose/",
-            {"intent": "reply"},
+            {"intent": "checkin"},
             format="json",
             **self.auth,
         )
@@ -1119,9 +1125,8 @@ class ReceptionGuestMessagesAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.content)
         data = response.json()
-        self.assertEqual(data["status"], "handoff_whatsapp")
-        self.assertEqual(data["handoff_reason"], "api_session_error")
-        self.assertIn("wa.me/491701234567", data["wa_me_url"])
+        self.assertEqual(data["status"], "sent")
+        mock_template.assert_called_once()
 
     @patch("apps.integrations.channex.message_service.ChannexClient")
     def test_send_image_booking(self, mock_client_cls):

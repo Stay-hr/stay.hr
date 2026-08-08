@@ -25,7 +25,7 @@ from apps.reservations.models import (
 )
 from apps.tenants.models import Tenant
 
-TEST_D360_KEY = "test-d360-key"
+TEST_WHATSAPP_ACCESS_TOKEN = "test-whatsapp-access-token"
 
 
 @override_settings(STAY_INTEGRATION_FERNET_KEY=TEST_FERNET_KEY)
@@ -41,10 +41,7 @@ class WhatsAppApplyReplyTests(TestCase):
         )
         self.integration.set_config_dict(
             {
-                "provider": "360dialog",
                 "phone_number_id": "1068791909660300",
-                "access_token": TEST_D360_KEY,
-                "api_base_url": "https://waba-v2.360dialog.io",
                 "auto_reply": False,
             }
         )
@@ -89,7 +86,7 @@ class WhatsAppApplyReplyTests(TestCase):
             date_of_birth=date(1990, 5, 5),
         )
 
-    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.apply_reply.send_text_message")
     def test_missing_id_side_message_before_checkin_ready(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.outbound.sides"}]}
@@ -116,7 +113,7 @@ class WhatsAppApplyReplyTests(TestCase):
         self.job.refresh_from_db()
         self.assertFalse(self.job.whatsapp_reply_sent)
 
-    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.apply_reply.send_text_message")
     def test_checkin_ready_when_both_sides_present(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.outbound.ready"}]}
@@ -146,7 +143,7 @@ class WhatsAppApplyReplyTests(TestCase):
         self.job.refresh_from_db()
         self.assertTrue(self.job.whatsapp_reply_sent)
 
-    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.apply_reply.send_text_message")
     def test_sends_checkin_ready_after_apply(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.outbound.ready"}]}
@@ -178,7 +175,7 @@ class WhatsAppApplyReplyTests(TestCase):
         )
         self.assertEqual(result["status"], "already_sent")
 
-    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.apply_reply.send_text_message")
     def test_skips_when_sibling_job_already_sent_reply(self, mock_send):
         sibling = DocumentIntakeJob.objects.create(
@@ -239,7 +236,7 @@ class WhatsAppApplyReplyTests(TestCase):
         ask = render_ask_arrival_time_message(self.reservation)
         self.assertIn("dolazak", ask.lower())
 
-    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.apply_reply.send_text_message")
     def test_partial_apply_sends_remaining_guest_message(self, mock_send):
         mock_send.return_value = {"messages": [{"id": "wamid.outbound.partial"}]}
@@ -265,7 +262,7 @@ class WhatsAppApplyReplyTests(TestCase):
         self.job.refresh_from_db()
         self.assertFalse(self.job.whatsapp_reply_sent)
 
-    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "D360_API_KEY": TEST_D360_KEY})
+    @patch.dict("os.environ", {"WHATSAPP_DOCUMENT_APPLY_REPLY": "true", "WHATSAPP_ACCESS_TOKEN": TEST_WHATSAPP_ACCESS_TOKEN})
     @patch("apps.integrations.whatsapp.apply_reply.send_text_message")
     def test_failure_message_includes_arrival_question(self, mock_send):
         from apps.integrations.whatsapp.apply_reply import (

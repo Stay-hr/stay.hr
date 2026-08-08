@@ -31,8 +31,4 @@ def waba_id_from_env() -> str:
 
 
 def access_token_from_env() -> str:
-    # Primary: Meta Graph token. Legacy alias: D360_API_KEY (many tests still patch it).
-    return (
-        os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
-        or os.getenv("D360_API_KEY", "").strip()
-    )
+    return os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()

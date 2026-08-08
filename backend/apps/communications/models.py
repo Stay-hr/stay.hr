@@ -139,7 +139,7 @@ class GuestOutboundMessage(TenantScopedModel):
         max_length=32,
         blank=True,
         default="",
-        help_text="Message provider, e.g. meta, 360dialog.",
+        help_text="Message provider, e.g. meta.",
     )
     provider_message_id = models.CharField(
         max_length=128,
