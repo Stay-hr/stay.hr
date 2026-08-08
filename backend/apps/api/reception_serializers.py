@@ -536,7 +536,9 @@ class ReservationUpdateSerializer(serializers.ModelSerializer):
                 try:
                     validate_reservation_check_in(instance, tenant=tenant)
                 except CheckInBlockedError as exc:
-                    raise serializers.ValidationError({"status": exc.message}) from exc
+                    # Field-level ValidationError(string) → {"status": ["…"]}, not nested
+                    # {"status": {"status": "…"}}. Reception UI accepts string | string[].
+                    raise serializers.ValidationError(exc.message) from exc
             if (
                 current == Reservation.Status.CHECKED_IN
                 and value == Reservation.Status.CHECKED_OUT

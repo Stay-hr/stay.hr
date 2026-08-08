@@ -627,8 +627,15 @@ class ReceptionAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         body = response.json()
-        error_text = body["status"] if isinstance(body["status"], str) else str(body["status"])
+        status_err = body["status"]
+        if isinstance(status_err, list):
+            error_text = status_err[0]
+        elif isinstance(status_err, str):
+            error_text = status_err
+        else:
+            error_text = str(status_err)
         self.assertIn("dana dolaska", error_text)
+        self.assertNotIn("{'status':", error_text)
 
     @patch("apps.reservations.checkin.property_local_now")
     def test_check_in_rejected_when_room_occupied(self, mock_local_now):
