@@ -29,6 +29,7 @@ ALLOWED_HOSTS = list(
             "app.stay.hr",
             "admin.stay.hr",
             "api.stay.hr",
+            "stay-django",
             ".stay.hr",
         ]
     )
