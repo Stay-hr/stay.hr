@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from django.utils import timezone
+
 from apps.reservations.models import GuestCheckInSession, Reservation, ReservationVersionScope
 from apps.reservations.reservation_version import touch_reservation_version
 
@@ -199,6 +201,15 @@ _GUEST_SESSION_READY_HANDLERS: list = []
 _GUEST_SESSION_COMPLETED_HANDLERS: list = []
 _GUEST_CHECKIN_LINK_REGENERATED_HANDLERS: list = []
 _GUEST_CHECKIN_OCCUPANCY_CHANGED_HANDLERS: list = []
+
+
+@on_guest_session_ready
+def set_ready_at_on_session_ready(event: GuestSessionReadyEvent) -> None:
+    """Stamp ready_at once when the session first becomes ready (ADR 0004)."""
+    GuestCheckInSession.objects.filter(
+        pk=event.session.pk,
+        ready_at__isnull=True,
+    ).update(ready_at=timezone.now())
 
 
 @on_guest_session_ready

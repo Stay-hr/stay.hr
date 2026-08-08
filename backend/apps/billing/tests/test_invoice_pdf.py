@@ -16,8 +16,9 @@ from apps.billing.services.pdf import (
     render_invoice_pdf,
     split_rendered_invoice_html,
 )
+from apps.billing.tests.helpers import make_guest
 from apps.properties.models import Property
-from apps.reservations.models import Guest, Reservation
+from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
 from apps.tourist_tax.management.commands.seed_sibenik_tourist_tax import Command as SeedCommand
 from apps.tourist_tax.models import TouristTaxAccommodationCategory, TouristTaxZone
@@ -59,14 +60,16 @@ class InvoicePdfTests(TestCase):
             adults_count=4,
             payment_provider="Booking.com",
         )
-        Guest.objects.create(
+        make_guest(
             tenant=cls.tenant,
             reservation=cls.reservation,
             first_name="Kris",
             last_name="Meeus",
+            date_of_birth=date(1980, 5, 1),
             is_primary=True,
             nationality="BE",
             address="Bruxellesstraat 1, 2800 Mechelen",
+            document_number="BE1234567",
         )
         cls.invoice = Invoice.objects.create(
             tenant=cls.tenant,
@@ -164,7 +167,7 @@ class InvoicePdfTests(TestCase):
             amount=Decimal("100.00"),
             adults_count=1,
         )
-        Guest.objects.create(
+        make_guest(
             tenant=self.tenant,
             reservation=reservation,
             first_name="Test",

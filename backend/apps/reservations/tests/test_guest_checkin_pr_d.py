@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -33,6 +33,24 @@ from apps.reservations.models import (
 from apps.tenants.models import Tenant
 
 
+def _relative_stay(*, offset_days: int = 0, nights: int = 3):
+    """Stay dates relative to local today so sessions stay within the open window."""
+    check_in = timezone.localdate() + timedelta(days=offset_days)
+    return check_in, check_in + timedelta(days=nights)
+
+
+_SLOT_FIELDS = {
+    "first_name": "Iva",
+    "last_name": "Ivić",
+    "date_of_birth": "1992-03-04",
+    "nationality": "HR",
+    "sex": "female",
+    "document_number": "99887766",
+    "document_type": "identity_card",
+    "address": "Zadar, Obala 1",
+}
+
+
 class GuestCheckInReadyAtTests(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="ReadyAt Tenant", slug="readyat-tenant")
@@ -42,12 +60,13 @@ class GuestCheckInReadyAtTests(TestCase):
             slug="readyat-property",
             guest_checkin_opens_days_before=0,
         )
+        check_in, check_out = _relative_stay()
         self.reservation = Reservation.objects.create(
             tenant=self.tenant,
             property=self.property,
             booking_code="RA-001",
-            check_in=date(2026, 7, 15),
-            check_out=date(2026, 7, 18),
+            check_in=check_in,
+            check_out=check_out,
             adults_count=1,
             booker_name="Test Guest",
             amount=Decimal("100.00"),
@@ -69,7 +88,13 @@ class GuestCheckInReadyAtTests(TestCase):
         self.assertIsNone(self.session.ready_at)
         emit_guest_session_ready(session=self.session, reservation=self.reservation)
         self.session.refresh_from_db()
-        self.assertIsNotNone(self.session.ready_at)
+        first = self.session.ready_at
+        self.assertIsNotNone(first)
+
+        # Idempotent: second emit must not overwrite ready_at.
+        emit_guest_session_ready(session=self.session, reservation=self.reservation)
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.ready_at, first)
 
     def test_ready_at_not_overwritten(self):
         first = timezone.now() - timedelta(hours=2)
@@ -84,16 +109,7 @@ class GuestCheckInReadyAtTests(TestCase):
             self.session,
             self.reservation,
             position=1,
-            fields={
-                "first_name": "Iva",
-                "last_name": "Ivić",
-                "date_of_birth": "1992-03-04",
-                "nationality": "HR",
-                "sex": "female",
-                "document_number": "99887766",
-                "document_type": "identity_card",
-                "address": "Zadar, Obala 1",
-            },
+            fields=dict(_SLOT_FIELDS),
         )
         self.session.refresh_from_db()
         self.assertIsNotNone(self.session.ready_at)
@@ -108,12 +124,13 @@ class GuestCheckInExpiryTests(TestCase):
             slug="expiry-property",
             guest_checkin_opens_days_before=0,
         )
+        check_in, check_out = _relative_stay()
         self.reservation = Reservation.objects.create(
             tenant=self.tenant,
             property=self.property,
             booking_code="EX-001",
-            check_in=date(2026, 1, 1),
-            check_out=date(2026, 1, 3),
+            check_in=check_in,
+            check_out=check_out,
             adults_count=1,
             booker_name="Expired Guest",
             amount=Decimal("50.00"),
@@ -153,13 +170,15 @@ class GuestReminderServiceTests(TestCase):
             slug="reminder-property",
             guest_checkin_opens_days_before=7,
         )
-        self.check_in = date(2026, 7, 10)
+        # Arrival in 3 days → D-3 reminder + session already open (opens 7 days before).
+        check_in, check_out = _relative_stay(offset_days=3, nights=3)
+        self.check_in = check_in
         self.reservation = Reservation.objects.create(
             tenant=self.tenant,
             property=self.property,
             booking_code="RM-001",
-            check_in=self.check_in,
-            check_out=date(2026, 7, 13),
+            check_in=check_in,
+            check_out=check_out,
             adults_count=1,
             booker_name="Reminder Guest",
             booker_email="guest@example.com",
@@ -195,7 +214,8 @@ class GuestReminderServiceTests(TestCase):
                 days_before=3,
             )
 
-        self.assertEqual(result["status"], "sent")
+        # Delivery may be synchronous (sent) or outbox (queued).
+        self.assertIn(result["status"], {"sent", "queued"})
         hint = guest_web_checkin_reminder_hint(days_before=3)
         draft = GuestMessageDraft.objects.get(reservation=self.reservation, hint=hint)
         self.assertEqual(draft.intent, GuestMessageIntent.CHECKIN)
@@ -229,16 +249,7 @@ class GuestReminderServiceTests(TestCase):
             ),
             self.reservation,
             position=1,
-            fields={
-                "first_name": "Iva",
-                "last_name": "Ivić",
-                "date_of_birth": "1992-03-04",
-                "nationality": "HR",
-                "sex": "female",
-                "document_number": "99887766",
-                "document_type": "identity_card",
-                "address": "Zadar, Obala 1",
-            },
+            fields=dict(_SLOT_FIELDS),
         )
         result = GuestReminderService.send_pre_arrival_reminder(
             self.reservation,
@@ -258,13 +269,15 @@ class GuestCheckInReminderSweepTests(TestCase):
             guest_checkin_opens_days_before=7,
         )
         tz = ZoneInfo("Europe/Zagreb")
-        self.now = datetime(2026, 7, 7, 10, 0, tzinfo=tz)
+        self.now = datetime.now(tz)
+        check_in = self.now.date() + timedelta(days=3)
+        check_out = check_in + timedelta(days=3)
         self.reservation = Reservation.objects.create(
             tenant=self.tenant,
             property=self.property,
             booking_code="SW-001",
-            check_in=date(2026, 7, 10),
-            check_out=date(2026, 7, 13),
+            check_in=check_in,
+            check_out=check_out,
             adults_count=1,
             booker_name="Sweep Guest",
             booker_email="sweep@example.com",
@@ -289,7 +302,9 @@ class GuestCheckInReminderSweepTests(TestCase):
         self.assertEqual([r.pk for r in due], [self.reservation.pk])
 
     @override_settings(GUEST_CHECKIN_REMINDER_ENABLED=True, GUEST_CHECKIN_REMINDER_DAYS_BEFORE="3")
-    @patch("apps.reservations.guest_checkin_tasks.GuestReminderService.send_pre_arrival_reminder")
+    @patch(
+        "apps.communications.guest_reminder_service.GuestReminderService.send_pre_arrival_reminder"
+    )
     def test_send_pre_arrival_checkin_reminders_task(self, mock_send):
         mock_send.return_value = {"status": "sent"}
         with patch(
@@ -310,12 +325,13 @@ class GuestCheckInMetricsTests(TestCase):
             slug="metrics-property",
             guest_checkin_opens_days_before=0,
         )
+        check_in, check_out = _relative_stay()
         self.reservation = Reservation.objects.create(
             tenant=self.tenant,
             property=self.property,
             booking_code="MT-001",
-            check_in=date(2026, 7, 15),
-            check_out=date(2026, 7, 18),
+            check_in=check_in,
+            check_out=check_out,
             adults_count=1,
             booker_name="Metrics Guest",
             amount=Decimal("100.00"),
