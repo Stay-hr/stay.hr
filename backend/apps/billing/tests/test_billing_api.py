@@ -8,8 +8,9 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.billing.models import Invoice, TenantFiscalSettings
+from apps.billing.tests.helpers import make_guest
 from apps.properties.models import Property
-from apps.reservations.models import Guest, Reservation
+from apps.reservations.models import Reservation
 from apps.tenants.models import RECEPTION_DEVICE_SCOPES, ApiApplication, Tenant
 
 
@@ -43,7 +44,7 @@ class BillingApiTests(TestCase):
             booker_name="Guest Guest",
             amount=Decimal("100.00"),
         )
-        self.primary_guest = Guest.objects.create(
+        self.primary_guest = make_guest(
             tenant=self.tenant,
             reservation=self.reservation,
             first_name="Guest",
@@ -166,18 +167,23 @@ class BillingApiTests(TestCase):
     @patch("apps.billing.services.issue.issue_guest_invoice")
     def test_create_invoice_for_checked_out_reservation(self, mock_issue, mock_fiscalize):
         self.invoice.delete()
-        mock_issue.return_value = Invoice.objects.create(
-            tenant=self.tenant,
-            reservation=self.reservation,
-            invoice_number="2-PP1-1",
-            sequence_number=2,
-            issued_at=datetime(2026, 4, 16, 11, 0, tzinfo=ZoneInfo("Europe/Zagreb")),
-            buyer_name="Guest Guest",
-            subtotal=Decimal("88.50"),
-            vat_amount=Decimal("11.50"),
-            total=Decimal("100.00"),
-            zki="def456",
-        )
+
+        # Create invoice inside the mock call — pre-creating would make POST return 200.
+        def _issue(_reservation):
+            return Invoice.objects.create(
+                tenant=self.tenant,
+                reservation=self.reservation,
+                invoice_number="2-PP1-1",
+                sequence_number=2,
+                issued_at=datetime(2026, 4, 16, 11, 0, tzinfo=ZoneInfo("Europe/Zagreb")),
+                buyer_name="Guest Guest",
+                subtotal=Decimal("88.50"),
+                vat_amount=Decimal("11.50"),
+                total=Decimal("100.00"),
+                zki="def456",
+            )
+
+        mock_issue.side_effect = _issue
 
         response = self.client.post(
             f"/api/v1/reception/reservations/{self.reservation.pk}/invoice/",

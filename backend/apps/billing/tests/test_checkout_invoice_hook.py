@@ -9,9 +9,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
+from apps.billing.tests.helpers import make_guest
 from apps.properties.models import Property
 from apps.reservations.checkout import perform_reservation_checkout
-from apps.reservations.models import EvisitorGuestStatus, Guest, Reservation
+from apps.reservations.models import EvisitorGuestStatus, Reservation
 from apps.tenants.models import Tenant
 from apps.tourist_tax.management.commands.seed_sibenik_tourist_tax import Command as SeedCommand
 from apps.tourist_tax.models import TouristTaxAccommodationCategory, TouristTaxZone
@@ -46,12 +47,21 @@ class CheckoutInvoiceHookTests(TestCase):
             children_count=0,
             payment_provider="Booking.com",
         )
-        Guest.objects.create(
+        make_guest(
             tenant=self.tenant,
             reservation=reservation,
             first_name="Guest",
             last_name="Guest",
+            date_of_birth=date(1990, 1, 1),
             is_primary=True,
+            evisitor_status=EvisitorGuestStatus.SENT,
+        )
+        make_guest(
+            tenant=self.tenant,
+            reservation=reservation,
+            first_name="Second",
+            last_name="Guest",
+            date_of_birth=date(1992, 6, 15),
             evisitor_status=EvisitorGuestStatus.SENT,
         )
         return reservation
