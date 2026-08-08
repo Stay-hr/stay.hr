@@ -22,6 +22,6 @@ def record_admin_staff_login(sender, request, user, **kwargs):
         user=user,
         username=user.username,
         channel=StaffLoginEvent.Channel.ADMIN,
-        tenant=None,
+        tenant=getattr(request, "tenant", None),
         request=request,
     )

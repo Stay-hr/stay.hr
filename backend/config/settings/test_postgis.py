@@ -17,6 +17,31 @@ DATABASES["default"]["NAME"] = _TEST_DB_NAME
 DATABASES["default"]["TEST"] = {"NAME": f"test_{_TEST_DB_NAME}"}
 DATABASES.pop("uzorita_legacy", None)
 
+# CI has no host .env DJANGO_ALLOWED_HOSTS; DisallowedHost → 400 on app/admin hosts.
+# Leading-dot entries match all subdomains (Django ALLOWED_HOSTS semantics).
+ALLOWED_HOSTS = list(
+    dict.fromkeys(
+        [
+            *ALLOWED_HOSTS,
+            "testserver",
+            "localhost",
+            "127.0.0.1",
+            "app.stay.hr",
+            "admin.stay.hr",
+            "api.stay.hr",
+            ".stay.hr",
+        ]
+    )
+)
+
+# Manifest storage needs collectstatic; admin template tests only need plain URLs.
+STORAGES = {
+    **STORAGES,
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
 STAY_INTEGRATION_FERNET_KEY = "M8U_DJpQILQrKpxTOVtRrQp3nR0LJHAl2X0x-7JOH5k="
 
 CELERY_TASK_ALWAYS_EAGER = True

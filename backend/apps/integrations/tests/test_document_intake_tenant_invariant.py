@@ -79,7 +79,15 @@ def _ocr_persons_for_reservation(reservation: Reservation) -> tuple[list[dict], 
 class DocumentIntakeTenantInvariantTests(TestCase):
     def setUp(self):
         self.demo_tenant = Tenant.objects.create(slug="demo", name="Demo", default_language="hr")
-        self.platform_tenant = Tenant.objects.create(slug="platform", name="Platform", default_language="hr")
+        # Migration 0016 seeds slug=platform; reuse it under keepdb / full-suite runs.
+        self.platform_tenant, _ = Tenant.objects.get_or_create(
+            slug="platform",
+            defaults={
+                "name": "Platform",
+                "default_language": "hr",
+                "is_system": True,
+            },
+        )
         self.property = Property.objects.create(
             tenant=self.demo_tenant,
             name="Demo Property",
