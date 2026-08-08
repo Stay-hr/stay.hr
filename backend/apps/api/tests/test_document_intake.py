@@ -1,9 +1,11 @@
+from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from PIL import Image
 from rest_framework.test import APIClient
 
@@ -44,13 +46,15 @@ class DocumentIntakeAPITests(TestCase):
             name="Test tablet",
             scopes=RECEPTION_DEVICE_SCOPES,
         )
+        # Match window is today-3 .. today+14 (Zagreb); keep stay relative to "now".
+        today = timezone.localdate()
         self.reservation = Reservation.objects.create(
             tenant=self.tenant,
             property=self.property,
             external_id="5036489024",
             booking_code="5036489024",
-            check_in="2026-06-04",
-            check_out="2026-06-06",
+            check_in=today,
+            check_out=today + timedelta(days=2),
             status=Reservation.Status.EXPECTED,
             booker_name="Hans Fischer",
             booker_email="hans@example.com",
@@ -83,8 +87,9 @@ class DocumentIntakeAPITests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.raw_token}")
         self.base = "/api/v1/reception/document-intake"
 
+    @patch("apps.reservations.document_intake_service.ocr_configured", return_value=True)
     @patch("apps.reservations.document_intake_service.run_document_batch_ocr")
-    def test_batch_process_apply_updates_guest(self, mock_ocr):
+    def test_batch_process_apply_updates_guest(self, mock_ocr, _mock_ocr_configured):
         mock_ocr.return_value = {
             "images": [
                 {
@@ -107,7 +112,8 @@ class DocumentIntakeAPITests(TestCase):
                     "document_type": "national_id",
                     "front_image_index": 0,
                     "back_image_index": None,
-                    "mrz_lines": ["IDD<<FISCHER<<HANS"],
+                    # Omit inconsistent MRZ: identity gate rejects document_number_mismatch.
+                    "mrz_lines": [],
                     "face_bbox": {"x": 0.05, "y": 0.12, "w": 0.35, "h": 0.45},
                 }
             ],
@@ -141,8 +147,11 @@ class DocumentIntakeAPITests(TestCase):
         self.assertEqual(self.primary.nationality, "DE")
         self.assertEqual(self.primary.document_country_iso2, "DE")
 
+    @patch("apps.reservations.document_intake_service.ocr_configured", return_value=True)
     @patch("apps.reservations.document_intake_service.run_document_batch_ocr")
-    def test_apply_polish_nationality_overrides_channel_booker_country(self, mock_ocr):
+    def test_apply_polish_nationality_overrides_channel_booker_country(
+        self, mock_ocr, _mock_ocr_configured
+    ):
         """ISO3 POL must map to PL and override stale Channex booker_country (e.g. GB)."""
         self.reservation.booker_country = "GB"
         self.reservation.save(update_fields=["booker_country"])
@@ -181,11 +190,12 @@ class DocumentIntakeAPITests(TestCase):
         self.assertEqual(self.primary.document_country_iso3, "POL")
         self.assertEqual(self.reservation.booker_country, "PL")
 
+    @patch("apps.reservations.document_intake_service.ocr_configured", return_value=True)
     @patch("apps.reservations.document_intake_service.run_document_batch_ocr")
-    def test_name_match_auto_apply_despite_other_unfilled_slots(self, mock_ocr):
+    def test_name_match_auto_apply_despite_other_unfilled_slots(
+        self, mock_ocr, _mock_ocr_configured
+    ):
         """Single name match must auto-apply even when other reservations have empty slots."""
-        from datetime import date
-
         mock_ocr.return_value = {
             "images": [{"index": 0, "side": "front", "mrz_lines": [], "ocr_text": ""}],
             "persons": [
@@ -200,14 +210,15 @@ class DocumentIntakeAPITests(TestCase):
             ],
         }
 
-        for day_offset, booker in ((0, "Other A"), (1, "Other B")):
+        today = timezone.localdate()
+        for day_offset, booker in ((1, "Other A"), (2, "Other B")):
             other = Reservation.objects.create(
                 tenant=self.tenant,
                 property=self.property,
                 external_id=f"other-{day_offset}",
                 booking_code=f"other-{day_offset}",
-                check_in=date(2026, 6, 4 + day_offset),
-                check_out=date(2026, 6, 6 + day_offset),
+                check_in=today + timedelta(days=day_offset),
+                check_out=today + timedelta(days=day_offset + 2),
                 status=Reservation.Status.EXPECTED,
                 booker_name=booker,
             )
@@ -240,8 +251,11 @@ class DocumentIntakeAPITests(TestCase):
         res = self.client.post(f"{self.base}/batch/", {}, format="multipart")
         self.assertEqual(res.status_code, 400)
 
+    @patch("apps.reservations.document_intake_service.ocr_configured", return_value=True)
     @patch("apps.reservations.document_intake_service.run_document_batch_ocr")
-    def test_multi_person_updates_primary_and_companion(self, mock_ocr):
+    def test_multi_person_updates_primary_and_companion(
+        self, mock_ocr, _mock_ocr_configured
+    ):
         """Three OCR persons fill primary, Novi gost, and a third slot from persons_count."""
         self.reservation.persons_count = 3
         self.reservation.children_count = 1
@@ -302,8 +316,9 @@ class DocumentIntakeAPITests(TestCase):
         self.assertEqual(third.document_number, "DOC003")
         self.assertEqual(self.reservation.guests.count(), 3)
 
+    @patch("apps.reservations.document_intake_service.ocr_configured", return_value=True)
     @patch("apps.reservations.document_intake_service.run_document_batch_ocr")
-    def test_reapply_skips_already_applied_guests(self, mock_ocr):
+    def test_reapply_skips_already_applied_guests(self, mock_ocr, _mock_ocr_configured):
         """Re-apply on APPLIED job only updates guests not yet filled."""
         companion = Guest.objects.get(reservation=self.reservation, is_primary=False)
         self.primary.document_number = "EXISTING"

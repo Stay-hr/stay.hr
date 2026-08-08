@@ -20,6 +20,9 @@ from apps.reservations.models import (
     ReservationVersionScope,
 )
 from apps.reservations.reservation_version import touch_reservation_version
+from apps.reservations.reservation_version_event_bus import (
+    reset_reservation_version_event_bus_for_tests,
+)
 from apps.reservations.reservation_version_events import reset_sse_connection_state_for_tests
 from apps.tenants.models import RECEPTION_DEVICE_SCOPES, ApiApplication, Tenant
 
@@ -38,6 +41,7 @@ def _close_sse_streaming_content(response) -> None:
 class ReceptionAPITests(TestCase):
     def setUp(self):
         reset_sse_connection_state_for_tests()
+        reset_reservation_version_event_bus_for_tests()
         self.tenant = Tenant.objects.create(name="Uzorita", slug="uzorita")
         self.property = Property.objects.create(
             tenant=self.tenant,
@@ -624,7 +628,7 @@ class ReceptionAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
         body = response.json()
         error_text = body["status"] if isinstance(body["status"], str) else str(body["status"])
-        self.assertIn("dan dolaska", error_text)
+        self.assertIn("dana dolaska", error_text)
 
     @patch("apps.reservations.checkin.property_local_now")
     def test_check_in_rejected_when_room_occupied(self, mock_local_now):

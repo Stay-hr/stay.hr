@@ -216,6 +216,7 @@ class EvisitorCheckoutFailedTests(TestCase):
             name="Julien Bernard",
             is_primary=False,
             evisitor_registration_id=self.reg_b,
+            document_number="P124",
         )
         self._sent_checkin_submission(guest_a)
         self._sent_checkin_submission(guest_b)

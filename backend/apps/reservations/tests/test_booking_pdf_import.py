@@ -15,7 +15,11 @@ IMPORTS = Path(__file__).resolve().parents[4] / ".imports"
 
 class BookingPdfImportTests(TestCase):
     def test_parse_active_booking_pdf(self):
-        content = (IMPORTS / "5145601516.pdf").read_bytes()
+        # Binary Booking.com PDFs live under gitignored .imports/; skip on CI/clean clones.
+        path = IMPORTS / "5145601516.pdf"
+        if not path.exists():
+            self.skipTest("Sample PDF not available")
+        content = path.read_bytes()
         text = extract_pdf_text(content)
         self.assertIn("5145601516", text)
 
@@ -33,7 +37,11 @@ class BookingPdfImportTests(TestCase):
         self.assertIn("R1", row.room_name)
 
     def test_parse_canceled_booking_pdf(self):
-        content = (IMPORTS / "6250886338.pdf").read_bytes()
+        # Binary Booking.com PDFs live under gitignored .imports/; skip on CI/clean clones.
+        path = IMPORTS / "6250886338.pdf"
+        if not path.exists():
+            self.skipTest("Sample PDF not available")
+        content = path.read_bytes()
         row = parse_booking_pdf(content)
         self.assertEqual(row.external_id, "6250886338")
         self.assertEqual(row.booker_name, "Kristina Mihaljević")
