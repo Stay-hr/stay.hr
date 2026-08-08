@@ -33,7 +33,7 @@ class ChannelAvailabilitySyncTests(TestCase):
         )
 
     @patch(
-        "apps.reservations.channel_availability_sync.push_reservation_availability_task"
+        "apps.integrations.channel_manager.tasks.push_reservation_availability_task"
     )
     def test_queue_sync_when_units_change_via_sync_reservation_units(self, mock_task):
         reservation = Reservation.objects.create(

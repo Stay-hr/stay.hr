@@ -48,7 +48,7 @@ jobs:
       DB_PASSWORD: stay
       TEST_DB_NAME: stay_platform_test_db
       # Belt-and-suspenders with test_postgis ALLOWED_HOSTS (DisallowedHost → 400).
-      DJANGO_ALLOWED_HOSTS: "testserver,localhost,127.0.0.1,app.stay.hr,admin.stay.hr,api.stay.hr,.stay.hr"
+      DJANGO_ALLOWED_HOSTS: "testserver,localhost,127.0.0.1,app.stay.hr,admin.stay.hr,api.stay.hr,stay-django,.stay.hr"
       FCM_PUSH_ENABLED: "false"
       GUEST_CHECKIN_WEB_ONLY: "false"
       WHATSAPP_AUTOCHECKIN_MAINTENANCE: "false"
