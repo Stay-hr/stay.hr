@@ -379,7 +379,7 @@
     "validationHint": "Ispunite označena polja prije nastavka.",
     "fieldRequired": "Obavezno polje",
     "fieldErrorNationality": "Unesite ISO kod države (npr. HR)",
-    "fieldErrorAddress": "Unesite grad, ulicu i broj (npr. Zagreb, Ilica 15)",
+    "fieldErrorAddress": "Unesite grad i ulicu (npr. Zagreb + Ilica 15)",
     "fieldLabels": {
       "first_name": "ime",
       "last_name": "prezime",
@@ -390,7 +390,11 @@
       "document_number": "broj dokumenta",
       "address": "adresa"
     },
-    "addressHint": "Grad, ulica i kućni broj (za eVisitor).",
+    "residenceCity": "Grad",
+    "residenceStreet": "Ulica i broj",
+    "residenceCityPlaceholder": "Zagreb",
+    "residenceStreetPlaceholder": "Ilica 15",
+    "addressHint": "Unesite grad i ulicu odvojeno. eVisitor očekuje oblik: Grad, ulica broj.",
     "addressExample": "Zagreb, Ilica 15",
     "addressExampleLabel": "Primjer",
     "travelingAlone": "Putujem sam — ukloni ostale goste",

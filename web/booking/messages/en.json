@@ -379,7 +379,7 @@
     "validationHint": "Complete the highlighted fields before continuing.",
     "fieldRequired": "Required",
     "fieldErrorNationality": "Enter a 2-letter country code (e.g. HR)",
-    "fieldErrorAddress": "Enter city, street and number (e.g. Zagreb, Ilica 15)",
+    "fieldErrorAddress": "Enter city and street (e.g. Zagreb + Ilica 15)",
     "fieldLabels": {
       "first_name": "first name",
       "last_name": "last name",
@@ -390,7 +390,11 @@
       "document_number": "document number",
       "address": "address"
     },
-    "addressHint": "City, street and house number (required for eVisitor).",
+    "residenceCity": "City",
+    "residenceStreet": "Street and number",
+    "residenceCityPlaceholder": "Zagreb",
+    "residenceStreetPlaceholder": "Ilica 15",
+    "addressHint": "Enter city and street separately. eVisitor expects: City, street number.",
     "addressExample": "Zagreb, Ilica 15",
     "addressExampleLabel": "Example",
     "travelingAlone": "I'm traveling alone — remove other guests",

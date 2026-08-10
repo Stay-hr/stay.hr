@@ -113,7 +113,7 @@
     "validationHint": "Complétez les champs surlignés avant de continuer.",
     "fieldRequired": "Champ obligatoire",
     "fieldErrorNationality": "Entrez un code pays à 2 lettres (p. ex. FR)",
-    "fieldErrorAddress": "Indiquez ville, rue et numéro (ex. Zagreb, Ilica 15)",
+    "fieldErrorAddress": "Indiquez ville et rue (ex. Zagreb + Ilica 15)",
     "fieldLabels": {
       "first_name": "prénom",
       "last_name": "nom",
@@ -124,7 +124,11 @@
       "document_number": "numéro de document",
       "address": "adresse"
     },
-    "addressHint": "Ville, rue et numéro (requis pour eVisitor).",
+    "residenceCity": "Ville",
+    "residenceStreet": "Rue et numéro",
+    "residenceCityPlaceholder": "Zagreb",
+    "residenceStreetPlaceholder": "Ilica 15",
+    "addressHint": "Saisissez ville et rue séparément. eVisitor attend : Ville, rue numéro.",
     "addressExample": "Zagreb, Ilica 15",
     "addressExampleLabel": "Exemple",
     "travelingAlone": "Je voyage seul(e) — retirer les autres voyageurs",
