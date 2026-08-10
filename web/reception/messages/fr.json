@@ -8,7 +8,8 @@
     "error": "Erreur",
     "refresh": "Actualiser",
     "unknownCountry": "Pays inconnu",
-    "guestsCount": "{count} client(s)",
+    "guestsCount": "{count, plural, one {# client} other {# clients}}",
+    "nightsCount": "{count, plural, one {# nuit} other {# nuits}}",
     "dash": "—"
   },
   "nav": {

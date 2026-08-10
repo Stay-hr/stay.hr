@@ -3,17 +3,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { BookingPdfImportForm } from "@/app/_components/BookingPdfImportForm";
 import { CountryFlag } from "@/app/_components/CountryFlag";
 import { EvisitorTimelineErrorModal } from "@/app/_components/EvisitorTimelineErrorModal";
 import { ReceptionNav } from "@/app/_components/ReceptionNav";
+import { ReservationStayMeta } from "@/app/_components/ReservationStayMeta";
 import {
   timelineEvisitorBadgeClass,
   timelineEvisitorLabel,
   timelineEvisitorTone,
 } from "@/lib/evisitorTimelineBadge";
 import { useMonthLabel, useReservationStatusLabel } from "@/lib/i18n-ui";
+import { formatStayDateRange, stayNightsCount } from "@/lib/locale-format";
+import { formatReservationRoomLine } from "@/lib/reservationRoomLabel";
 import type { AppConfig, BookingPdfImportResult, Reservation } from "@/lib/types";
 import { reservationStatusClass } from "@/lib/reservationUi";
 import { singlePropertySlug } from "@/lib/app-config";
@@ -34,6 +37,7 @@ export default function TimelinePage() {
   const t = useTranslations("timeline");
   const tc = useTranslations("common");
   const tr = useTranslations("reservation");
+  const locale = useLocale();
   const statusLabel = useReservationStatusLabel();
   const monthLabel = useMonthLabel();
   const [tenantName, setTenantName] = useState("");
@@ -233,6 +237,13 @@ export default function TimelinePage() {
                   evisitorTone && evisitorProgress
                     ? timelineEvisitorLabel(evisitorProgress)
                     : null;
+                const roomLine = formatReservationRoomLine(r.room_name, r.room_codes);
+                const dateRangeLabel = formatStayDateRange(
+                  locale,
+                  r.check_in_date,
+                  r.check_out_date,
+                );
+                const nights = stayNightsCount(r.check_in_date, r.check_out_date);
                 return (
                   <li key={r.id}>
                     <Link
@@ -241,23 +252,29 @@ export default function TimelinePage() {
                       rel="noopener noreferrer"
                       className="card card-hover flex flex-wrap items-center justify-between gap-3 px-4 py-3"
                     >
-                      <div>
-                        <div className="flex items-center gap-2 font-semibold text-stay-navy">
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="flex min-w-0 items-center gap-2 font-semibold text-stay-navy">
                           <CountryFlag iso2={r.primary_guest_nationality_iso2} />
-                          <span>{r.primary_guest_name || r.room_name}</span>
+                          <span className="min-w-0 break-words">
+                            {r.primary_guest_name || r.room_name}
+                          </span>
                         </div>
-                        <div className="text-sm text-muted">
-                          {r.room_name} · {r.check_in_date} → {r.check_out_date} ·{" "}
-                          {tc("guestsCount", { count: r.guests_count })}
-                        </div>
+                        <div className="min-w-0 break-words text-sm text-muted">{roomLine}</div>
+                        <ReservationStayMeta
+                          dateRangeLabel={dateRangeLabel}
+                          nightsLabel={nights != null ? tc("nightsCount", { count: nights }) : null}
+                          guestsLabel={tc("guestsCount", { count: r.guests_count })}
+                        />
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <span
-                          className="w-[3.25rem] text-right text-sm tabular-nums text-muted"
-                          title={arrivalLabel ? arrivalTitle : undefined}
-                        >
-                          {arrivalLabel ?? ""}
-                        </span>
+                        {arrivalLabel ? (
+                          <span
+                            className="w-[3.25rem] text-right text-sm tabular-nums text-muted"
+                            title={arrivalTitle}
+                          >
+                            {arrivalLabel}
+                          </span>
+                        ) : null}
                         {evisitorTone && evisitorLabel ? (
                           evisitorTone === "error" ? (
                             <button
