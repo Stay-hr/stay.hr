@@ -1,0 +1,34 @@
+---
+description: Stay.hr release gate — implement → PR → CI → merge → deploy → post-deploy
+alwaysApply: true
+---
+
+# Release workflow (Stay.hr)
+
+Canonical order for shipping changes:
+
+```text
+implement → commit → PR → CI → merge → deploy (CI) → post-deploy check
+```
+
+## Gates
+
+1. **PR** — no direct push to `main` for feature work.
+2. **CI** — wait for green **`PR CI / backend`** (and other required checks) before merge.
+3. **Merge** — only after CI is green on the PR head SHA.
+4. **Deploy** — automatic on `push` to `main` via **Deploy production** (`deploy-production.yml` → SSH → `./scripts/deploy.sh`). Do **not** propose a separate manual deploy as the default next step after merge.
+5. **Post-deploy** — optional smoke (dry-run commands, health URLs) **after** deploy CI succeeds — never as a substitute for PR/CI, and never before merge.
+
+## Do not propose before PR + CI
+
+Unless the user explicitly requests an **incident / hotfix** procedure:
+
+- production dry-run / apply of new jobs
+- `migrate` / seed / import against production
+- manual `./scripts/deploy.sh` or `remote-deploy` as the primary path
+- skipping or disabling branch protection to merge
+
+## Docs
+
+- Ops detail: [docs/operations/deploy-ci.md](docs/operations/deploy-ci.md)
+- CI policy ADR: [docs/architecture/adr/0018-continuous-integration-policy.md](docs/architecture/adr/0018-continuous-integration-policy.md)

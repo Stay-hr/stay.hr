@@ -2,6 +2,18 @@
 
 Guidance for AI agents and developers working in this repository.
 
+## Release workflow (PR → CI → merge → deploy)
+
+```text
+implement → commit → PR → CI → merge → deploy (CI) → post-deploy check
+```
+
+- Merge only with green **`PR CI / backend`**.
+- Deploy is **automatic** on `push` to `main` ([Deploy production](.github/workflows/deploy-production.yml)) — do not default to manual deploy after merge.
+- Production dry-run / migrate / manual deploy only **after** deploy CI, or when the user explicitly asks for incident/hotfix.
+
+Full detail: [docs/operations/deploy-ci.md](docs/operations/deploy-ci.md). Cursor rule: [`.cursor/rules/release-workflow.mdc`](.cursor/rules/release-workflow.mdc).
+
 ## Current mode: production
 
 **Frontends are running Next.js production builds** (`stay-hr-web-*:latest`, `node server.js`). Dev override is disabled (`docker-compose.override.yml.bak`).

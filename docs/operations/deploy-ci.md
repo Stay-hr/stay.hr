@@ -1,5 +1,26 @@
 # Deploy from GitHub Actions (main → dedicated-hel1)
 
+## Release workflow (project rule)
+
+Default path for Stay.hr changes:
+
+```text
+implement → commit → PR → CI → merge → deploy (CI) → post-deploy check
+```
+
+| Step | What | Gate |
+|------|------|------|
+| Implement | Code + tests on a feature branch | — |
+| PR | Open against `main` | Required |
+| CI | **`PR CI / backend`** green on head SHA | Merge blocked until green |
+| Merge | Squash/merge via PR | Branch protection |
+| Deploy | Automatic **Deploy production** on `push` to `main` | Actions run must succeed |
+| Post-deploy | Optional smoke (health, dry-run CLI) | Only **after** deploy; never before PR/CI |
+
+**Do not** treat production dry-run, manual migrate/seed, or manual `./scripts/deploy.sh` / `remote-deploy` as the next step after implementation. Those are post-deploy or incident/hotfix paths only when explicitly requested.
+
+Cursor agents: [`.cursor/rules/release-workflow.mdc`](../../.cursor/rules/release-workflow.mdc) (`alwaysApply`).
+
 ## PR CI vs deploy CI
 
 | | PR CI | Deploy |
