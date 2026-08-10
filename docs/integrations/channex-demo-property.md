@@ -127,6 +127,28 @@ docker exec stay_django python manage.py channex_booking_revisions_feed --tenant
 
 Uses `GET /booking_revisions/feed` only; each revision is then fetched by ID and acknowledged.
 
+### Booking status layers (cancel safety)
+
+| Layer | Mechanism | Role |
+|-------|-----------|------|
+| 1 | Webhook → booking revision ingest | Real-time |
+| 2 | Celery Beat every 15 min → `channex_booking_revisions_feed` | Missed webhooks (non-acked feed) |
+| 3 | Daily ~06:45 → `reconcile_channex_cancelled_bookings` | Missed **cancels** that left the feed |
+
+Layer 3 is **cancel-only**: it asks `GET /bookings/:id` whether a local `expected`/`checked_in` Channex reservation is remotely `cancelled`. It does **not** sync dates/amounts or treat remote `new`/`modified` as authoritative. HTTP 404 is fail-closed (`remote_not_found`) — never auto-cancel.
+
+Ops (uzorita production):
+
+```bash
+# Dry-run (get_booking only)
+docker exec stay_django python manage.py reconcile_channex_cancelled_bookings \
+  --tenant-slug uzorita --dry-run
+
+# Apply heals
+docker exec stay_django python manage.py reconcile_channex_cancelled_bookings \
+  --tenant-slug uzorita
+```
+
 ## ARI push (cert tests 1–10)
 
 stay.hr stores daily availability + rates in DB, queues changes in `ChannexAriOutbox`, then pushes to Channex.

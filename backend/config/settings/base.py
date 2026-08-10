@@ -349,6 +349,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(hour=6, minute=30),
         "kwargs": {"tenant_id": 2},
     },
+    "reconcile-channex-cancelled-bookings-daily": {
+        "task": "apps.integrations.channex.booking_tasks.reconcile_channex_cancelled_bookings_daily",
+        "schedule": crontab(hour=6, minute=45),
+        "kwargs": {"tenant_slug": "uzorita"},
+    },
     "reconcile-guest-document-batches": {
         "task": "apps.integrations.whatsapp.guest_document_batch_reconcile.reconcile_guest_document_batches",
         "schedule": 900.0,
