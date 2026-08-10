@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db import transaction
 from django.utils import timezone
 
 from apps.integrations.channex.booking_service import (
@@ -14,6 +15,8 @@ from apps.integrations.channex.exceptions import ChannexApiError, ChannexBooking
 from apps.integrations.models import IntegrationConfig
 from apps.reservations.channel_sync import IMPORT_SOURCE_CHANNEX
 from apps.reservations.models import Reservation
+
+OPERATOR_NOTE_PREFIX = "Channex cancel reconcile"
 
 
 def is_channex_cancel_eligible(reservation: Reservation) -> bool:
@@ -91,3 +94,47 @@ def mark_reservation_canceled_locally(
             "updated_at",
         ]
     )
+
+
+def heal_channex_cancel_locally(reservation_id: int) -> str:
+    """
+    Apply a missed Channex cancel under row lock.
+
+    Returns:
+        healed | already_canceled | skipped_no_show | skipped_ineligible
+    """
+    with transaction.atomic():
+        reservation = Reservation.objects.select_for_update().get(pk=reservation_id)
+
+        if reservation.status == Reservation.Status.CANCELED:
+            return "already_canceled"
+        if reservation.status == Reservation.Status.NO_SHOW:
+            return "skipped_no_show"
+        if reservation.status not in {
+            Reservation.Status.EXPECTED,
+            Reservation.Status.CHECKED_IN,
+        }:
+            return "skipped_ineligible"
+
+        now = timezone.now()
+        note_line = f"{OPERATOR_NOTE_PREFIX} {now.date().isoformat()}"
+        existing_notes = (reservation.notes or "").strip()
+        if note_line not in existing_notes:
+            reservation.notes = (
+                f"{existing_notes}\n{note_line}".strip() if existing_notes else note_line
+            )
+
+        reservation.status = Reservation.Status.CANCELED
+        reservation.booking_status = "cancelled"
+        if reservation.canceled_at is None:
+            reservation.canceled_at = now
+        reservation.save(
+            update_fields=[
+                "status",
+                "booking_status",
+                "canceled_at",
+                "notes",
+                "updated_at",
+            ]
+        )
+        return "healed"
