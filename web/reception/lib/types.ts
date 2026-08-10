@@ -35,6 +35,9 @@ export type Reservation = {
   expected_arrival_at?: string;
   guest_stated_arrival_at?: string | null;
   guest_stated_arrival_text?: string;
+  evisitor_summary?: EvisitorSummary;
+  evisitor_progress?: EvisitorProgress;
+  guests?: GuestLite[];
 };
 
 export type Room = {
@@ -230,8 +233,6 @@ export type ReservationDetail = Reservation & {
   pdf_imported_at: string | null;
   xls_imported_at: string | null;
   confirmation_pdf_url: string;
-  evisitor_summary?: EvisitorSummary;
-  evisitor_progress?: EvisitorProgress;
   evisitor_checkin?: EvisitorCheckinResult | null;
   checkin_progress?: CheckinProgress;
   check_in_allowed?: boolean;

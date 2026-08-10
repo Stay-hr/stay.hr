@@ -45,7 +45,8 @@
     "searchPlaceholder": "Nom, chambre, ID…",
     "loadFailed": "Échec du chargement",
     "noReservations": "Aucune réservation pour les filtres sélectionnés.",
-    "arrivalOn": "arrivée {date}"
+    "arrivalOn": "arrivée {date}",
+    "evisitorErrorAria": "Erreur eVisitor — ouvrir les détails"
   },
   "calendar": {
     "title": "Calendrier par chambres",
