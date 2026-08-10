@@ -52,7 +52,8 @@
     "propertyPlaceholder": "Select property…",
     "loadFailed": "Failed to load",
     "noReservations": "No reservations for the selected filters.",
-    "arrivalOn": "arrival {date}"
+    "arrivalOn": "arrival {date}",
+    "evisitorErrorAria": "eVisitor error — open details"
   },
   "calendar": {
     "title": "Room calendar",

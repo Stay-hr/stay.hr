@@ -6,7 +6,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { BookingPdfImportForm } from "@/app/_components/BookingPdfImportForm";
 import { CountryFlag } from "@/app/_components/CountryFlag";
+import { EvisitorTimelineErrorModal } from "@/app/_components/EvisitorTimelineErrorModal";
 import { ReceptionNav } from "@/app/_components/ReceptionNav";
+import {
+  timelineEvisitorBadgeClass,
+  timelineEvisitorLabel,
+  timelineEvisitorTone,
+} from "@/lib/evisitorTimelineBadge";
 import { useMonthLabel, useReservationStatusLabel } from "@/lib/i18n-ui";
 import type { AppConfig, BookingPdfImportResult, Reservation } from "@/lib/types";
 import { reservationStatusClass } from "@/lib/reservationUi";
@@ -39,6 +45,9 @@ export default function TimelinePage() {
   const [overviewMode, setOverviewMode] = useState<OverviewMode>("today");
   const [properties, setProperties] = useState<Array<{ slug: string; name: string }>>([]);
   const [propertySlug, setPropertySlug] = useState("");
+  const [evisitorErrorReservation, setEvisitorErrorReservation] = useState<Reservation | null>(
+    null,
+  );
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
     const background = Boolean(opts?.background);
@@ -196,6 +205,12 @@ export default function TimelinePage() {
 
         {!initialLoading && grouped.length === 0 ? <p className="text-muted">{t("noReservations")}</p> : null}
 
+        <EvisitorTimelineErrorModal
+          open={evisitorErrorReservation != null}
+          reservation={evisitorErrorReservation}
+          onClose={() => setEvisitorErrorReservation(null)}
+        />
+
         {!initialLoading
           ? grouped.map(([day, items]) => (
           <section key={day} className="space-y-2">
@@ -212,6 +227,12 @@ export default function TimelinePage() {
                 const statedText = r.guest_stated_arrival_text?.trim() || "";
                 const arrivalTitle =
                   statedText && statedText !== arrivalLabel ? statedText : undefined;
+                const evisitorTone = timelineEvisitorTone(r);
+                const evisitorProgress = r.evisitor_progress;
+                const evisitorLabel =
+                  evisitorTone && evisitorProgress
+                    ? timelineEvisitorLabel(evisitorProgress)
+                    : null;
                 return (
                   <li key={r.id}>
                     <Link
@@ -235,6 +256,26 @@ export default function TimelinePage() {
                         >
                           {arrivalLabel ?? ""}
                         </span>
+                        {evisitorTone && evisitorLabel ? (
+                          evisitorTone === "error" ? (
+                            <button
+                              type="button"
+                              className={timelineEvisitorBadgeClass(evisitorTone)}
+                              aria-label={t("evisitorErrorAria")}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setEvisitorErrorReservation(r);
+                              }}
+                            >
+                              {evisitorLabel}
+                            </button>
+                          ) : (
+                            <span className={timelineEvisitorBadgeClass(evisitorTone)}>
+                              {evisitorLabel}
+                            </span>
+                          )
+                        ) : null}
                         <span className={`badge ${reservationStatusClass(r.status)}`}>
                           {statusLabel(r.status)}
                         </span>

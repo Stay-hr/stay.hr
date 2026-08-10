@@ -45,7 +45,8 @@
     "searchPlaceholder": "Name, Zimmer, ID…",
     "loadFailed": "Laden fehlgeschlagen",
     "noReservations": "Keine Reservierungen für die gewählten Filter.",
-    "arrivalOn": "Anreise {date}"
+    "arrivalOn": "Anreise {date}",
+    "evisitorErrorAria": "eVisitor-Fehler — Details öffnen"
   },
   "calendar": {
     "title": "Zimmerkalender",

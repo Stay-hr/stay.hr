@@ -52,7 +52,8 @@
     "propertyPlaceholder": "Odaberite objekt…",
     "loadFailed": "Učitavanje nije uspjelo",
     "noReservations": "Nema rezervacija za odabrane filtere.",
-    "arrivalOn": "dolazak {date}"
+    "arrivalOn": "dolazak {date}",
+    "evisitorErrorAria": "eVisitor greška — otvori detalje"
   },
   "calendar": {
     "title": "Kalendar po sobama",
