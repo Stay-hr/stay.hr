@@ -237,6 +237,8 @@ export default function TimelinePage() {
                   <li key={r.id}>
                     <Link
                       href={`/reservations/${r.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="card card-hover flex flex-wrap items-center justify-between gap-3 px-4 py-3"
                     >
                       <div>
