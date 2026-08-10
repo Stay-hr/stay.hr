@@ -1,7 +1,10 @@
 .env
 .env.local
 scripts/.env
-.cursor/
+# Local Cursor state; keep shared project rules in git
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 .db-sync/
 secrets/
 *.pyc
