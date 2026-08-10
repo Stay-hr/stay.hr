@@ -8,7 +8,8 @@
     "error": "Error",
     "refresh": "Refresh",
     "unknownCountry": "Unknown country",
-    "guestsCount": "{count} guest(s)",
+    "guestsCount": "{count, plural, one {# guest} other {# guests}}",
+    "nightsCount": "{count, plural, one {# night} other {# nights}}",
     "dash": "—",
     "close": "Close"
   },
