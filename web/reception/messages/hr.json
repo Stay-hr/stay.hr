@@ -8,7 +8,8 @@
     "error": "Greška",
     "refresh": "Osvježi",
     "unknownCountry": "Nepoznata država",
-    "guestsCount": "{count} gost(a)",
+    "guestsCount": "{count, plural, one {# gost} few {# gosta} other {# gostiju}}",
+    "nightsCount": "{count, plural, one {# noć} few {# noći} other {# noći}}",
     "dash": "—",
     "close": "Zatvori"
   },

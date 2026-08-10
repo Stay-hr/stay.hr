@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { CountryFlag } from "@/app/_components/CountryFlag";
 import { ReservationDetailPanel } from "@/app/_components/ReservationDetailPanel";
+import { ReservationStayMeta } from "@/app/_components/ReservationStayMeta";
 import { overlapsDay } from "@/lib/calendarLayout";
 import { formatChannelRateValue } from "@/lib/channelCalendarAri";
 import {
@@ -16,6 +17,7 @@ import {
 } from "@/lib/calendarAvailability";
 import { reservationHasChannelBlock, standaloneBlocks } from "@/lib/calendarBlocks";
 import { useMonthLabel, useReservationStatusLabel } from "@/lib/i18n-ui";
+import { formatStayDateRange, stayNightsCount } from "@/lib/locale-format";
 import { reservationStatusClass } from "@/lib/reservationUi";
 import type {
   CalendarBlock,
@@ -210,6 +212,12 @@ export function RoomCalendarDayDetail({
         <ul className="space-y-2">
           {dayReservations.map((r) => {
             const expanded = expandedReservationId === r.id;
+            const dateRangeLabel = formatStayDateRange(
+              locale,
+              r.check_in_date,
+              r.check_out_date,
+            );
+            const nights = stayNightsCount(r.check_in_date, r.check_out_date);
             return (
               <li key={`r-${r.id}`}>
                 <div className="card overflow-hidden">
@@ -222,16 +230,19 @@ export function RoomCalendarDayDetail({
                       setExpandedReservationId((current) => (current === r.id ? null : r.id))
                     }
                   >
-                    <div>
-                      <div className="flex items-center gap-2 font-semibold text-stay-navy">
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex min-w-0 items-center gap-2 font-semibold text-stay-navy">
                         <CountryFlag iso2={r.primary_guest_nationality_iso2} />
-                        <span>{r.primary_guest_name || r.room_name}</span>
+                        <span className="min-w-0 break-words">
+                          {r.primary_guest_name || r.room_name}
+                        </span>
                       </div>
-                      <div className="text-sm text-muted">
-                        {r.check_in_date} → {r.check_out_date}
-                      </div>
+                      <ReservationStayMeta
+                        dateRangeLabel={dateRangeLabel}
+                        nightsLabel={nights != null ? tc("nightsCount", { count: nights }) : null}
+                      />
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                       {reservationHasChannelBlock(r.id, blocks) ? (
                         <span className="badge bg-slate-200 text-slate-800">{t("channelBlocked")}</span>
                       ) : null}
