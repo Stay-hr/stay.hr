@@ -9,6 +9,10 @@ import type {
   GuestCheckInSessionResponse,
   GuestCheckInSlot,
 } from "@/lib/types";
+import {
+  resolveAddressForSave,
+  splitResidenceAddress,
+} from "@/lib/residenceAddress";
 
 type Props = {
   token: string;
@@ -66,7 +70,11 @@ function hasGender(sex: string | null | undefined): boolean {
 }
 
 /** Mirrors backend GuestValidator required fields for slot readiness. */
-function localMissingFields(form: GuestCheckInGuestFields): string[] {
+function localMissingFields(
+  form: GuestCheckInGuestFields,
+  residenceCity: string,
+  residenceStreet: string,
+): string[] {
   const missing: string[] = [];
   if (!hasText(form.first_name)) missing.push("first_name");
   if (!hasText(form.last_name)) missing.push("last_name");
@@ -75,12 +83,16 @@ function localMissingFields(form: GuestCheckInGuestFields): string[] {
   if (!hasGender(form.sex)) missing.push("sex");
   if (!hasText(form.document_number)) missing.push("document_number");
   if (!hasText(form.document_type)) missing.push("document_type");
-  if (!hasText(form.address)) missing.push("address");
+  if (!hasText(residenceCity) || !hasText(residenceStreet)) missing.push("address");
   return missing;
 }
 
-function isFormReady(form: GuestCheckInGuestFields): boolean {
-  return localMissingFields(form).length === 0;
+function isFormReady(
+  form: GuestCheckInGuestFields,
+  residenceCity: string,
+  residenceStreet: string,
+): boolean {
+  return localMissingFields(form, residenceCity, residenceStreet).length === 0;
 }
 
 export function GuestCheckInWizard({ token }: Props) {
@@ -90,6 +102,8 @@ export function GuestCheckInWizard({ token }: Props) {
   const [step, setStep] = useState(0);
   const [entryMode, setEntryMode] = useState<EntryMode>("choose");
   const [form, setForm] = useState<GuestCheckInGuestFields>(emptyGuest());
+  const [residenceCity, setResidenceCity] = useState("");
+  const [residenceStreet, setResidenceStreet] = useState("");
   const [fieldConfidence, setFieldConfidence] = useState<FieldConfidence>({});
   const [photoDocType, setPhotoDocType] = useState<"identity_card" | "passport">("identity_card");
   const [photoFront, setPhotoFront] = useState<File | null>(null);
@@ -104,8 +118,18 @@ export function GuestCheckInWizard({ token }: Props) {
   const [completed, setCompleted] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const formRef = useRef(form);
+  const residenceCityRef = useRef(residenceCity);
+  const residenceStreetRef = useRef(residenceStreet);
 
   formRef.current = form;
+  residenceCityRef.current = residenceCity;
+  residenceStreetRef.current = residenceStreet;
+
+  const applyResidenceFromAddress = useCallback((raw: string) => {
+    const { city, street } = splitResidenceAddress(raw);
+    setResidenceCity(city);
+    setResidenceStreet(street);
+  }, []);
 
   const loadSession = useCallback(async () => {
     const res = await fetch(`/api/check-in/${encodeURIComponent(token)}`);
@@ -127,6 +151,7 @@ export function GuestCheckInWizard({ token }: Props) {
         if (data.slots.length > 0) {
           const slot = data.slots[0];
           setForm(guestFromSlot(slot));
+          applyResidenceFromAddress(slot.guest.address || "");
           setFieldConfidence(slot.field_confidence || {});
           setEntryMode(slot.status === "ready" ? "form" : "choose");
         }
@@ -142,23 +167,27 @@ export function GuestCheckInWizard({ token }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [loadSession, tc]);
+  }, [loadSession, tc, applyResidenceFromAddress]);
 
   const currentSlot = session?.slots[step] ?? null;
   const isSlotReady = currentSlot?.status === "ready";
-  const formReady = isFormReady(form);
+  const formReady = isFormReady(form, residenceCity, residenceStreet);
   const canProceed = formReady || isSlotReady;
-  const missingForHint = formReady ? [] : localMissingFields(form);
+  const missingForHint = formReady ? [] : localMissingFields(form, residenceCity, residenceStreet);
 
-  const resetSlotUi = useCallback((slot: GuestCheckInSlot) => {
-    setForm(guestFromSlot(slot));
-    setFieldConfidence(slot.field_confidence || {});
-    setPhotoFront(null);
-    setPhotoBack(null);
-    setOcrJobId(null);
-    setOcrScanning(false);
-    setEntryMode(slot.status === "ready" ? "form" : "choose");
-  }, []);
+  const resetSlotUi = useCallback(
+    (slot: GuestCheckInSlot) => {
+      setForm(guestFromSlot(slot));
+      applyResidenceFromAddress(slot.guest.address || "");
+      setFieldConfidence(slot.field_confidence || {});
+      setPhotoFront(null);
+      setPhotoBack(null);
+      setOcrJobId(null);
+      setOcrScanning(false);
+      setEntryMode(slot.status === "ready" ? "form" : "choose");
+    },
+    [applyResidenceFromAddress],
+  );
 
   const patchSlot = useCallback(
     async (
@@ -198,6 +227,11 @@ export function GuestCheckInWizard({ token }: Props) {
         if (data.slot?.field_confidence) {
           setFieldConfidence(data.slot.field_confidence as FieldConfidence);
         }
+        // G2: backend normalized address is authority — resplit into UI.
+        if (typeof slot.guest?.address === "string") {
+          applyResidenceFromAddress(slot.guest.address);
+          setForm((prev) => ({ ...prev, address: slot.guest.address || "" }));
+        }
         setError("");
         return { ok: true, slot, canComplete };
       } catch (err) {
@@ -207,7 +241,7 @@ export function GuestCheckInWizard({ token }: Props) {
         setSaving(false);
       }
     },
-    [token, t],
+    [token, t, applyResidenceFromAddress],
   );
 
   const applySessionPayload = useCallback(
@@ -219,6 +253,7 @@ export function GuestCheckInWizard({ token }: Props) {
         const slot = data.slots[nextStep];
         if (slot) {
           setForm(guestFromSlot(slot));
+          applyResidenceFromAddress(slot.guest.address || "");
           setFieldConfidence(slot.field_confidence || {});
           setPhotoFront(null);
           setPhotoBack(null);
@@ -229,7 +264,7 @@ export function GuestCheckInWizard({ token }: Props) {
         return nextStep;
       });
     },
-    [],
+    [applyResidenceFromAddress],
   );
 
   const commitSlot = useCallback(
@@ -301,6 +336,10 @@ export function GuestCheckInWizard({ token }: Props) {
             slots,
           };
         });
+        if (typeof slot.guest?.address === "string") {
+          applyResidenceFromAddress(slot.guest.address);
+          setForm((prev) => ({ ...prev, address: slot.guest.address || "" }));
+        }
         setError("");
         return { ok: true, slot, canComplete };
       } catch (err) {
@@ -310,7 +349,7 @@ export function GuestCheckInWizard({ token }: Props) {
         setSaving(false);
       }
     },
-    [token, t, loadSession, applySessionPayload],
+    [token, t, loadSession, applySessionPayload, applyResidenceFromAddress],
   );
 
   const patchOccupancy = useCallback(
@@ -371,7 +410,7 @@ export function GuestCheckInWizard({ token }: Props) {
     }
     const guest = data.slot?.guest || data.guest_preview;
     if (guest) {
-      setForm({
+      const nextForm = {
         first_name: guest.first_name || "",
         last_name: guest.last_name || "",
         email: guest.email || "",
@@ -382,7 +421,9 @@ export function GuestCheckInWizard({ token }: Props) {
         sex: guest.sex || "",
         address: guest.address || "",
         document_type: guest.document_type || "",
-      });
+      };
+      setForm(nextForm);
+      applyResidenceFromAddress(guest.address || "");
     }
     if (data.slot && session) {
       setSession((prev) => {
@@ -400,7 +441,7 @@ export function GuestCheckInWizard({ token }: Props) {
       });
     }
     setEntryMode("form");
-  }, [session, t]);
+  }, [session, t, applyResidenceFromAddress]);
 
   const pollJob = useCallback(
     async (jobId: number) => {
@@ -456,7 +497,16 @@ export function GuestCheckInWizard({ token }: Props) {
     (position: number) => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        void patchSlot(position, formRef.current);
+        const fields: GuestCheckInGuestFields = {
+          ...formRef.current,
+          address: resolveAddressForSave(
+            residenceCityRef.current,
+            residenceStreetRef.current,
+            formRef.current.address,
+          ),
+        };
+        formRef.current = fields;
+        void patchSlot(position, fields);
       }, AUTOSAVE_MS);
     },
     [patchSlot],
@@ -471,7 +521,34 @@ export function GuestCheckInWizard({ token }: Props) {
   function updateField<K extends keyof GuestCheckInGuestFields>(key: K, value: GuestCheckInGuestFields[K]) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      // Manual and post-OCR form modes both need autosave so the slot can become "ready".
+      if (currentSlot && (entryMode === "form" || entryMode === "manual")) {
+        scheduleAutosave(currentSlot.position);
+      }
+      return next;
+    });
+  }
+
+  function updateResidenceCity(value: string) {
+    setResidenceCity(value);
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        address: resolveAddressForSave(value, residenceStreetRef.current, prev.address),
+      };
+      if (currentSlot && (entryMode === "form" || entryMode === "manual")) {
+        scheduleAutosave(currentSlot.position);
+      }
+      return next;
+    });
+  }
+
+  function updateResidenceStreet(value: string) {
+    setResidenceStreet(value);
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        address: resolveAddressForSave(residenceCityRef.current, value, prev.address),
+      };
       if (currentSlot && (entryMode === "form" || entryMode === "manual")) {
         scheduleAutosave(currentSlot.position);
       }
@@ -495,7 +572,7 @@ export function GuestCheckInWizard({ token }: Props) {
     e.preventDefault();
     if (!session || !currentSlot) return;
 
-    const missing = localMissingFields(form);
+    const missing = localMissingFields(form, residenceCity, residenceStreet);
     if (missing.length > 0) {
       setError(
         `${t("validationHint")} ${t("validationSummary", { fields: formatMissingFields(missing) })}`,
@@ -508,7 +585,14 @@ export function GuestCheckInWizard({ token }: Props) {
       saveTimer.current = null;
     }
 
-    const patched = await patchSlot(currentSlot.position, form);
+    const fields: GuestCheckInGuestFields = {
+      ...form,
+      address: resolveAddressForSave(residenceCity, residenceStreet, form.address),
+    };
+    setForm(fields);
+    formRef.current = fields;
+
+    const patched = await patchSlot(currentSlot.position, fields);
     if (!patched.ok) return;
 
     const result = await commitSlot(currentSlot.position, session.ops_version);
@@ -518,7 +602,7 @@ export function GuestCheckInWizard({ token }: Props) {
     if (!slotReady) {
       const serverMissing = result.slot?.missing_fields?.length
         ? result.slot.missing_fields
-        : localMissingFields(form);
+        : localMissingFields(form, residenceCity, residenceStreet);
       setError(
         `${t("validationHint")} ${t("validationSummary", {
           fields: formatMissingFields(serverMissing),
@@ -972,24 +1056,46 @@ export function GuestCheckInWizard({ token }: Props) {
                 <p className="mt-1 text-xs text-amber-700">{confidenceHint("document_number")}</p>
               ) : null}
             </div>
-            <div className="sm:col-span-2">
-              <label className="label" htmlFor="address">
-                {t("address")}
-              </label>
-              <p className="mt-1 text-xs text-muted">{t("addressHint")}</p>
-              <textarea
-                id="address"
-                className={`input mt-1 min-h-20 ${confidenceClass(fieldConfidence.address)}`}
-                value={form.address}
-                placeholder={t("addressExample")}
-                onChange={(e) => updateField("address", e.target.value)}
-                required
-              />
-              <p className="mt-1 text-xs text-muted">
+            <div className="sm:col-span-2 space-y-3">
+              <p className="text-xs text-muted">{t("addressHint")}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="label" htmlFor="residence-city">
+                    {t("residenceCity")}
+                  </label>
+                  <input
+                    id="residence-city"
+                    className={`input mt-1 ${confidenceClass(fieldConfidence.address)}`}
+                    value={residenceCity}
+                    placeholder={t("residenceCityPlaceholder")}
+                    onChange={(e) => updateResidenceCity(e.target.value)}
+                    required
+                    autoComplete="address-level2"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="residence-street">
+                    {t("residenceStreet")}
+                  </label>
+                  <input
+                    id="residence-street"
+                    className={`input mt-1 ${confidenceClass(fieldConfidence.address)}`}
+                    value={residenceStreet}
+                    placeholder={t("residenceStreetPlaceholder")}
+                    onChange={(e) => updateResidenceStreet(e.target.value)}
+                    required
+                    autoComplete="street-address"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted">
                 {t("addressExampleLabel")}: {t("addressExample")}
               </p>
               {confidenceHint("address") ? (
-                <p className="mt-1 text-xs text-amber-700">{confidenceHint("address")}</p>
+                <p className="text-xs text-amber-700">{confidenceHint("address")}</p>
+              ) : null}
+              {currentSlot?.field_errors?.address ? (
+                <p className="text-xs text-red-600">{currentSlot.field_errors.address}</p>
               ) : null}
             </div>
           </div>
