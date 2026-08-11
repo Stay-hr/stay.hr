@@ -520,6 +520,9 @@ def apply_document_intake_job(
                     }
                 )
                 continue
+            elif match.get("occupancy_status") == "occupancy_mismatch":
+                # Occupancy ceiling — no guest create / apply until explicit PATCH.
+                continue
 
             if not reservation_id or not guest_id:
                 continue

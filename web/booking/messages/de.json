@@ -133,6 +133,10 @@
     "addressExampleLabel": "Beispiel",
     "travelingAlone": "Ich reise allein — andere Gäste entfernen",
     "resetOccupancy": "Auf Buchungsanzahl zurücksetzen",
+    "occupancyMismatchTitle": "Mehr Gäste erkannt",
+    "occupancyMismatchBody": "Auf den Dokumenten wurden {detected} Personen erkannt, der Check-in ist für {expected} eingestellt. Möchten Sie {detected} Gäste anmelden?",
+    "occupancyMismatchConfirm": "{detected} Gäste anmelden",
+    "occupancyMismatchDismiss": "Aktuelle Anzahl behalten",
     "sessionConflict": "Check-in wurde woanders aktualisiert. Neu geladen — bitte erneut versuchen.",
     "commitFailed": "Gästedaten konnten nicht geprüft werden."
   },

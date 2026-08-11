@@ -133,6 +133,10 @@
     "addressExampleLabel": "Esempio",
     "travelingAlone": "Viaggio da solo/a — rimuovi altri ospiti",
     "resetOccupancy": "Ripristina il numero della prenotazione",
+    "occupancyMismatchTitle": "Rilevati più ospiti",
+    "occupancyMismatchBody": "Sui documenti risultano {detected} persone, ma il check-in è impostato per {expected}. Volete registrare {detected} ospiti?",
+    "occupancyMismatchConfirm": "Registra {detected} ospiti",
+    "occupancyMismatchDismiss": "Mantieni il numero attuale",
     "sessionConflict": "Il check-in è stato aggiornato altrove. Ricaricato — riprova.",
     "commitFailed": "Impossibile convalidare i dati dell'ospite."
   },

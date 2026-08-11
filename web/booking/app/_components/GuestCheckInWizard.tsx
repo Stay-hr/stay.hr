@@ -118,6 +118,11 @@ export function GuestCheckInWizard({ token }: Props) {
   const [error, setError] = useState("");
   const [gateStatus, setGateStatus] = useState("");
   const [completed, setCompleted] = useState(false);
+  const [occupancyMismatch, setOccupancyMismatch] = useState<{
+    jobId: number;
+    personsDetected: number;
+    expectedPersons: number;
+  } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Monotonic PATCH sequence — stale responses must not apply G2 / session state. */
   const patchSeqRef = useRef(0);
@@ -370,8 +375,8 @@ export function GuestCheckInWizard({ token }: Props) {
   );
 
   const patchOccupancy = useCallback(
-    async (expectedCheckinAdults: number | null) => {
-      if (!session) return;
+    async (expectedCheckinAdults: number | null): Promise<boolean> => {
+      if (!session) return false;
       setSaving(true);
       setError("");
       try {
@@ -393,8 +398,10 @@ export function GuestCheckInWizard({ token }: Props) {
           throw new Error((data.detail as string) || (data.error as string) || t("saveFailed"));
         }
         applySessionPayload(data as GuestCheckInSessionResponse);
+        return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : t("saveFailed"));
+        return false;
       } finally {
         setSaving(false);
       }
@@ -403,6 +410,17 @@ export function GuestCheckInWizard({ token }: Props) {
   );
 
   const applyJobResult = useCallback((data: GuestCheckInJobResponse) => {
+    if (data.occupancy_status === "occupancy_mismatch") {
+      setOccupancyMismatch({
+        jobId: data.job_id,
+        personsDetected: data.persons_detected ?? 0,
+        expectedPersons: data.expected_persons ?? 0,
+      });
+      setError("");
+      setEntryMode("photo");
+      return;
+    }
+    setOccupancyMismatch(null);
     if (data.identity_status === "duplicate_identity") {
       setError(
         data.detail ||
@@ -470,13 +488,40 @@ export function GuestCheckInWizard({ token }: Props) {
         error?: string;
       };
       // 409 duplicate_identity still carries a useful payload for the UI.
-      if (!res.ok && data.identity_status !== "duplicate_identity") {
+      if (
+        !res.ok &&
+        data.identity_status !== "duplicate_identity" &&
+        data.occupancy_status !== "occupancy_mismatch"
+      ) {
         throw new Error(data.detail || data.error || t("scanFailed"));
       }
       return data;
     },
     [token, t],
   );
+
+  async function confirmOccupancyExpand() {
+    if (!occupancyMismatch) return;
+    const target = occupancyMismatch.personsDetected;
+    const jobId = occupancyMismatch.jobId;
+    const ok = await patchOccupancy(target);
+    if (!ok) return;
+    setOccupancyMismatch(null);
+    setOcrScanning(true);
+    setOcrJobId(jobId);
+    try {
+      const polled = await pollJob(jobId);
+      setOcrScanning(false);
+      if (polled.status === "failed") {
+        setError(polled.error_message || t("scanFailed"));
+        return;
+      }
+      applyJobResult(polled);
+    } catch (err) {
+      setOcrScanning(false);
+      setError(err instanceof Error ? err.message : t("scanFailed"));
+    }
+  }
 
   useEffect(() => {
     if (!ocrJobId || !ocrScanning) return undefined;
@@ -493,7 +538,6 @@ export function GuestCheckInWizard({ token }: Props) {
             return;
           }
           applyJobResult(data);
-          setError("");
         }
       } catch (err) {
         if (cancelled) return;
@@ -842,6 +886,41 @@ export function GuestCheckInWizard({ token }: Props) {
               onClick={() => setEntryMode("manual")}
             >
               {t("entryModeManual")}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {occupancyMismatch ? (
+        <div className="card space-y-4 border border-amber-300 bg-amber-50">
+          <h2 className="text-lg font-semibold text-stay-navy">{t("occupancyMismatchTitle")}</h2>
+          <p className="text-sm text-muted">
+            {t("occupancyMismatchBody", {
+              detected: occupancyMismatch.personsDetected,
+              expected: occupancyMismatch.expectedPersons,
+            })}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn"
+              disabled={saving || ocrScanning}
+              onClick={() => void confirmOccupancyExpand()}
+            >
+              {t("occupancyMismatchConfirm", {
+                detected: occupancyMismatch.personsDetected,
+              })}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={saving || ocrScanning}
+              onClick={() => {
+                setOccupancyMismatch(null);
+                setEntryMode("photo");
+              }}
+            >
+              {t("occupancyMismatchDismiss")}
             </button>
           </div>
         </div>

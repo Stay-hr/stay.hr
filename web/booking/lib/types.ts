@@ -143,9 +143,16 @@ export type GuestCheckInJobResponse = {
   existing_guest_id?: number;
   existing_guest_name?: string;
   detail?: string;
+  /** OCR found more people than expected_checkin_adults / OTA adults. */
+  occupancy_status?: string;
+  persons_detected?: number;
+  expected_persons?: number;
   effective_status?: string;
   ready_slots?: number;
   can_complete?: boolean;
+  ops_version?: number;
+  expected_checkin_adults?: number | null;
+  adults_count?: number | null;
   slot?: GuestCheckInSlot;
   slots?: GuestCheckInSlot[];
 };
