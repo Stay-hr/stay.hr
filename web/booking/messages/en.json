@@ -399,6 +399,10 @@
     "addressExampleLabel": "Example",
     "travelingAlone": "I'm traveling alone — remove other guests",
     "resetOccupancy": "Reset to booking guest count",
+    "occupancyMismatchTitle": "More guests detected",
+    "occupancyMismatchBody": "We found {detected} people on the documents, but check-in is set for {expected}. Do you want to register {detected} guests?",
+    "occupancyMismatchConfirm": "Register {detected} guests",
+    "occupancyMismatchDismiss": "Keep current guest count",
     "sessionConflict": "Check-in was updated elsewhere. Reloaded — please try again.",
     "commitFailed": "Could not validate guest details."
   },

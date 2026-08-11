@@ -19,8 +19,9 @@ Kad `DocumentIntakeJob.source == web_guest` i `guest_checkin_slot_position = N`:
 3. Prije slot-force: identity classify (`document_number` / MRZ na rezervaciji).
    - isti gost već ima identitet → `already_processed` (HTTP 200, bez Guest/IdDocument/face write)
    - drugi gost ima isti dokument → `duplicate_identity` (poll **HTTP 409**)
-4. Tek ako nema collisiona, `person_index=0` se forsira na gosta na slotu `N`.
-5. Poll `GET /public/check-in/{token}/jobs/{id}/` auto-apply kad je job `done` (pod `select_for_update` na rezervaciji).
+4. Ako OCR `persons[]` ima više osoba od `expected_document_count` (`expected_checkin_adults` ili OTA adults) → match `occupancy_mismatch` (`auto_apply=false`). **Nema** guest createa ni promjene occupancyja — samo job match/status. UI nudi potvrdu → `PATCH …/occupancy/` → `ensure` otvara slot → poll rematch + apply.
+5. Tek ako nema collisiona i nema occupancy mismatcha, `person_index=0` se forsira na gosta na slotu `N` (dodatne OCR osobe se ne apply-aju na isti slot).
+6. Poll `GET /public/check-in/{token}/jobs/{id}/` auto-apply kad je job `done` (pod `select_for_update` na rezervaciji); dok traje mismatch, apply se preskače.
 
 Vidi [ADR 0017](../architecture/adr/0017-document-intake-identity-consistency.md).
 

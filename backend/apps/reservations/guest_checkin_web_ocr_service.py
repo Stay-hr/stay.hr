@@ -161,14 +161,51 @@ def poll_and_apply_web_guest_job(
     job: DocumentIntakeJob,
     position: int,
 ) -> DocumentIntakeJob:
+    from apps.reservations.document_intake_web_guest import (
+        OCCUPANCY_STATUS_MISMATCH,
+        occupancy_persons_mismatch,
+        run_web_guest_matching_pipeline,
+    )
+
     job.refresh_from_db()
     if job.status == DocumentIntakeJobStatus.DONE and not job.applied_result:
         ctx = DocumentIntakeContext.from_job(job)
         persons = (job.ocr_result or {}).get("persons") or []
-        matches = job.matches or []
+        matches = list(job.matches or [])
         if persons and matches:
-            # Lock reservation for identity classify / apply race safety.
-            Reservation.objects.select_for_update().get(pk=reservation.pk)
+            # Lock reservation for identity classify / apply / occupancy race safety.
+            reservation = Reservation.objects.select_for_update().get(pk=reservation.pk)
+
+            mismatch_match = next(
+                (
+                    m
+                    for m in matches
+                    if isinstance(m, dict)
+                    and m.get("occupancy_status") == OCCUPANCY_STATUS_MISMATCH
+                ),
+                None,
+            )
+            if mismatch_match is not None:
+                still_mismatch, _, _ = occupancy_persons_mismatch(
+                    reservation=reservation,
+                    persons=persons,
+                )
+                if still_mismatch:
+                    # Occupancy still too low — no guest writes, no apply.
+                    job.refresh_from_db()
+                    return job
+                # Guest confirmed PATCH occupancy — rematch under new ceiling.
+                matches = run_web_guest_matching_pipeline(ctx=ctx, persons=persons)
+                job.matches = matches
+                job.save(update_fields=["matches", "updated_at"])
+                if any(
+                    isinstance(m, dict)
+                    and m.get("occupancy_status") == OCCUPANCY_STATUS_MISMATCH
+                    for m in matches
+                ):
+                    job.refresh_from_db()
+                    return job
+
             applied = apply_document_intake_job(
                 ctx,
                 whatsapp_reply=False,
@@ -176,7 +213,9 @@ def poll_and_apply_web_guest_job(
             successful = [
                 row
                 for row in applied
-                if isinstance(row, dict) and not row.get("identity_status")
+                if isinstance(row, dict)
+                and not row.get("identity_status")
+                and row.get("occupancy_status") != OCCUPANCY_STATUS_MISMATCH
             ]
             if successful:
                 person = persons[0] if isinstance(persons[0], dict) else {}

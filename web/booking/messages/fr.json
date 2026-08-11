@@ -133,6 +133,10 @@
     "addressExampleLabel": "Exemple",
     "travelingAlone": "Je voyage seul(e) — retirer les autres voyageurs",
     "resetOccupancy": "Revenir au nombre de la réservation",
+    "occupancyMismatchTitle": "Plus de voyageurs détectés",
+    "occupancyMismatchBody": "Les documents indiquent {detected} personnes, mais le check-in est réglé sur {expected}. Voulez-vous enregistrer {detected} voyageurs ?",
+    "occupancyMismatchConfirm": "Enregistrer {detected} voyageurs",
+    "occupancyMismatchDismiss": "Garder le nombre actuel",
     "sessionConflict": "Le check-in a été mis à jour ailleurs. Rechargé — réessayez.",
     "commitFailed": "Impossible de valider les données du voyageur."
   },

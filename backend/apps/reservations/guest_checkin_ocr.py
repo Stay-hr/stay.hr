@@ -233,6 +233,19 @@ def serialize_public_job(
         "processed_at": job.processed_at.isoformat() if job.processed_at else None,
     }
 
+    occupancy_status = match.get("occupancy_status") or ""
+    if occupancy_status:
+        payload["occupancy_status"] = occupancy_status
+        if match.get("persons_detected") is not None:
+            payload["persons_detected"] = int(match["persons_detected"])
+        if match.get("expected_persons") is not None:
+            payload["expected_persons"] = int(match["expected_persons"])
+        if occupancy_status == "occupancy_mismatch":
+            payload["detail"] = (
+                "More people were detected on the documents than the current "
+                "check-in guest count."
+            )
+
     identity_status = (
         applied0.get("identity_status")
         or match.get("identity_status")
@@ -258,7 +271,7 @@ def serialize_public_job(
     if job.status in {
         DocumentIntakeJobStatus.DONE,
         DocumentIntakeJobStatus.APPLIED,
-    } and person and not identity_status:
+    } and person and not identity_status and occupancy_status != "occupancy_mismatch":
         payload["guest_preview"] = person_to_guest_preview(person)
         payload["field_confidence"] = build_field_confidence(
             person=person,

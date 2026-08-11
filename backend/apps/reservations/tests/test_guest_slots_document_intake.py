@@ -39,9 +39,16 @@ class TargetDocumentGuestCountTests(TestCase):
         self.assertEqual(target_document_guest_count(reservation=reservation, min_count=4), 4)
         self.assertEqual(target_intake_guest_count(reservation=reservation, min_count=4), 8)
 
-    def test_respects_ocr_min_count_above_adults(self):
+    def test_ocr_min_count_cannot_inflate_above_adults_policy(self):
+        """OCR person count must not create slots above expected_document_count."""
         reservation = self._reservation(adults_count=2, persons_count=3)
-        self.assertEqual(target_document_guest_count(reservation=reservation, min_count=3), 3)
+        self.assertEqual(target_document_guest_count(reservation=reservation, min_count=3), 2)
+
+    def test_ocr_min_count_capped_by_expected_checkin_adults(self):
+        reservation = self._reservation(adults_count=2, persons_count=2)
+        reservation.expected_checkin_adults = 1
+        reservation.save(update_fields=["expected_checkin_adults"])
+        self.assertEqual(target_document_guest_count(reservation=reservation, min_count=2), 1)
 
     def test_never_below_existing_guest_rows(self):
         reservation = self._reservation(adults_count=2, persons_count=2)

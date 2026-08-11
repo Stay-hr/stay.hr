@@ -417,3 +417,165 @@ class GuestCheckInWebOcrAPITests(TestCase):
         match = job.matches[0]
         self.assertEqual(match["guest_id"], self.guest.pk)
         self.assertEqual(match["candidates"][0]["match_type"], "web_guest_slot")
+
+    def test_get_job_poll_occupancy_mismatch_writes_no_guests_or_occupancy(self):
+        """Mismatch must not create guests or change expected_checkin_adults."""
+        self.reservation.adults_count = 2
+        self.reservation.expected_checkin_adults = 1
+        self.reservation.save(update_fields=["adults_count", "expected_checkin_adults", "updated_at"])
+        before_guest_ids = set(
+            Guest.objects.filter(reservation=self.reservation).values_list("id", flat=True)
+        )
+        job = DocumentIntakeJob.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            source=DocumentIntakeJobSource.WEB_GUEST,
+            guest_checkin_slot_position=1,
+            status=DocumentIntakeJobStatus.DONE,
+            ocr_result={
+                "persons": [
+                    {
+                        "given_names": "One",
+                        "surnames": "Person",
+                        "document_number": "AAA111",
+                        "nationality": "IT",
+                        "date_of_birth": "1990-01-01",
+                        "sex": "F",
+                    },
+                    {
+                        "given_names": "Two",
+                        "surnames": "Person",
+                        "document_number": "BBB222",
+                        "nationality": "IT",
+                        "date_of_birth": "1991-02-02",
+                        "sex": "M",
+                    },
+                ],
+            },
+            matches=[
+                {
+                    "person_index": 0,
+                    "auto_apply": False,
+                    "occupancy_status": "occupancy_mismatch",
+                    "persons_detected": 2,
+                    "expected_persons": 1,
+                    "reservation_id": self.reservation.pk,
+                    "candidates": [],
+                }
+            ],
+        )
+        DocumentIntakeImage.objects.create(
+            tenant=self.tenant,
+            job=job,
+            image=SimpleUploadedFile("front.jpg", b"fake", content_type="image/jpeg"),
+            sort_order=0,
+        )
+
+        url = reverse(
+            "public-guest-checkin-job",
+            kwargs={"token": self.token, "job_id": job.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data.get("occupancy_status"), "occupancy_mismatch")
+        self.assertEqual(data.get("persons_detected"), 2)
+        self.assertEqual(data.get("expected_persons"), 1)
+        self.assertFalse(data.get("applied"))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, DocumentIntakeJobStatus.DONE)
+        self.assertFalse(job.applied_result)
+
+        self.reservation.refresh_from_db()
+        self.assertEqual(self.reservation.expected_checkin_adults, 1)
+        after_guest_ids = set(
+            Guest.objects.filter(reservation=self.reservation).values_list("id", flat=True)
+        )
+        self.assertEqual(after_guest_ids, before_guest_ids)
+        self.guest.refresh_from_db()
+        self.assertNotEqual(self.guest.document_number, "AAA111")
+
+    def test_occupancy_expand_then_poll_applies_after_mismatch(self):
+        self.reservation.adults_count = 2
+        self.reservation.expected_checkin_adults = 1
+        self.reservation.save(update_fields=["adults_count", "expected_checkin_adults", "updated_at"])
+        job = DocumentIntakeJob.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            source=DocumentIntakeJobSource.WEB_GUEST,
+            guest_checkin_slot_position=1,
+            status=DocumentIntakeJobStatus.DONE,
+            ocr_result={
+                "persons": [
+                    {
+                        "given_names": "One",
+                        "surnames": "Person",
+                        "document_number": "AAA111",
+                        "document_type": "national_id",
+                        "nationality": "IT",
+                        "date_of_birth": "1990-01-01",
+                        "sex": "F",
+                        "address": "Roma, Via 1",
+                        "front_image_index": 0,
+                    },
+                    {
+                        "given_names": "Two",
+                        "surnames": "Person",
+                        "document_number": "BBB222",
+                        "nationality": "IT",
+                        "date_of_birth": "1991-02-02",
+                        "sex": "M",
+                    },
+                ],
+            },
+            matches=[
+                {
+                    "person_index": 0,
+                    "auto_apply": False,
+                    "occupancy_status": "occupancy_mismatch",
+                    "persons_detected": 2,
+                    "expected_persons": 1,
+                    "reservation_id": self.reservation.pk,
+                    "candidates": [],
+                }
+            ],
+        )
+        DocumentIntakeImage.objects.create(
+            tenant=self.tenant,
+            job=job,
+            image=SimpleUploadedFile("front.jpg", b"fake", content_type="image/jpeg"),
+            sort_order=0,
+        )
+
+        occupancy_url = reverse(
+            "public-guest-checkin-occupancy", kwargs={"token": self.token}
+        )
+        occ = self.client.patch(
+            occupancy_url,
+            {"expected_checkin_adults": 2, "ops_version": self.session.ops_version},
+            format="json",
+        )
+        self.assertEqual(occ.status_code, 200)
+        self.assertEqual(occ.json()["required_slots"], 2)
+
+        with patch(
+            "apps.reservations.document_intake_service.crop_face_jpeg",
+            return_value=None,
+        ):
+            poll_url = reverse(
+                "public-guest-checkin-job",
+                kwargs={"token": self.token, "job_id": job.pk},
+            )
+            response = self.client.get(poll_url)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertNotEqual(data.get("occupancy_status"), "occupancy_mismatch")
+        self.assertTrue(data.get("applied"))
+        self.guest.refresh_from_db()
+        self.assertEqual(self.guest.document_number, "AAA111")
+        self.assertEqual(
+            Guest.objects.filter(reservation=self.reservation).count(),
+            2,
+        )

@@ -51,14 +51,25 @@ def target_document_guest_count(
     reservation: Reservation,
     min_count: int,
 ) -> int:
-    """Guest records needed for document intake only (policy count + OCR batch, not persons_count)."""
+    """Guest records needed for document intake only (policy count, not persons_count).
+
+    ``expected_document_count`` (``expected_checkin_adults`` or OTA adults) is the
+    ceiling. OCR ``min_count`` must not inflate guest rows above that policy — excess
+    persons are a mismatch signal for the client, not an implicit slot create.
+    """
     from apps.reservations.document_expectations import expected_document_count
 
     existing_count = reservation.guests.count()
     document_floor = expected_document_count(reservation)
-    floor = max(document_floor, min_count)
-    if floor == 0:
-        return existing_count
+    if document_floor <= 0:
+        # No policy ceiling (e.g. adults_count=0): allow OCR min_count as before.
+        floor = max(int(min_count or 0), 0)
+        if floor == 0:
+            return existing_count
+        return max(floor, existing_count, 1)
+    # Cap OCR min_count at the check-in document policy ceiling.
+    capped_min = min(max(int(min_count or 0), 0), document_floor)
+    floor = max(document_floor, capped_min)
     return max(floor, existing_count, 1)
 
 
