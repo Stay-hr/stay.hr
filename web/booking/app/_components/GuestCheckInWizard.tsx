@@ -10,7 +10,9 @@ import type {
   GuestCheckInSlot,
 } from "@/lib/types";
 import {
-  resolveAddressForSave,
+  addressPatchDecision,
+  buildGuestPatchPayload,
+  resolveLocalAddress,
   splitResidenceAddress,
 } from "@/lib/residenceAddress";
 
@@ -117,6 +119,8 @@ export function GuestCheckInWizard({ token }: Props) {
   const [gateStatus, setGateStatus] = useState("");
   const [completed, setCompleted] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Monotonic PATCH sequence — stale responses must not apply G2 / session state. */
+  const patchSeqRef = useRef(0);
   const formRef = useRef(form);
   const residenceCityRef = useRef(residenceCity);
   const residenceStreetRef = useRef(residenceStreet);
@@ -192,8 +196,9 @@ export function GuestCheckInWizard({ token }: Props) {
   const patchSlot = useCallback(
     async (
       position: number,
-      fields: GuestCheckInGuestFields,
+      fields: Omit<GuestCheckInGuestFields, "address"> & { address?: string },
     ): Promise<{ ok: boolean; slot: GuestCheckInSlot | null; canComplete: boolean }> => {
+      const seq = ++patchSeqRef.current;
       setSaving(true);
       try {
         const res = await fetch(
@@ -207,6 +212,10 @@ export function GuestCheckInWizard({ token }: Props) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error((data.error as string) || (data.detail as string) || t("saveFailed"));
+        }
+        // Stale response: a newer PATCH was started — do not clobber UI / G2.
+        if (seq !== patchSeqRef.current) {
+          return { ok: true, slot: null, canComplete: false };
         }
         const slot = data.slot as GuestCheckInSlot;
         const canComplete = Boolean(data.can_complete);
@@ -228,17 +237,25 @@ export function GuestCheckInWizard({ token }: Props) {
           setFieldConfidence(data.slot.field_confidence as FieldConfidence);
         }
         // G2: backend normalized address is authority — resplit into UI.
-        if (typeof slot.guest?.address === "string") {
+        // Only apply when this PATCH included address (partial edits omit it).
+        if (
+          Object.prototype.hasOwnProperty.call(fields, "address") &&
+          typeof slot.guest?.address === "string"
+        ) {
           applyResidenceFromAddress(slot.guest.address);
           setForm((prev) => ({ ...prev, address: slot.guest.address || "" }));
         }
         setError("");
         return { ok: true, slot, canComplete };
       } catch (err) {
-        setError(err instanceof Error ? err.message : t("saveFailed"));
+        if (seq === patchSeqRef.current) {
+          setError(err instanceof Error ? err.message : t("saveFailed"));
+        }
         return { ok: false, slot: null, canComplete: false };
       } finally {
-        setSaving(false);
+        if (seq === patchSeqRef.current) {
+          setSaving(false);
+        }
       }
     },
     [token, t, applyResidenceFromAddress],
@@ -497,16 +514,20 @@ export function GuestCheckInWizard({ token }: Props) {
     (position: number) => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        const fields: GuestCheckInGuestFields = {
-          ...formRef.current,
-          address: resolveAddressForSave(
-            residenceCityRef.current,
-            residenceStreetRef.current,
-            formRef.current.address,
-          ),
-        };
-        formRef.current = fields;
-        void patchSlot(position, fields);
+        const decision = addressPatchDecision(
+          residenceCityRef.current,
+          residenceStreetRef.current,
+        );
+        if (decision.kind === "set") {
+          formRef.current = { ...formRef.current, address: decision.address };
+          setForm(formRef.current);
+        }
+        const payload = buildGuestPatchPayload(
+          formRef.current,
+          residenceCityRef.current,
+          residenceStreetRef.current,
+        );
+        void patchSlot(position, payload);
       }, AUTOSAVE_MS);
     },
     [patchSlot],
@@ -533,7 +554,7 @@ export function GuestCheckInWizard({ token }: Props) {
     setForm((prev) => {
       const next = {
         ...prev,
-        address: resolveAddressForSave(value, residenceStreetRef.current, prev.address),
+        address: resolveLocalAddress(value, residenceStreetRef.current, prev.address),
       };
       if (currentSlot && (entryMode === "form" || entryMode === "manual")) {
         scheduleAutosave(currentSlot.position);
@@ -547,7 +568,7 @@ export function GuestCheckInWizard({ token }: Props) {
     setForm((prev) => {
       const next = {
         ...prev,
-        address: resolveAddressForSave(residenceCityRef.current, value, prev.address),
+        address: resolveLocalAddress(residenceCityRef.current, value, prev.address),
       };
       if (currentSlot && (entryMode === "form" || entryMode === "manual")) {
         scheduleAutosave(currentSlot.position);
@@ -584,15 +605,21 @@ export function GuestCheckInWizard({ token }: Props) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
+    // Invalidate any in-flight autosave before the intentional Next PATCH.
+    patchSeqRef.current += 1;
 
+    const decision = addressPatchDecision(residenceCity, residenceStreet);
     const fields: GuestCheckInGuestFields = {
       ...form,
-      address: resolveAddressForSave(residenceCity, residenceStreet, form.address),
+      address: decision.kind === "set" ? decision.address : form.address,
     };
     setForm(fields);
     formRef.current = fields;
 
-    const patched = await patchSlot(currentSlot.position, fields);
+    const patched = await patchSlot(
+      currentSlot.position,
+      buildGuestPatchPayload(fields, residenceCity, residenceStreet),
+    );
     if (!patched.ok) return;
 
     const result = await commitSlot(currentSlot.position, session.ops_version);
