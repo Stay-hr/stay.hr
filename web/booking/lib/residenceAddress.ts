@@ -21,7 +21,56 @@ export function splitResidenceAddress(raw: string): { city: string; street: stri
   };
 }
 
-/** Resolve address for PATCH: complete compose, clear if both empty, else keep previous. */
+/**
+ * PATCH address policy (fingerprint B fix):
+ * - both empty → send "" (explicit clear)
+ * - only city or only street → omit key (do not keep-previous / re-send Zagreb)
+ * - both present → send composed "City, Street"
+ */
+export type AddressPatchDecision =
+  | { kind: "omit" }
+  | { kind: "set"; address: string };
+
+export function addressPatchDecision(city: string, street: string): AddressPatchDecision {
+  const c = city.trim();
+  const s = street.trim();
+  if (!c && !s) return { kind: "set", address: "" };
+  if (!c || !s) return { kind: "omit" };
+  return { kind: "set", address: `${c}, ${s}` };
+}
+
+/** Local form.address mirror: update only when PATCH would set; else leave previous. */
+export function resolveLocalAddress(
+  city: string,
+  street: string,
+  previousAddress: string,
+): string {
+  const decision = addressPatchDecision(city, street);
+  if (decision.kind === "omit") return previousAddress;
+  return decision.address;
+}
+
+/**
+ * Build slot PATCH body. Omits `address` while residence fields are incomplete
+ * so autosave cannot re-persist a stale Zagreb (or any previous) value.
+ */
+export function buildGuestPatchPayload<T extends { address: string }>(
+  form: T,
+  city: string,
+  street: string,
+): Omit<T, "address"> & { address?: string } {
+  const { address: _drop, ...rest } = form;
+  const decision = addressPatchDecision(city, street);
+  if (decision.kind === "omit") {
+    return rest;
+  }
+  return { ...rest, address: decision.address };
+}
+
+/**
+ * @deprecated Prefer addressPatchDecision / buildGuestPatchPayload.
+ * Kept for older tests; keep-previous on incomplete is the B-bug mechanism.
+ */
 export function resolveAddressForSave(
   city: string,
   street: string,
