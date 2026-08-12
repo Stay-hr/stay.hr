@@ -302,6 +302,50 @@ class GuestMessageTranslation(TenantScopedModel):
         )
 
 
+class PostCheckinSendClaimStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    SENT = "sent", "Sent"
+    FAILED = "failed", "Failed"
+
+
+class PostCheckinSendClaim(TenantScopedModel):
+    """G5 concurrency claim for post-checkin portal / arrival-ask sends.
+
+    UNIQUE ``claim_key`` is the sole gate. Provider I/O runs outside the
+    acquire transaction. ``failed`` may be reclaimed; ``pending``/``sent`` block.
+    """
+
+    reservation = models.ForeignKey(
+        "reservations.Reservation",
+        on_delete=models.CASCADE,
+        related_name="post_checkin_send_claims",
+    )
+    claim_key = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=16,
+        choices=PostCheckinSendClaimStatus.choices,
+        default=PostCheckinSendClaimStatus.PENDING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Post-checkin send claim"
+        verbose_name_plural = "Post-checkin send claims"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["claim_key"],
+                name="communications_postcheckin_claim_key_uniq",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["reservation", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Claim {self.claim_key} ({self.status})"
+
+
 # Messaging Orchestration Engine outbox (ADR 0010) — registered on this app.
 from apps.communications.messaging.intents import (  # noqa: E402
     PRE_ARRIVAL_INTENTS,
@@ -344,6 +388,8 @@ __all__ = [
     "MessageReplayReason",
     "MessageScheduleStrategy",
     "MessageTriggerKind",
+    "PostCheckinSendClaim",
+    "PostCheckinSendClaimStatus",
     "PRE_ARRIVAL_INTENTS",
     "WELCOME_INTENTS",
 ]

@@ -289,6 +289,15 @@ def _maybe_send_autocheckin_documents_reply(
         to_phone=reservation.booker_phone or row.wa_id,
     )
 
+    if success_status == "web_checkin_sent":
+        from apps.reservations.guest_checkin_session import mark_checkin_link_distributed
+
+        mark_checkin_link_distributed(
+            session_result.session,
+            distributed_from=GuestCheckInSessionCreatedFrom.WHATSAPP_AUTOCHECKIN,
+            wa_id=row.wa_id,
+        )
+
     return _touch_whatsapp_autocheckin_reply(
         reservation,
         {"status": success_status, "outbound_wamid": outbound_wamid},

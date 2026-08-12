@@ -10,6 +10,7 @@ from apps.integrations.channex.exceptions import ChannexBookingIngestError
 from apps.integrations.channex.message_service import send_message_for_reservation
 from apps.integrations.channel_manager.resolver import get_channel_manager
 from apps.reservations.guest_checkin_orchestrator import GuestCheckInOrchestrator
+from apps.reservations.guest_checkin_session import mark_checkin_link_distributed
 from apps.reservations.models import GuestCheckInSessionCreatedFrom, Reservation
 from apps.tenants.models import ChannelManager
 
@@ -52,6 +53,11 @@ def send_guest_checkin_link_via_channex(reservation_id: int) -> dict:
             extra={"reservation_id": reservation_id, "error": str(exc)},
         )
         return {"sent": False, "reason": str(exc)}
+
+    mark_checkin_link_distributed(
+        session_result.session,
+        distributed_from=GuestCheckInSessionCreatedFrom.CHANNEX,
+    )
 
     logger.info(
         "channex guest check-in link sent",

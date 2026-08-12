@@ -25,7 +25,11 @@ from apps.communications.guest_message_send import (
 from apps.communications.models import GuestMessageChannel, GuestMessageDraft, GuestMessageIntent
 from apps.reservations.checkin_readiness import all_required_slots_ready
 from apps.reservations.guest_checkin_orchestrator import GuestCheckInOrchestrator
-from apps.reservations.guest_checkin_session import evaluate_session_access, get_active_session
+from apps.reservations.guest_checkin_session import (
+    evaluate_session_access,
+    get_active_session,
+    mark_checkin_link_distributed,
+)
 from apps.reservations.models import GuestCheckInSessionCreatedFrom, Reservation
 
 logger = logging.getLogger(__name__)
@@ -40,6 +44,12 @@ _CHANNEL_PRIORITY_ARRIVAL_DAY = (
     GuestMessageChannel.EMAIL,
     GuestMessageChannel.BOOKING,
 )
+
+_REMINDER_CHANNEL_TO_DISTRIBUTED_FROM = {
+    GuestMessageChannel.BOOKING: GuestCheckInSessionCreatedFrom.CHANNEX,
+    GuestMessageChannel.EMAIL: GuestCheckInSessionCreatedFrom.EMAIL,
+    GuestMessageChannel.WHATSAPP: GuestCheckInSessionCreatedFrom.WHATSAPP_AUTOCHECKIN,
+}
 
 
 def _pick_delivery_channel(channels: dict, *, days_before: int) -> str:
@@ -232,6 +242,14 @@ class GuestReminderService:
             from apps.communications.models import GuestOutboundMessageStatus
 
             sent = outbound.status == GuestOutboundMessageStatus.SENT
+
+        if sent:
+            distributed_from = _REMINDER_CHANNEL_TO_DISTRIBUTED_FROM.get(channel)
+            if distributed_from:
+                mark_checkin_link_distributed(
+                    session,
+                    distributed_from=distributed_from,
+                )
 
         logger.info(
             "guest checkin reminder sent reservation_id=%s channel=%s days_before=%s",

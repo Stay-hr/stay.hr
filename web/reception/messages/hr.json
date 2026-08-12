@@ -395,6 +395,7 @@
     "sendAction": "Pošalji",
     "sendSuccess": "Poruka je poslana.",
     "sendFailed": "Slanje poruke nije uspjelo.",
+    "statusFailed": "Neuspjelo",
     "whatsappHandoff": "WhatsApp je otvoren s predloženim tekstom.",
     "bodyLabel": "Tekst poruke",
     "channelLabel": "Kanal",
@@ -762,13 +763,27 @@
     },
     "reserved": {
       "body": "Ovaj modul je rezerviran u settings API-ju i bit će dostupan u kasnijem izdanju.",
-      "security": { "title": "Sigurnost" },
-      "integrations": { "title": "Integracije" },
-      "branding": { "title": "Branding" },
-      "localization": { "title": "Lokalizacija" },
-      "payments": { "title": "Plaćanja" },
-      "reviews": { "title": "Recenzije" },
-      "users": { "title": "Korisnici" }
+      "security": {
+        "title": "Sigurnost"
+      },
+      "integrations": {
+        "title": "Integracije"
+      },
+      "branding": {
+        "title": "Branding"
+      },
+      "localization": {
+        "title": "Lokalizacija"
+      },
+      "payments": {
+        "title": "Plaćanja"
+      },
+      "reviews": {
+        "title": "Recenzije"
+      },
+      "users": {
+        "title": "Korisnici"
+      }
     }
   }
 }

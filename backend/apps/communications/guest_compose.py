@@ -1037,20 +1037,31 @@ def render_guest_portal_link_message(
     *,
     portal_url: str = "",
 ) -> str:
-    """Short CTA + sign-off (no URL) for guest portal link (post web check-in)."""
+    """CTA + localized portal URL + sign-off (plain text for all channels).
+
+    Email keeps a separate HTML button; this plain body must still include
+    ``/g/{token}?lang=…`` so reception timeline shows the link.
+    """
     context = build_compose_context(reservation)
     lang = context["language"]
     body = _text_for_lang(_GUEST_PORTAL_LINK_CTA, lang)
-    return "\n".join(
+    parts = [body, ""]
+    if (portal_url or "").strip():
+        parts.extend(
+            [
+                append_guest_checkin_lang(portal_url.strip(), lang),
+                "",
+            ]
+        )
+    parts.extend(
         [
-            body,
-            "",
             _text_for_lang(SIGN_OFF, lang),
             context["property_name"],
             "",
             FOOTER,
         ]
     )
+    return "\n".join(parts)
 
 
 def render_guest_portal_link_url_only(
@@ -1058,7 +1069,7 @@ def render_guest_portal_link_url_only(
     *,
     portal_url: str,
 ) -> str:
-    """Localized guest portal URL only (second message for BOOKING / WhatsApp)."""
+    """Localized guest portal URL only (legacy helper; prefer single CTA+URL message)."""
     context = build_compose_context(reservation)
     return append_guest_checkin_lang(portal_url, context["language"])
 
