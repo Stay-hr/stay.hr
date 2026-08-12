@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from django.test import TestCase
@@ -27,7 +28,13 @@ from apps.reservations.guest_checkin_session import (
     guest_checkin_window,
     regenerate_session,
 )
-from apps.reservations.guest_validation import GuestValidator, SlotReadinessStatus
+from apps.reservations.guest_validation import (
+    DOB_OUT_OF_RANGE_MESSAGE,
+    GuestValidator,
+    SlotReadinessStatus,
+    _dob_earliest_allowed,
+    _is_plausible_dob,
+)
 from apps.reservations.models import (
     Guest,
     GuestCheckInSessionCreatedFrom,
@@ -163,6 +170,8 @@ class GuestCheckInSessionTests(TestCase):
 
 
 class GuestValidatorTests(TestCase):
+    TODAY = date(2026, 8, 12)
+
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Validator Tenant", slug="validator-tenant")
         self.property = Property.objects.create(
@@ -187,15 +196,10 @@ class GuestValidatorTests(TestCase):
             is_primary=True,
         )
 
-    def test_partial_when_identity_missing(self):
-        result = GuestValidator.validate(self.guest, position=1)
-        self.assertEqual(result.status, SlotReadinessStatus.PARTIAL)
-        self.assertIn("date_of_birth", result.missing_fields)
-
-    def test_ready_when_required_fields_present(self):
+    def _fill_identity(self, *, dob: date | None) -> None:
         self.guest.first_name = "Marko"
         self.guest.last_name = "Markić"
-        self.guest.date_of_birth = date(1985, 5, 5)
+        self.guest.date_of_birth = dob
         self.guest.nationality = "HR"
         self.guest.sex = "male"
         self.guest.document_number = "123456789"
@@ -203,9 +207,119 @@ class GuestValidatorTests(TestCase):
         self.guest.address = "Split, Ulica 2"
         self.guest.save()
 
+    def test_partial_when_identity_missing(self):
         result = GuestValidator.validate(self.guest, position=1)
+        self.assertEqual(result.status, SlotReadinessStatus.PARTIAL)
+        self.assertIn("date_of_birth", result.missing_fields)
+        self.assertNotIn("date_of_birth", result.field_errors_dict())
+
+    def test_ready_when_required_fields_present(self):
+        self._fill_identity(dob=date(1985, 5, 5))
+
+        with patch(
+            "apps.reservations.guest_validation.timezone.localdate",
+            return_value=self.TODAY,
+        ):
+            result = GuestValidator.validate(self.guest, position=1)
         self.assertEqual(result.status, SlotReadinessStatus.READY)
         self.assertEqual(result.missing_fields, ())
+        self.assertEqual(result.field_errors, ())
+
+    def test_missing_dob_has_no_range_field_error(self):
+        self._fill_identity(dob=None)
+        with patch(
+            "apps.reservations.guest_validation.timezone.localdate",
+            return_value=self.TODAY,
+        ):
+            result = GuestValidator.validate(self.guest, position=1)
+        self.assertEqual(result.status, SlotReadinessStatus.PARTIAL)
+        self.assertIn("date_of_birth", result.missing_fields)
+        self.assertNotIn("date_of_birth", result.field_errors_dict())
+
+    def test_absurd_old_dob_out_of_range(self):
+        self._fill_identity(dob=date(1696, 6, 4))
+        with patch(
+            "apps.reservations.guest_validation.timezone.localdate",
+            return_value=self.TODAY,
+        ):
+            result = GuestValidator.validate(self.guest, position=1)
+        self.assertEqual(result.status, SlotReadinessStatus.PARTIAL)
+        self.assertIn("date_of_birth", result.missing_fields)
+        self.assertEqual(
+            result.field_errors_dict()["date_of_birth"],
+            DOB_OUT_OF_RANGE_MESSAGE,
+        )
+
+    def test_minor_dob_is_allowed(self):
+        self._fill_identity(dob=date(2015, 6, 4))
+        with patch(
+            "apps.reservations.guest_validation.timezone.localdate",
+            return_value=self.TODAY,
+        ):
+            result = GuestValidator.validate(self.guest, position=1)
+        self.assertEqual(result.status, SlotReadinessStatus.READY)
+        self.assertEqual(result.field_errors, ())
+
+    def test_earliest_allowed_boundary_valid(self):
+        self.assertTrue(
+            _is_plausible_dob(date(1906, 8, 12), today=self.TODAY)
+        )
+        self._fill_identity(dob=date(1906, 8, 12))
+        with patch(
+            "apps.reservations.guest_validation.timezone.localdate",
+            return_value=self.TODAY,
+        ):
+            result = GuestValidator.validate(self.guest, position=1)
+        self.assertEqual(result.status, SlotReadinessStatus.READY)
+
+    def test_earliest_allowed_minus_one_day_invalid(self):
+        self.assertFalse(
+            _is_plausible_dob(date(1906, 8, 11), today=self.TODAY)
+        )
+        self._fill_identity(dob=date(1906, 8, 11))
+        with patch(
+            "apps.reservations.guest_validation.timezone.localdate",
+            return_value=self.TODAY,
+        ):
+            result = GuestValidator.validate(self.guest, position=1)
+        self.assertEqual(result.status, SlotReadinessStatus.PARTIAL)
+        self.assertEqual(
+            result.field_errors_dict()["date_of_birth"],
+            DOB_OUT_OF_RANGE_MESSAGE,
+        )
+
+    def test_today_and_tomorrow_invalid(self):
+        self.assertFalse(_is_plausible_dob(self.TODAY, today=self.TODAY))
+        self.assertFalse(
+            _is_plausible_dob(date(2026, 8, 13), today=self.TODAY)
+        )
+        self._fill_identity(dob=self.TODAY)
+        with patch(
+            "apps.reservations.guest_validation.timezone.localdate",
+            return_value=self.TODAY,
+        ):
+            result = GuestValidator.validate(self.guest, position=1)
+        self.assertEqual(result.status, SlotReadinessStatus.PARTIAL)
+        self.assertEqual(
+            result.field_errors_dict()["date_of_birth"],
+            DOB_OUT_OF_RANGE_MESSAGE,
+        )
+
+    def test_leap_day_keeps_feb_29_when_target_year_is_leap(self):
+        today = date(2024, 2, 29)
+        self.assertEqual(_dob_earliest_allowed(today), date(1904, 2, 29))
+        self.assertTrue(_is_plausible_dob(date(1904, 2, 29), today=today))
+
+    def test_leap_day_falls_back_to_feb_28_when_target_year_not_leap(self):
+        # 2020-02-29 minus 120y → 1900-02-29 does not exist (1900 not leap).
+        today = date(2020, 2, 29)
+        self.assertEqual(_dob_earliest_allowed(today), date(1900, 2, 28))
+        self.assertTrue(_is_plausible_dob(date(1900, 2, 28), today=today))
+        self.assertFalse(_is_plausible_dob(date(1900, 2, 27), today=today))
+
+    def test_plausible_dob_rejects_non_date_types(self):
+        self.assertFalse(_is_plausible_dob("1985-05-05", today=self.TODAY))  # type: ignore[arg-type]
+        self.assertFalse(_is_plausible_dob(date(1985, 5, 5), today="2026-08-12"))  # type: ignore[arg-type]
 
 
 class GuestCheckInOrchestratorTests(TestCase):
