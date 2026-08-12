@@ -1,12 +1,23 @@
-"""Guest field validation for web check-in wizard (separate from eVisitor mapper)."""
+"""Guest field validation for web check-in wizard (separate from eVisitor mapper).
+
+Date of birth plausibility follows eVisitor API rules: DOB must be before today
+and not older than 120 calendar years. Minors remain valid here; whether a guest
+must be submitted to eVisitor is decided elsewhere (guest_requires_evisitor).
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from enum import Enum
+
+from django.utils import timezone
 
 from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
 from apps.reservations.models import Guest
+
+DOB_MAX_AGE_YEARS = 120
+DOB_OUT_OF_RANGE_MESSAGE = "Datum rođenja nije unutar dozvoljenog raspona."
 
 
 class SlotReadinessStatus(str, Enum):
@@ -56,6 +67,29 @@ def _has_document_type(guest: Guest) -> bool:
     return _has_text(guest.document_type) or _has_text(guest.document_code)
 
 
+def _dob_earliest_allowed(today: date) -> date:
+    """Earliest acceptable DOB: today minus 120 calendar years.
+
+    Falls back to 28 Feb only when the target year has no 29 Feb.
+    """
+    if not isinstance(today, date):
+        raise TypeError("today must be a datetime.date")
+    try:
+        return today.replace(year=today.year - DOB_MAX_AGE_YEARS)
+    except ValueError:
+        # today is 29 Feb and target year is not a leap year
+        return date(today.year - DOB_MAX_AGE_YEARS, 2, 28)
+
+
+def _is_plausible_dob(dob: date, *, today: date) -> bool:
+    """True when dob is a date strictly before today and within 120 years."""
+    if not isinstance(dob, date) or not isinstance(today, date):
+        return False
+    if dob >= today:
+        return False
+    return dob >= _dob_earliest_allowed(today)
+
+
 class GuestValidator:
     """Validate guest identity fields required for web check-in slot readiness."""
 
@@ -81,6 +115,9 @@ class GuestValidator:
             missing.append("last_name")
         if guest.date_of_birth is None:
             missing.append("date_of_birth")
+        elif not _is_plausible_dob(guest.date_of_birth, today=timezone.localdate()):
+            missing.append("date_of_birth")
+            field_errors.append(("date_of_birth", DOB_OUT_OF_RANGE_MESSAGE))
         if not _has_nationality(guest):
             missing.append("nationality")
         if not _has_gender(guest.sex):
