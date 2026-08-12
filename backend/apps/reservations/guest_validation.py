@@ -2,7 +2,7 @@
 
 Date of birth plausibility follows eVisitor API rules: DOB must be before today
 and not older than 120 calendar years. Minors remain valid here; whether a guest
-must be submitted to eVisitor is decided elsewhere (guest_requires_evisitor).
+must be submitted to eVisitor is decided elsewhere (guest_requires_evisitor; always True).
 """
 
 from __future__ import annotations

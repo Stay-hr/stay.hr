@@ -107,3 +107,23 @@ class EvisitorMapperTests(TestCase):
                 registration_id=uuid4(),
             )
         self.assertIn("address", ctx.exception.field_errors)
+
+    @patch("apps.integrations.evisitor.mapper.iso2_to_iso3", return_value="DEU")
+    def test_tt_payment_category_child_under_12(self, mock_iso):
+        self.guest.date_of_birth = date(2020, 1, 1)
+        self.guest.save(update_fields=["date_of_birth", "updated_at"])
+        payload = build_check_in_payload(
+            self.guest,
+            config=self.config,
+            registration_id=uuid4(),
+        )
+        self.assertEqual(payload["TTPaymentCategory"], "1")
+
+    @patch("apps.integrations.evisitor.mapper.iso2_to_iso3", return_value="DEU")
+    def test_tt_payment_category_adult_keeps_config_default(self, mock_iso):
+        payload = build_check_in_payload(
+            self.guest,
+            config=self.config,
+            registration_id=uuid4(),
+        )
+        self.assertEqual(payload["TTPaymentCategory"], "01")

@@ -276,10 +276,21 @@ smoke_evisitor --guest-id N
 
 Funkcija `guest_requires_evisitor` ([`eligibility.py`](../../backend/apps/integrations/evisitor/eligibility.py)):
 
-- Gost mora imati **18+ godina na dan dolaska** (`reservation.check_in`).
-- Ako je `date_of_birth` **null**, gost se tretira kao **obavezan** za eVisitor (sigurnosna pretpostavka dok datum nije poznat).
-- Djeca mlađa od 18 godina: operacijski status `not_required` — ne ulaze u submit workflow niti u `evisitor_summary` agregat.
+- **Svaki gost** zahtijeva eVisitor prijavu (uključujući djecu) — usklađeno s eVisitor FAQ/API.
+- Ako je `date_of_birth` **null**, gost se i dalje tretira kao **obavezan** (DOB validacija je u `GuestValidator` / `build_check_in_payload`, ne u eligibility).
+- `not_required` kao operacijski status više **ne** proizlazi iz dobi; može ostati u metrikama/API-ju za druge rubne slučajeve.
 
+### TTPaymentCategory (dob na `check_in`)
+
+[`tt_payment_category_for_dob`](../../backend/apps/integrations/evisitor/eligibility.py) u `build_check_in_payload`:
+
+| Dob na `reservation.check_in` | `TTPaymentCategory` |
+|-------------------------------|---------------------|
+| &lt; 12 | `"1"` (djeca do 12) |
+| 12–17 | `"2"` (djeca 12–18) |
+| ≥ 18 | `config.default_payment_category` (ne hardkodira `"14"`) |
+
+Rođendan tijekom boravka **ne** mijenja kategoriju i **ne** dijeli prijavu.
 ---
 
 ## Check-in u eVisitor
@@ -362,7 +373,7 @@ Ovo **nije** `Guest.evisitor_status` — vraća se u JSON odgovoru endpointa ili
 
 | status | značenje |
 |--------|----------|
-| `not_required` | dijete &lt;18 |
+| `not_required` | nema eligible gostiju za submit (dob više ne skipa djecu) |
 | `validation_failed` | lokalna validacija prije API poziva |
 | `config_error` | nedostaje/neispravna konfiguracija |
 | `failed` / `api_error` | eVisitor ili mrežna greška |

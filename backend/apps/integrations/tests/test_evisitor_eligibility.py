@@ -3,7 +3,10 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from apps.integrations.evisitor.eligibility import guest_requires_evisitor
+from apps.integrations.evisitor.eligibility import (
+    guest_requires_evisitor,
+    tt_payment_category_for_dob,
+)
 from apps.integrations.evisitor.summary import evisitor_progress_for_guests, evisitor_summary_for_guests
 from apps.properties.models import Property
 from apps.reservations.models import EvisitorGuestStatus, Guest, Reservation
@@ -43,9 +46,9 @@ class EvisitorEligibilityTests(TestCase):
         defaults.update(kwargs)
         return Guest.objects.create(**defaults)
 
-    def test_child_under_18_does_not_require_evisitor(self):
+    def test_child_under_18_requires_evisitor(self):
         child = self._guest(date_of_birth=date(2014, 7, 16))
-        self.assertFalse(guest_requires_evisitor(child))
+        self.assertTrue(guest_requires_evisitor(child))
 
     def test_adult_requires_evisitor(self):
         adult = self._guest(date_of_birth=date(1980, 1, 1))
@@ -55,7 +58,7 @@ class EvisitorEligibilityTests(TestCase):
         guest = self._guest(date_of_birth=None)
         self.assertTrue(guest_requires_evisitor(guest))
 
-    def test_summary_complete_when_adults_sent_and_child_not_sent(self):
+    def test_summary_incomplete_when_adults_sent_and_child_not_sent(self):
         adult1 = self._guest(
             first_name="Ekrem",
             date_of_birth=date(1975, 3, 1),
@@ -76,9 +79,9 @@ class EvisitorEligibilityTests(TestCase):
             [adult1, adult2, child],
             reference_date=self.check_in,
         )
-        self.assertEqual(summary, "complete")
+        self.assertEqual(summary, "incomplete")
 
-    def test_summary_complete_when_only_children(self):
+    def test_summary_incomplete_when_only_children_not_sent(self):
         child1 = self._guest(date_of_birth=date(2014, 7, 16))
         child2 = self._guest(date_of_birth=date(2016, 2, 2))
 
@@ -86,11 +89,29 @@ class EvisitorEligibilityTests(TestCase):
             [child1, child2],
             reference_date=self.check_in,
         )
+        self.assertEqual(summary, "incomplete")
+
+    def test_summary_complete_when_all_required_sent(self):
+        adult = self._guest(
+            date_of_birth=date(1980, 1, 1),
+            evisitor_status=EvisitorGuestStatus.SENT,
+        )
+        child = self._guest(
+            date_of_birth=date(2014, 7, 16),
+            evisitor_status=EvisitorGuestStatus.SENT,
+        )
+        summary = evisitor_summary_for_guests(
+            [adult, child],
+            reference_date=self.check_in,
+        )
         self.assertEqual(summary, "complete")
 
     def test_summary_incomplete_when_adult_not_sent(self):
         adult = self._guest(date_of_birth=date(1980, 1, 1))
-        child = self._guest(date_of_birth=date(2014, 7, 16))
+        child = self._guest(
+            date_of_birth=date(2014, 7, 16),
+            evisitor_status=EvisitorGuestStatus.SENT,
+        )
 
         summary = evisitor_summary_for_guests(
             [adult, child],
@@ -98,7 +119,7 @@ class EvisitorEligibilityTests(TestCase):
         )
         self.assertEqual(summary, "incomplete")
 
-    def test_progress_counts_eligible_guests_only(self):
+    def test_progress_counts_all_guests_including_children(self):
         adult_sent = self._guest(
             date_of_birth=date(1980, 1, 1),
             evisitor_status=EvisitorGuestStatus.SENT,
@@ -124,10 +145,115 @@ class EvisitorEligibilityTests(TestCase):
             [adult_sent, adult_pending, adult_failed, adult_checkout_failed, child],
             reference_date=self.check_in,
         )
-        self.assertEqual(progress, {"required": 4, "sent": 2, "failed": 1, "pending": 1})
+        self.assertEqual(progress, {"required": 5, "sent": 2, "failed": 1, "pending": 2})
 
         summary = evisitor_summary_for_guests(
             [adult_sent, adult_checkout_failed],
             reference_date=self.check_in,
         )
         self.assertEqual(summary, "complete")
+
+
+class TtPaymentCategoryTests(TestCase):
+    """Age bands use check_in; mid-stay birthdays do not change category."""
+
+    CHECK_IN = date(2026, 8, 12)
+
+    def test_under_12_boundary(self):
+        # 11y 364d on check_in
+        dob = date(2014, 8, 13)
+        self.assertEqual(
+            tt_payment_category_for_dob(
+                dob,
+                reference_date=self.CHECK_IN,
+                default_payment_category="14",
+            ),
+            "1",
+        )
+
+    def test_exactly_12(self):
+        dob = date(2014, 8, 12)
+        self.assertEqual(
+            tt_payment_category_for_dob(
+                dob,
+                reference_date=self.CHECK_IN,
+                default_payment_category="14",
+            ),
+            "2",
+        )
+
+    def test_under_18_boundary(self):
+        # 17y 364d on check_in
+        dob = date(2008, 8, 13)
+        self.assertEqual(
+            tt_payment_category_for_dob(
+                dob,
+                reference_date=self.CHECK_IN,
+                default_payment_category="14",
+            ),
+            "2",
+        )
+
+    def test_exactly_18_uses_default(self):
+        dob = date(2008, 8, 12)
+        self.assertEqual(
+            tt_payment_category_for_dob(
+                dob,
+                reference_date=self.CHECK_IN,
+                default_payment_category="14",
+            ),
+            "14",
+        )
+        self.assertEqual(
+            tt_payment_category_for_dob(
+                dob,
+                reference_date=self.CHECK_IN,
+                default_payment_category="01",
+            ),
+            "01",
+        )
+
+    def test_adult_preserves_nonstandard_default(self):
+        dob = date(1990, 1, 1)
+        self.assertEqual(
+            tt_payment_category_for_dob(
+                dob,
+                reference_date=self.CHECK_IN,
+                default_payment_category="X",
+            ),
+            "X",
+        )
+
+    def test_mid_stay_turns_12_still_category_1(self):
+        check_in = date(2026, 8, 10)
+        # Age 11 on check_in; turns 12 on 2026-08-12 during stay
+        dob = date(2014, 8, 12)
+        self.assertEqual(
+            tt_payment_category_for_dob(
+                dob,
+                reference_date=check_in,
+                default_payment_category="14",
+            ),
+            "1",
+        )
+        # Sanity: after birthday would be 12, but we must not use that date
+        self.assertEqual(
+            tt_payment_category_for_dob(
+                dob,
+                reference_date=date(2026, 8, 12),
+                default_payment_category="14",
+            ),
+            "2",
+        )
+
+    def test_mid_stay_turns_18_still_category_2(self):
+        check_in = date(2026, 8, 10)
+        dob = date(2008, 8, 12)
+        self.assertEqual(
+            tt_payment_category_for_dob(
+                dob,
+                reference_date=check_in,
+                default_payment_category="14",
+            ),
+            "2",
+        )
