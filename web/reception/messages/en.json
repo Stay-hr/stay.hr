@@ -395,6 +395,7 @@
     "sendAction": "Send",
     "sendSuccess": "Message sent.",
     "sendFailed": "Failed to send message.",
+    "statusFailed": "Failed",
     "whatsappHandoff": "WhatsApp opened with the suggested text.",
     "bodyLabel": "Message text",
     "channelLabel": "Channel",
@@ -762,13 +763,27 @@
     },
     "reserved": {
       "body": "This module is reserved in the settings API and will ship in a later release.",
-      "security": { "title": "Security" },
-      "integrations": { "title": "Integrations" },
-      "branding": { "title": "Branding" },
-      "localization": { "title": "Localization" },
-      "payments": { "title": "Payments" },
-      "reviews": { "title": "Reviews" },
-      "users": { "title": "Users" }
+      "security": {
+        "title": "Security"
+      },
+      "integrations": {
+        "title": "Integrations"
+      },
+      "branding": {
+        "title": "Branding"
+      },
+      "localization": {
+        "title": "Localization"
+      },
+      "payments": {
+        "title": "Payments"
+      },
+      "reviews": {
+        "title": "Reviews"
+      },
+      "users": {
+        "title": "Users"
+      }
     }
   }
 }

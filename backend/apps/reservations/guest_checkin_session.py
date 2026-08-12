@@ -156,7 +156,12 @@ def ensure_active_session(
     created_from: str,
     wa_id: str = "",
 ) -> GuestCheckInSession:
-    """Return the single active session for a reservation, creating if needed."""
+    """Return the single active session for a reservation, creating if needed.
+
+    Reuse of an existing ACTIVE session does **not** update ``created_from``,
+    ``last_distributed_from``, or ``wa_id``. Stamp distribution only via
+    ``mark_checkin_link_distributed`` after a successful outbound send.
+    """
     existing = get_active_session(reservation)
     if existing is not None:
         return existing
@@ -169,8 +174,34 @@ def ensure_active_session(
         opens_at=window.opens_at,
         expires_at=window.expires_at,
         created_from=created_from,
+        last_distributed_from=None,
         wa_id=(wa_id or "").strip(),
     )
+
+
+@transaction.atomic
+def mark_checkin_link_distributed(
+    session: GuestCheckInSession,
+    *,
+    distributed_from: str,
+    wa_id: str = "",
+) -> GuestCheckInSession:
+    """Record a successful check-in link delivery (G1).
+
+    Call **only** after the provider accepted the send and the outbound is
+    persisted as sent. Failed / skipped attempts must not call this.
+    """
+    if distributed_from not in {c.value for c in GuestCheckInSessionCreatedFrom}:
+        raise ValueError(f"invalid distributed_from={distributed_from!r}")
+
+    update_fields = ["last_distributed_from", "updated_at"]
+    session.last_distributed_from = distributed_from
+    cleaned_wa = (wa_id or "").strip()
+    if cleaned_wa:
+        session.wa_id = cleaned_wa
+        update_fields.append("wa_id")
+    session.save(update_fields=update_fields)
+    return session
 
 
 @transaction.atomic

@@ -163,6 +163,38 @@ class GuestCheckInChannexLinkTests(TestCase):
         mock_send.assert_called_once()
         body = mock_send.call_args.args[2]
         self.assertIn("/check-in/", body)
+        session = self.reservation.guest_checkin_sessions.get(
+            status=GuestCheckInSessionStatus.ACTIVE
+        )
+        self.assertEqual(session.created_from, GuestCheckInSessionCreatedFrom.CHANNEX)
+        self.assertEqual(
+            session.last_distributed_from,
+            GuestCheckInSessionCreatedFrom.CHANNEX,
+        )
+
+    @patch("apps.communications.guest_checkin_channex.get_channel_manager")
+    @patch("apps.communications.guest_checkin_channex.get_active_channex_integration")
+    @patch("apps.communications.guest_checkin_channex.send_message_for_reservation")
+    def test_channex_send_failure_does_not_mark_distributed(
+        self,
+        mock_send,
+        _mock_integration,
+        mock_channel_manager,
+    ):
+        from apps.integrations.channex.exceptions import ChannexBookingIngestError
+        from apps.tenants.models import ChannelManager
+
+        mock_channel_manager.return_value = ChannelManager.CHANNEX
+        mock_send.side_effect = ChannexBookingIngestError("boom")
+        from apps.communications.guest_checkin_channex import send_guest_checkin_link_via_channex
+
+        result = send_guest_checkin_link_via_channex(self.reservation.pk)
+        self.assertFalse(result["sent"])
+        session = self.reservation.guest_checkin_sessions.get(
+            status=GuestCheckInSessionStatus.ACTIVE
+        )
+        self.assertEqual(session.created_from, GuestCheckInSessionCreatedFrom.CHANNEX)
+        self.assertIsNone(session.last_distributed_from)
 
     @patch("apps.communications.guest_checkin_channex.get_channel_manager")
     def test_send_guest_checkin_link_skips_non_channex(self, mock_channel_manager):

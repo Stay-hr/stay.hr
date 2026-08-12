@@ -466,6 +466,11 @@ export function GuestMessagesPanel({ reservationId }: Props) {
                     ) : null}
                     <span>{formatMessageTime(item.created_at)}</span>
                     {item.sent_by_name ? <span>{item.sent_by_name}</span> : null}
+                    {outbound && item.status === "failed" ? (
+                      <span className="badge badge-canceled text-[10px] opacity-100">
+                        {t("statusFailed")}
+                      </span>
+                    ) : null}
                   </div>
                   <p className="whitespace-pre-wrap">{item.body_text}</p>
                   {item.document_intake_job_id ? (

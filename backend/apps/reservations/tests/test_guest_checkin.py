@@ -5,9 +5,10 @@ from decimal import Decimal
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
+from apps.integrations.tests.test_whatsapp_webhook import TEST_FERNET_KEY
 from apps.properties.models import Property
 from apps.reservations.checkin_readiness import (
     all_required_slots_ready,
@@ -26,6 +27,7 @@ from apps.reservations.guest_checkin_session import (
     ensure_active_session,
     evaluate_session_access,
     guest_checkin_window,
+    mark_checkin_link_distributed,
     regenerate_session,
 )
 from apps.reservations.guest_validation import (
@@ -98,6 +100,73 @@ class GuestCheckInSessionTests(TestCase):
             created_from=GuestCheckInSessionCreatedFrom.EMAIL,
         )
         self.assertEqual(first.pk, second.pk)
+
+    def test_ensure_leaves_last_distributed_from_null(self):
+        session = ensure_active_session(
+            self.reservation,
+            created_from=GuestCheckInSessionCreatedFrom.EMAIL,
+            wa_id="385911111111",
+        )
+        self.assertEqual(session.created_from, GuestCheckInSessionCreatedFrom.EMAIL)
+        self.assertIsNone(session.last_distributed_from)
+        self.assertEqual(session.wa_id, "385911111111")
+
+    def test_ensure_reuse_does_not_change_last_distributed_from(self):
+        session = ensure_active_session(
+            self.reservation,
+            created_from=GuestCheckInSessionCreatedFrom.EMAIL,
+        )
+        mark_checkin_link_distributed(
+            session,
+            distributed_from=GuestCheckInSessionCreatedFrom.EMAIL,
+        )
+        session.refresh_from_db()
+        self.assertEqual(
+            session.last_distributed_from,
+            GuestCheckInSessionCreatedFrom.EMAIL,
+        )
+
+        reused = ensure_active_session(
+            self.reservation,
+            created_from=GuestCheckInSessionCreatedFrom.WHATSAPP_AUTOCHECKIN,
+            wa_id="491761111111",
+        )
+        reused.refresh_from_db()
+        self.assertEqual(reused.pk, session.pk)
+        self.assertEqual(reused.created_from, GuestCheckInSessionCreatedFrom.EMAIL)
+        self.assertEqual(
+            reused.last_distributed_from,
+            GuestCheckInSessionCreatedFrom.EMAIL,
+        )
+        self.assertEqual(reused.wa_id, "")
+
+    def test_mark_checkin_link_distributed_updates_after_success(self):
+        session = ensure_active_session(
+            self.reservation,
+            created_from=GuestCheckInSessionCreatedFrom.EMAIL,
+        )
+        mark_checkin_link_distributed(
+            session,
+            distributed_from=GuestCheckInSessionCreatedFrom.WHATSAPP_AUTOCHECKIN,
+            wa_id="4917620974377",
+        )
+        session.refresh_from_db()
+        self.assertEqual(session.created_from, GuestCheckInSessionCreatedFrom.EMAIL)
+        self.assertEqual(
+            session.last_distributed_from,
+            GuestCheckInSessionCreatedFrom.WHATSAPP_AUTOCHECKIN,
+        )
+        self.assertEqual(session.wa_id, "4917620974377")
+
+    def test_mark_checkin_link_distributed_rejects_invalid_source(self):
+        session = ensure_active_session(
+            self.reservation,
+            created_from=GuestCheckInSessionCreatedFrom.EMAIL,
+        )
+        with self.assertRaises(ValueError):
+            mark_checkin_link_distributed(session, distributed_from="sms")
+        session.refresh_from_db()
+        self.assertIsNone(session.last_distributed_from)
 
     def test_regenerate_revokes_previous_active_session(self):
         first = ensure_active_session(
@@ -461,3 +530,133 @@ class GuestCheckInEventsTests(TestCase):
             reservation=self.reservation,
         )
         self.assertEqual(event.session.pk, self.session.pk)
+
+
+@override_settings(STAY_INTEGRATION_FERNET_KEY=TEST_FERNET_KEY)
+class LastDistributedFromWhatsAppReplyTests(TestCase):
+    """G1: last_distributed_from only after successful WhatsApp check-in link send."""
+
+    def setUp(self):
+        from apps.integrations.models import IntegrationConfig
+
+        self.tenant = Tenant.objects.create(name="Dist Tenant", slug="dist-tenant")
+        self.property = Property.objects.create(
+            tenant=self.tenant,
+            name="Dist Property",
+            slug="dist-property",
+            guest_checkin_opens_days_before=7,
+        )
+        self.reservation = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            booking_code="DIST-001",
+            check_in=date(2026, 8, 12),
+            check_out=date(2026, 8, 13),
+            adults_count=2,
+            booker_name="Marleen",
+            booker_phone="+4917620974377",
+            amount=Decimal("100.00"),
+        )
+        self.session = ensure_active_session(
+            self.reservation,
+            created_from=GuestCheckInSessionCreatedFrom.EMAIL,
+        )
+        mark_checkin_link_distributed(
+            self.session,
+            distributed_from=GuestCheckInSessionCreatedFrom.EMAIL,
+        )
+        self.integration = IntegrationConfig.objects.create(
+            tenant=self.tenant,
+            provider=IntegrationConfig.Provider.WHATSAPP,
+            routing_key="1068791909660300",
+            is_active=True,
+        )
+        self.integration.set_config_dict(
+            {
+                "phone_number_id": "1068791909660300",
+                "auto_reply": True,
+            }
+        )
+        self.integration.save()
+
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": "test-token"})
+    @patch("apps.integrations.whatsapp.whatsapp_web_checkin_redirect.send_text_message")
+    def test_wa_send_failure_keeps_email_last_distributed(self, mock_send):
+        from apps.integrations.models import WhatsAppMessage
+        from apps.integrations.whatsapp.client import WhatsAppApiError
+        from apps.integrations.whatsapp.runtime_config import WhatsAppRuntimeConfig
+        from apps.integrations.whatsapp.whatsapp_web_checkin_redirect import (
+            send_guest_web_checkin_link_reply,
+        )
+
+        mock_send.side_effect = WhatsAppApiError("provider down")
+        row = WhatsAppMessage.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            wamid="wamid.in.fail",
+            wa_id="4917620974377",
+            phone_number_id="1068791909660300",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type="button",
+            body="Autocheck-in",
+            raw_payload={},
+        )
+        runtime = WhatsAppRuntimeConfig.from_integration_dict(
+            self.integration.get_config_dict()
+        )
+
+        result = send_guest_web_checkin_link_reply(
+            row=row,
+            integration_row=self.integration,
+            runtime=runtime,
+            reservation=self.reservation,
+        )
+        self.assertEqual(result["status"], "send_failed")
+        self.session.refresh_from_db()
+        self.assertEqual(
+            self.session.last_distributed_from,
+            GuestCheckInSessionCreatedFrom.EMAIL,
+        )
+        self.assertEqual(self.session.created_from, GuestCheckInSessionCreatedFrom.EMAIL)
+
+    @patch.dict("os.environ", {"WHATSAPP_ACCESS_TOKEN": "test-token"})
+    @patch("apps.integrations.whatsapp.whatsapp_web_checkin_redirect.send_text_message")
+    def test_wa_send_success_updates_last_distributed(self, mock_send):
+        from apps.integrations.models import WhatsAppMessage
+        from apps.integrations.whatsapp.runtime_config import WhatsAppRuntimeConfig
+        from apps.integrations.whatsapp.whatsapp_web_checkin_redirect import (
+            send_guest_web_checkin_link_reply,
+        )
+
+        mock_send.return_value = {"messages": [{"id": "wamid.out.ok"}]}
+        row = WhatsAppMessage.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            wamid="wamid.in.ok",
+            wa_id="4917620974377",
+            phone_number_id="1068791909660300",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type="button",
+            body="Autocheck-in",
+            raw_payload={},
+        )
+        runtime = WhatsAppRuntimeConfig.from_integration_dict(
+            self.integration.get_config_dict()
+        )
+
+        result = send_guest_web_checkin_link_reply(
+            row=row,
+            integration_row=self.integration,
+            runtime=runtime,
+            reservation=self.reservation,
+        )
+        self.assertEqual(result["status"], "web_checkin_sent")
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.created_from, GuestCheckInSessionCreatedFrom.EMAIL)
+        self.assertEqual(
+            self.session.last_distributed_from,
+            GuestCheckInSessionCreatedFrom.WHATSAPP_AUTOCHECKIN,
+        )
+        self.assertEqual(self.session.wa_id, "4917620974377")

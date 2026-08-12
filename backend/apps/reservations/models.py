@@ -744,6 +744,17 @@ class GuestCheckInSession(TenantScopedModel):
     created_from = models.CharField(
         max_length=32,
         choices=GuestCheckInSessionCreatedFrom.choices,
+        help_text="Immutable first origin of this session (analytics).",
+    )
+    last_distributed_from = models.CharField(
+        max_length=32,
+        choices=GuestCheckInSessionCreatedFrom.choices,
+        null=True,
+        blank=True,
+        help_text=(
+            "Last channel that successfully delivered the check-in link. "
+            "Null until first successful send; never set on ensure/reuse alone."
+        ),
     )
     ops_version = models.PositiveIntegerField(
         default=0,

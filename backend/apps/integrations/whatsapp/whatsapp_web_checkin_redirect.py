@@ -22,6 +22,7 @@ from apps.integrations.whatsapp.client import (
 )
 from apps.integrations.whatsapp.runtime_config import WhatsAppRuntimeConfig
 from apps.reservations.guest_checkin_orchestrator import GuestCheckInOrchestrator
+from apps.reservations.guest_checkin_session import mark_checkin_link_distributed
 from apps.reservations.models import GuestCheckInSessionCreatedFrom, Reservation
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,12 @@ def send_guest_web_checkin_link_reply(
         body_text=body,
         status=GuestOutboundMessageStatus.SENT,
         to_phone=reservation.booker_phone or row.wa_id,
+    )
+
+    mark_checkin_link_distributed(
+        session_result.session,
+        distributed_from=GuestCheckInSessionCreatedFrom.WHATSAPP_AUTOCHECKIN,
+        wa_id=row.wa_id,
     )
 
     return {
