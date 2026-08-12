@@ -6,7 +6,6 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.integrations.evisitor.client import EvisitorClient
-from apps.integrations.evisitor.eligibility import guest_requires_evisitor
 from apps.integrations.evisitor.exceptions import (
     EvisitorApiError,
     EvisitorConfigError,
@@ -155,12 +154,6 @@ class Command(BaseCommand):
                 return
 
             guest = self._load_guest(guest_id, tenant)
-            if not guest_requires_evisitor(guest):
-                raise _SmokeFailure(
-                    exit_code=3,
-                    reason="not_required",
-                    message="eVisitor prijava nije potrebna za goste mlađe od 18 godina.",
-                )
 
             if options["dry_run"]:
                 try:

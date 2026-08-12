@@ -753,15 +753,16 @@ class ReceptionAPITests(TestCase):
     @patch("apps.reservations.checkin.property_local_now")
     @patch("apps.core.tasks.notify_reservation_status_changed.delay")
     @patch(
-        "apps.reservations.reservation_checkin_complete.submit_evisitor_for_reservation",
+        "apps.reservations.reservation_checkin_complete.submit_guest_checkin",
     )
-    def test_check_in_skips_evisitor_when_no_eligible_guests(
+    def test_check_in_auto_evisitor_includes_minors(
         self,
-        mock_submit_reservation,
+        mock_submit,
         mock_notify_status,
         mock_local_now,
     ):
         from datetime import datetime
+        from types import SimpleNamespace
         from zoneinfo import ZoneInfo
 
         from apps.integrations.evisitor.metrics import (
@@ -775,6 +776,10 @@ class ReceptionAPITests(TestCase):
         )
         self.guest.date_of_birth = date(2015, 1, 1)
         self.guest.save(update_fields=["date_of_birth"])
+        mock_submit.return_value = SimpleNamespace(
+            status="sent",
+            registration_id="b12d3e0a-4940-5f1f-c40c-886f218e7g47",
+        )
 
         response = self.client.patch(
             f"/api/v1/reception/reservations/{self.reservation.id}/",
@@ -786,13 +791,12 @@ class ReceptionAPITests(TestCase):
         body = response.json()
         self.assertEqual(body["status"], Reservation.Status.CHECKED_IN)
         ev = body["evisitor_checkin"]
-        self.assertEqual(ev["overall"], "not_required")
-        self.assertEqual(ev["skipped"], 1)
-        mock_submit_reservation.assert_not_called()
+        self.assertEqual(ev["overall"], "complete")
+        self.assertEqual(ev["submitted"], 1)
+        self.assertEqual(ev["skipped"], 0)
+        mock_submit.assert_called_once()
         breakdown = get_evisitor_checkin_auto_breakdown()
-        self.assertTrue(
-            any(row["result"] == "not_required" and row["count"] >= 1 for row in breakdown)
-        )
+        self.assertTrue(any(row["result"] == "complete" and row["count"] >= 1 for row in breakdown))
         mock_notify_status.assert_called_once()
 
     @patch("apps.reservations.checkin.property_local_now")

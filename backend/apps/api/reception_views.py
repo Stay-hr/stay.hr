@@ -35,7 +35,6 @@ from apps.api.reception_serializers import (
 )
 from apps.api.request_context import installation_id_from_request
 from apps.api.views import TenantAPIView
-from apps.integrations.evisitor.eligibility import guest_requires_evisitor
 from apps.integrations.evisitor.exceptions import (
     EvisitorApiError,
     EvisitorConfigError,
@@ -1212,15 +1211,6 @@ class EvisitorSubmitView(ReceptionWriteView, APIView):
                     ),
                 },
                 status=status.HTTP_409_CONFLICT,
-            )
-
-        if not guest_requires_evisitor(guest):
-            return Response(
-                {
-                    "status": "not_required",
-                    "message": "eVisitor prijava nije potrebna za goste mlađe od 18 godina.",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:

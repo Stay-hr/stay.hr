@@ -6,6 +6,7 @@ from datetime import date
 from django.utils import timezone
 
 from apps.integrations.evisitor.config import EvisitorRuntimeConfig
+from apps.integrations.evisitor.eligibility import tt_payment_category_for_dob
 from apps.integrations.evisitor.exceptions import EvisitorValidationError
 from apps.integrations.evisitor.lookups import iso2_to_iso3, map_document_type_code
 from apps.integrations.evisitor.residence_address import validate_evisitor_residence_address
@@ -96,6 +97,13 @@ def build_check_in_payload(
             field_errors=errors,
         )
 
+    # Age bands use stay start (check_in); mid-stay birthdays do not change category.
+    tt_category = tt_payment_category_for_dob(
+        guest.date_of_birth,
+        reference_date=reservation.check_in,
+        default_payment_category=config.default_payment_category,
+    )
+
     reg_id = registration_id or uuid.uuid4()
     return {
         "ID": str(reg_id),
@@ -119,7 +127,7 @@ def build_check_in_payload(
         "TimeEstimatedStayUntil": config.default_stay_time_until,
         "ArrivalOrganisation": config.default_arrival_organisation,
         "OfferedServiceType": config.default_offered_service_type,
-        "TTPaymentCategory": config.default_payment_category,
+        "TTPaymentCategory": tt_category,
         "TouristEmail": (guest.email or "").strip(),
         "TouristTelephone": "",
     }

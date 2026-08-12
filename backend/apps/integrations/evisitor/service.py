@@ -23,7 +23,6 @@ from apps.integrations.evisitor.messages import (
     parse_existing_registration_id,
     resolve_evisitor_error_message,
 )
-from apps.integrations.evisitor.eligibility import guest_requires_evisitor
 from apps.integrations.evisitor.metrics import record_checkout_failed
 from apps.integrations.evisitor.resolver import resolve_evisitor_config
 from apps.reservations.models import EvisitorGuestStatus, EvisitorSubmission, Guest
@@ -77,11 +76,6 @@ def submit_guest_checkin(
 ) -> EvisitorSubmission:
     config = _resolve_for_guest(guest)
     guest = Guest.objects.select_related("reservation").get(pk=guest.pk)
-
-    if not guest_requires_evisitor(guest):
-        raise EvisitorValidationError(
-            "eVisitor prijava nije potrebna za goste mlađe od 18 godina."
-        )
 
     # Already registered (including checkout_failed — do not re-CheckIn).
     if (

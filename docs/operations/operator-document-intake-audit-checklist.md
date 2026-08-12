@@ -17,7 +17,7 @@ Kako provjeriti WhatsApp slike od operatora (Toni) za zadani datum, pokrenuti OC
 | **`checked_out`** | **Ne dirati.** Ne replay `complete_operator_document_job`, ne merge/apply, ne eVisitor, ne “heal” dokumenata. |
 | Job s OCR osobama koje mapiraju samo na checked-out rezervacije | Ostavi job; dokumentiraj u bilješci ako treba — bez apply |
 
-Maloljetnici (&lt; 18 na dan `check_in`) **ne idu** u eVisitor (`guest_requires_evisitor`) — prazan `evisitor_status` kod djece nije greška ako odrasli imaju `sent` / `checked_out`.
+Maloljetnici **idu** u eVisitor (`guest_requires_evisitor` je True za sve goste). `TTPaymentCategory` za djecu je `"1"` / `"2"` prema dobi na `check_in`; odrasli zadržavaju config default.
 
 ---
 
@@ -160,7 +160,7 @@ Outbound potvrde Toniju (~14:23–14:25 CEST 16.07.): „Check-in obavljen…”
 [ ] 3. Za svaki job: applied_result + Reservation.status
 [ ] 4. Ako checked_out → STOP (ne complete / ne reconcile apply)
 [ ] 5. Ako aktivna + nedovršeno → dry-run complete_operator_document_job, pa apply
-[ ] 6. Provjeri evisitor_summary / progress (maloljetnici = not_required)
+[ ] 6. Provjeri evisitor_summary / progress (maloljetnici također required; TT 1/2)
 [ ] 7. Ne šalji gostu notifikaciju ako nije potrebno (--guest-notify skip)
 ```
 
