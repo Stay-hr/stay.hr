@@ -256,10 +256,15 @@ class DocumentIntakeAPITests(TestCase):
     def test_multi_person_updates_primary_and_companion(
         self, mock_ocr, _mock_ocr_configured
     ):
-        """Three OCR persons fill primary, Novi gost, and a third slot from persons_count."""
+        """OCR above adults_count fills existing slots only; no silent third guest.
+
+        Policy (#68): expected_document_count (OTA adults) is the slot ceiling.
+        persons_count / extra OCR persons must not inflate guest rows.
+        """
         self.reservation.persons_count = 3
         self.reservation.children_count = 1
         self.reservation.save(update_fields=["persons_count", "children_count"])
+        self.assertEqual(self.reservation.adults_count, 2)
 
         companion = Guest.objects.get(reservation=self.reservation, is_primary=False)
 
@@ -298,23 +303,26 @@ class DocumentIntakeAPITests(TestCase):
         self.assertEqual(body["status"], DocumentIntakeJobStatus.DONE)
         self.assertEqual(len(body["matches"]), 3)
         self.assertTrue(body["matches"][0]["auto_apply"])
+        self.assertTrue(body["matches"][1]["auto_apply"])
+        self.assertFalse(body["matches"][2]["auto_apply"])
+        self.assertIsNone(body["matches"][2].get("guest_id"))
 
         apply = self.client.post(f"{self.base}/jobs/{job_id}/apply/", {}, format="json")
         self.assertEqual(apply.status_code, 200)
-        self.assertEqual(len(apply.json()["applied"]), 3)
+        self.assertEqual(len(apply.json()["applied"]), 2)
 
         self.primary.refresh_from_db()
         companion.refresh_from_db()
-        third = Guest.objects.filter(reservation=self.reservation).exclude(
-            pk__in=[self.primary.pk, companion.pk]
-        ).get()
 
         self.assertEqual(self.primary.document_number, "DOC001")
         self.assertEqual(companion.first_name, "Elke")
         self.assertEqual(companion.document_number, "DOC002")
-        self.assertEqual(third.first_name, "Lisa")
-        self.assertEqual(third.document_number, "DOC003")
-        self.assertEqual(self.reservation.guests.count(), 3)
+        self.assertEqual(self.reservation.guests.count(), 2)
+        self.assertFalse(
+            Guest.objects.filter(
+                reservation=self.reservation, document_number="DOC003"
+            ).exists()
+        )
 
     @patch("apps.reservations.document_intake_service.ocr_configured", return_value=True)
     @patch("apps.reservations.document_intake_service.run_document_batch_ocr")
