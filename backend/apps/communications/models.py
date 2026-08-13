@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.core.models import TenantScopedModel
@@ -9,6 +10,13 @@ def guest_outbound_media_upload_to(instance, filename: str) -> str:
     return (
         f"communications/guest-outbound/{instance.tenant_id}/"
         f"{instance.reservation_id}/{instance.pk}_{filename}"
+    )
+
+
+def guest_message_media_upload_to(instance, filename: str) -> str:
+    return (
+        f"communications/guest-message/{instance.tenant_id}/"
+        f"{instance.conversation_id}/{instance.pk}_{filename}"
     )
 
 
@@ -23,6 +31,19 @@ class GuestMessageChannel(models.TextChoices):
     EMAIL = "email", "Email"
     WHATSAPP = "whatsapp", "WhatsApp"
     BOOKING = "booking", "Booking.com"
+
+
+class GuestMessageDirection(models.TextChoices):
+    INBOUND = "inbound", "Inbound"
+    OUTBOUND = "outbound", "Outbound"
+
+
+class GuestMessageSourceProvider(models.TextChoices):
+    CHANNEX = "channex", "Channex"
+    WABA = "waba", "WhatsApp Cloud API"
+    IMAP = "imap", "IMAP"
+    SMTP = "smtp", "SMTP"
+    STAY_OUTBOUND = "stay_outbound", "Stay outbound"
 
 
 class GuestOutboundMessageStatus(models.TextChoices):
@@ -234,6 +255,277 @@ class GuestInboundMessage(TenantScopedModel):
         return f"Inbound #{self.pk} {self.channel} res={self.reservation_id}"
 
 
+class Conversation(TenantScopedModel):
+    """1:1 reservation conversation (ADR 0019 Phase D). Schema-only until dual-write."""
+
+    reservation = models.OneToOneField(
+        "reservations.Reservation",
+        on_delete=models.CASCADE,
+        related_name="conversation",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Conversation"
+        verbose_name_plural = "Conversations"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "reservation"],
+                name="communications_conversation_tenant_reservation_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Conversation res={self.reservation_id}"
+
+    def clean(self) -> None:
+        super().clean()
+        if not self.reservation_id or not self.tenant_id:
+            return
+        reservation_tenant_id = getattr(self.reservation, "tenant_id", None)
+        if reservation_tenant_id is None:
+            return
+        if reservation_tenant_id != self.tenant_id:
+            raise ValidationError(
+                {"tenant": "Conversation tenant must match reservation.tenant_id."}
+            )
+
+
+class GuestMessage(TenantScopedModel):
+    """Logical UI row for one guest message (ADR 0019). Not provider-shaped."""
+
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    direction = models.CharField(
+        max_length=16,
+        choices=GuestMessageDirection.choices,
+    )
+    channel = models.CharField(
+        max_length=16,
+        choices=GuestMessageChannel.choices,
+    )
+    body = models.TextField(blank=True, default="")
+    media_file = models.FileField(
+        upload_to=guest_message_media_upload_to,
+        blank=True,
+        null=True,
+    )
+    occurred_at = models.DateTimeField()
+    delivery_status = models.CharField(
+        max_length=16,
+        choices=GuestOutboundDeliveryStatus.choices,
+        blank=True,
+        default="",
+    )
+    is_visible = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Guest message"
+        verbose_name_plural = "Guest messages"
+        ordering = ["occurred_at", "id"]
+        indexes = [
+            models.Index(
+                fields=["conversation", "occurred_at"],
+                name="comm_gm_occurred_idx",
+            ),
+            models.Index(
+                fields=["conversation", "is_visible"],
+                name="comm_gm_visible_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"GuestMessage #{self.pk} {self.direction} {self.channel} "
+            f"conv={self.conversation_id}"
+        )
+
+    def clean(self) -> None:
+        super().clean()
+        if not self.conversation_id or not self.tenant_id:
+            return
+        conversation_tenant_id = getattr(self.conversation, "tenant_id", None)
+        if conversation_tenant_id is None:
+            return
+        if conversation_tenant_id != self.tenant_id:
+            raise ValidationError(
+                {"tenant": "GuestMessage tenant must match Conversation tenant."}
+            )
+
+
+class GuestMessageSource(TenantScopedModel):
+    """One external/raw identity for a logical GuestMessage (1..N sources)."""
+
+    RAW_FK_FIELDS = (
+        "channex_message",
+        "whatsapp_message",
+        "inbound_message",
+        "outbound_message",
+    )
+
+    message = models.ForeignKey(
+        GuestMessage,
+        on_delete=models.CASCADE,
+        related_name="sources",
+    )
+    provider = models.CharField(
+        max_length=32,
+        choices=GuestMessageSourceProvider.choices,
+    )
+    provider_message_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Stable provider id when supplied. NULL if omitted; never empty string.",
+    )
+    channex_message = models.ForeignKey(
+        "integrations.ChannexMessage",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="guest_message_sources",
+    )
+    whatsapp_message = models.ForeignKey(
+        "integrations.WhatsAppMessage",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="guest_message_sources",
+    )
+    inbound_message = models.ForeignKey(
+        GuestInboundMessage,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="guest_message_sources",
+    )
+    outbound_message = models.ForeignKey(
+        GuestOutboundMessage,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="guest_message_sources",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Guest message source"
+        verbose_name_plural = "Guest message sources"
+        indexes = [
+            models.Index(
+                fields=["tenant", "provider", "provider_message_id"],
+                name="comm_gms_provider_idx",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                name="guestmessagesource_exactly_one_raw_fk",
+                condition=(
+                    models.Q(
+                        channex_message__isnull=False,
+                        inbound_message__isnull=True,
+                        outbound_message__isnull=True,
+                        whatsapp_message__isnull=True,
+                    )
+                    | models.Q(
+                        channex_message__isnull=True,
+                        inbound_message__isnull=True,
+                        outbound_message__isnull=True,
+                        whatsapp_message__isnull=False,
+                    )
+                    | models.Q(
+                        channex_message__isnull=True,
+                        inbound_message__isnull=False,
+                        outbound_message__isnull=True,
+                        whatsapp_message__isnull=True,
+                    )
+                    | models.Q(
+                        channex_message__isnull=True,
+                        inbound_message__isnull=True,
+                        outbound_message__isnull=False,
+                        whatsapp_message__isnull=True,
+                    )
+                ),
+            ),
+            models.CheckConstraint(
+                name="guestmessagesource_provider_message_id_not_blank",
+                condition=~models.Q(provider_message_id=""),
+            ),
+            models.UniqueConstraint(
+                fields=["tenant", "provider", "provider_message_id"],
+                condition=models.Q(provider_message_id__isnull=False),
+                name="guestmessagesource_unique_provider_message_id",
+            ),
+            models.UniqueConstraint(
+                fields=["channex_message"],
+                condition=models.Q(channex_message__isnull=False),
+                name="guestmessagesource_unique_channex_message",
+            ),
+            models.UniqueConstraint(
+                fields=["whatsapp_message"],
+                condition=models.Q(whatsapp_message__isnull=False),
+                name="guestmessagesource_unique_whatsapp_message",
+            ),
+            models.UniqueConstraint(
+                fields=["inbound_message"],
+                condition=models.Q(inbound_message__isnull=False),
+                name="guestmessagesource_unique_inbound_message",
+            ),
+            models.UniqueConstraint(
+                fields=["outbound_message"],
+                condition=models.Q(outbound_message__isnull=False),
+                name="guestmessagesource_unique_outbound_message",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"Source #{self.pk} {self.provider} "
+            f"id={self.provider_message_id or '∅'} msg={self.message_id}"
+        )
+
+    def _raw_fk_count(self) -> int:
+        return sum(
+            1
+            for name in self.RAW_FK_FIELDS
+            if getattr(self, f"{name}_id") is not None
+        )
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict[str, str] = {}
+        if self.provider_message_id == "":
+            errors["provider_message_id"] = (
+                "Use NULL when the provider omitted an id; do not store an empty string."
+            )
+        if self._raw_fk_count() != 1:
+            errors["__all__"] = "Exactly one raw pointer must be set."
+        if self.message_id and self.tenant_id:
+            message_tenant_id = getattr(self.message, "tenant_id", None)
+            conversation_tenant_id = None
+            conversation = getattr(self.message, "conversation", None)
+            if conversation is not None:
+                conversation_tenant_id = conversation.tenant_id
+            if (
+                message_tenant_id is not None
+                and conversation_tenant_id is not None
+                and (
+                    self.tenant_id != message_tenant_id
+                    or self.tenant_id != conversation_tenant_id
+                )
+            ):
+                errors["tenant"] = (
+                    "Source tenant must match GuestMessage → Conversation tenant."
+                )
+        if errors:
+            raise ValidationError(errors)
+
+
 class GuestMessageThreadState(TenantScopedModel):
     """Per-reservation inbox flags (e.g. dismissed needs-reply)."""
 
@@ -366,11 +658,16 @@ from apps.communications.messaging.models import (  # noqa: E402
 )
 
 __all__ = [
+    "Conversation",
     "ConversationLanguageSource",
     "GuestInboundMessage",
+    "GuestMessage",
     "GuestMessageChannel",
+    "GuestMessageDirection",
     "GuestMessageDraft",
     "GuestMessageIntent",
+    "GuestMessageSource",
+    "GuestMessageSourceProvider",
     "GuestMessageThreadState",
     "GuestMessageTranslation",
     "GuestMessageTranslationSource",
