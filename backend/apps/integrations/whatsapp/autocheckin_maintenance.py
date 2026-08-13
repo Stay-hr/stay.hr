@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical
 from apps.communications.guest_compose import (
     HINT_WHATSAPP_AUTOCHECKIN_MAINTENANCE,
     render_whatsapp_autocheckin_maintenance_message,
@@ -73,7 +74,7 @@ def send_autocheckin_maintenance_reply(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=row.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -97,7 +98,7 @@ def send_autocheckin_maintenance_reply(
         channel=GuestMessageChannel.WHATSAPP,
         sent_at=timezone.now(),
     )
-    GuestOutboundMessage.objects.create(
+    create_with_canonical(GuestOutboundMessage,
         tenant_id=row.tenant_id,
         reservation=reservation,
         draft=draft,

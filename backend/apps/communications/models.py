@@ -256,7 +256,7 @@ class GuestInboundMessage(TenantScopedModel):
 
 
 class Conversation(TenantScopedModel):
-    """1:1 reservation conversation (ADR 0019 Phase D). Schema-only until dual-write."""
+    """1:1 reservation conversation (ADR 0019 Phase D). Dual-write from D2; GET still uses timeline."""
 
     reservation = models.OneToOneField(
         "reservations.Reservation",

@@ -6,6 +6,7 @@ import logging
 
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical
 from apps.communications.guest_compose import render_autocheckin_web_checkin_message
 from apps.communications.models import (
     GuestMessageChannel,
@@ -67,7 +68,7 @@ def send_guest_web_checkin_link_reply(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=row.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -91,7 +92,7 @@ def send_guest_web_checkin_link_reply(
         channel=GuestMessageChannel.WHATSAPP,
         sent_at=timezone.now(),
     )
-    GuestOutboundMessage.objects.create(
+    create_with_canonical(GuestOutboundMessage,
         tenant_id=row.tenant_id,
         reservation=reservation,
         draft=draft,

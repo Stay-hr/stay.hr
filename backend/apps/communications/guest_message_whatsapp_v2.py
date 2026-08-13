@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
+from django.db import transaction
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical, record_canonical_source
 from apps.communications.guest_message_logging import (
     GUEST_MESSAGE_SEND_ERROR,
     GUEST_MESSAGE_WHATSAPP_API,
@@ -176,21 +178,23 @@ def _record_whatsapp_message_row(
 ) -> None:
     if not wamid:
         return
-    WhatsAppMessage.objects.get_or_create(
-        wamid=wamid,
-        defaults={
-            "tenant_id": reservation.tenant_id,
-            "integration": integration,
-            "reservation": reservation,
-            "wa_id": phone_wa,
-            "phone_number_id": runtime.phone_number_id,
-            "direction": WhatsAppMessage.Direction.OUTBOUND,
-            "source": WhatsAppMessage.Source.CLOUD_API,
-            "message_type": message_type,
-            "body": body,
-            "raw_payload": raw_payload,
-        },
-    )
+    with transaction.atomic():
+        row, _created = WhatsAppMessage.objects.get_or_create(
+            wamid=wamid,
+            defaults={
+                "tenant_id": reservation.tenant_id,
+                "integration": integration,
+                "reservation": reservation,
+                "wa_id": phone_wa,
+                "phone_number_id": runtime.phone_number_id,
+                "direction": WhatsAppMessage.Direction.OUTBOUND,
+                "source": WhatsAppMessage.Source.CLOUD_API,
+                "message_type": message_type,
+                "body": body,
+                "raw_payload": raw_payload,
+            },
+        )
+        record_canonical_source(row)
 
 
 def _call_graph_with_retry(send_fn):
@@ -243,7 +247,7 @@ def _send_whatsapp_template_api(
     header_url = welcome_header_image_url(config)
 
     if outbound is None:
-        outbound = GuestOutboundMessage.objects.create(
+        outbound = create_with_canonical(GuestOutboundMessage,
             tenant_id=reservation.tenant_id,
             reservation=reservation,
             draft=draft,
@@ -333,7 +337,7 @@ def _send_whatsapp_text_api(
         raise ValueError("no_phone")
 
     if outbound is None:
-        outbound = GuestOutboundMessage.objects.create(
+        outbound = create_with_canonical(GuestOutboundMessage,
             tenant_id=reservation.tenant_id,
             reservation=reservation,
             draft=draft,

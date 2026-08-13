@@ -5,6 +5,8 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
+from apps.communications.canonical_store import link_raw_reservation, record_canonical_source
+
 from apps.integrations.models import IntegrationConfig, WhatsAppInboundRouting, WhatsAppMessage
 from apps.integrations.whatsapp.reservation_lookup import (
     extract_booking_code_from_text,
@@ -62,9 +64,12 @@ def route_inbound_message(
         ]
     )
 
-    if routing.resolved_reservation_id and message.reservation_id is None:
-        message.reservation_id = routing.resolved_reservation_id
-        message.save(update_fields=["reservation"])
+    if routing.resolved_reservation_id:
+        reservation = routing.resolved_reservation
+        if message.reservation_id != reservation.pk:
+            link_raw_reservation(message, reservation)
+        else:
+            record_canonical_source(message)
 
     return routing
 
@@ -238,8 +243,9 @@ def manual_link_routing(
 
     message = routing.message
     if message.reservation_id != reservation.pk:
-        message.reservation = reservation
-        message.save(update_fields=["reservation"])
+        link_raw_reservation(message, reservation)
+    else:
+        record_canonical_source(message)
 
     return routing
 

@@ -6,6 +6,11 @@ import re
 from celery import shared_task
 from django.utils import timezone
 
+from apps.communications.canonical_store import (
+    create_with_canonical,
+    link_raw_reservation,
+    record_canonical_source,
+)
 from apps.communications.guest_compose import (
     render_autocheckin_web_checkin_message,
     render_documents_message,
@@ -115,12 +120,12 @@ def _inbound_body_preview(row: WhatsAppMessage) -> str:
 
 def _link_inbound_to_reservation(row: WhatsAppMessage, *, tenant_id: int) -> None:
     if row.reservation_id is not None:
+        record_canonical_source(row)
         return
     reservation = find_reservation_for_wa_id(tenant_id=tenant_id, wa_id=row.wa_id)
     if reservation is None:
         return
-    row.reservation = reservation
-    row.save(update_fields=["reservation"])
+    link_raw_reservation(row, reservation)
 
 
 def _maybe_send_auto_reply(
@@ -157,7 +162,8 @@ def _maybe_send_auto_reply(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(
+            WhatsAppMessage,
             tenant_id=row.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -255,7 +261,8 @@ def _maybe_send_autocheckin_documents_reply(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(
+            WhatsAppMessage,
             tenant_id=row.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -279,7 +286,8 @@ def _maybe_send_autocheckin_documents_reply(
         channel=GuestMessageChannel.WHATSAPP,
         sent_at=timezone.now(),
     )
-    GuestOutboundMessage.objects.create(
+    create_with_canonical(
+        GuestOutboundMessage,
         tenant_id=row.tenant_id,
         reservation=reservation,
         draft=draft,
@@ -370,8 +378,9 @@ def process_inbound_message(message_id: int, *, profile_name: str = "") -> dict:
     if routing is not None and routing.resolved_reservation_id:
         reservation = routing.resolved_reservation
         if row.reservation_id != reservation.pk:
-            row.reservation = reservation
-            row.save(update_fields=["reservation"])
+            link_raw_reservation(row, reservation)
+        else:
+            record_canonical_source(row)
     else:
         _link_inbound_to_reservation(row, tenant_id=resolved_tenant_id)
         reservation = row.reservation

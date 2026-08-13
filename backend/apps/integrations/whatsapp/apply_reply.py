@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical
 from apps.communications.guest_compose import (
     HINT_CHECKIN_READY,
     HINT_ID_MISSING_SIDES,
@@ -164,7 +165,7 @@ def _send_whatsapp_text_reply(
     outbound_wamid = extract_outbound_wamid(response)
     property_tenant_id = reservation.tenant_id
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=property_tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -188,7 +189,7 @@ def _send_whatsapp_text_reply(
         channel=GuestMessageChannel.WHATSAPP,
         sent_at=timezone.now(),
     )
-    GuestOutboundMessage.objects.create(
+    create_with_canonical(GuestOutboundMessage,
         tenant_id=property_tenant_id,
         reservation=reservation,
         draft=draft,

@@ -12,6 +12,7 @@ from django.core.files.base import ContentFile
 from django.db import connection, transaction
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical, link_raw_reservation
 from apps.communications.guest_compose import (
     HINT_DOCUMENTS_BATCH_ADDITIONAL_PHOTO,
     HINT_DOCUMENTS_BATCH_COMPLETE_REPROMPT,
@@ -407,7 +408,7 @@ def _send_batch_confirm_prompt(session: WhatsAppDocumentBatchSession) -> dict:
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=session.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -521,8 +522,7 @@ def on_whatsapp_document_received(message_id: int) -> dict:
     if row.reservation_id is None:
         reservation = find_reservation_for_wa_id(tenant_id=row.tenant_id, wa_id=row.wa_id)
         if reservation is not None:
-            row.reservation = reservation
-            row.save(update_fields=["reservation"])
+            link_raw_reservation(row, reservation)
     else:
         reservation = row.reservation
 

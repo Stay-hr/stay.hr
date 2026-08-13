@@ -7,6 +7,11 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from apps.communications.canonical_store import (
+    create_with_canonical,
+    link_raw_reservation,
+    record_canonical_source,
+)
 from apps.communications.guest_language_context import LanguageMode
 from apps.communications.guest_language_resolver import GuestLanguageResolver
 from apps.core.timezone import property_local_now
@@ -291,9 +296,9 @@ def _ensure_awaiting_session(*, tenant_id: int, wa_id: str) -> WhatsAppGuestAuto
 
 def _link_message_to_reservation(row: WhatsAppMessage, reservation: Reservation) -> None:
     if row.reservation_id == reservation.pk:
+        record_canonical_source(row)
         return
-    row.reservation = reservation
-    row.save(update_fields=["reservation"])
+    link_raw_reservation(row, reservation)
 
 
 def _send_whatsapp_text(
@@ -317,7 +322,7 @@ def _send_whatsapp_text(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=integration_row.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -364,7 +369,7 @@ def _send_autocheckin_prompt(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=integration_row.tenant_id,
             integration=integration_row,
             reservation=reservation,
