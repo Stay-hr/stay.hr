@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (2026-08-13) — conversation/inbox architecture locked. First implementation slice is Phase A (DB-first read path) only.
+**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B membership for automatic Channex reconcile is locked below (2026-08-13); Celery implementation of that set is **not** in this amendment.
 
 Canonical identity: `GuestMessage` is the logical UI row; `GuestMessageSource` holds 1..N external/raw identities. `provider_message_id` is nullable; missing provider IDs must not be fabricated.
 
@@ -48,7 +48,7 @@ Guest messaging on stay.hr already spans three channels, four persistence tables
 
 | Layer | Today |
 |-------|--------|
-| Channex / Booking.com | `ChannexMessage`; webhook `message`; API `list_booking_messages` / send; Celery upcoming-check-in pull (15 min, Uzorita) |
+| Channex / Booking.com | `ChannexMessage`; webhook `message`; API `list_booking_messages` / send; Celery upcoming-check-in pull (15 min, Uzorita) — **current code** is `expected` + `check_in` today/tomorrow only; Phase B membership (A∪B∪C∪D) is locked in §9, not yet implemented |
 | WhatsApp Cloud API | `WhatsAppMessage`; inbound webhook; `WhatsAppInboundRouting` for unlinked messages; media on `media_file` |
 | Email | `GuestInboundMessage` via IMAP poll (Celery 120 s); outbound via tenant SMTP into `GuestOutboundMessage` |
 | Outbound audit | `GuestOutboundMessage` for compose/send (email / booking / whatsapp) |
@@ -343,7 +343,7 @@ Phase D  Canonical Conversation + GuestMessage + GuestMessageSource
 Phase E  Outbound delivery status / retry (ADR 0016 applied to send)
 ```
 
-Phases are sequential for **architecture**, not a single release train. **PR1 is Phase A only.** Later phases may start once Phase A is on `main` and the GET contract is not silently reverted.
+Phases are sequential for **architecture**, not a single release train. Phase A is on `main`. Phase B must not become a performance/read-model PR (`GuestMessage` stays Phase D; inbox latency stays Phase D). GET stays DB-only.
 
 #### Phase 0 — Ownership (this document)
 
@@ -380,13 +380,81 @@ Must not:
 
 #### Phase B — Background ingest
 
+Goal: what Phase A already reads quickly from the DB is **reliably ingested**. Phase B is write-side catch-up, not a read-model change.
+
 - Treat Channex webhook `message` as the primary inbound path; keep Messages & Reviews + `send_data=true` as ops invariant.
-- Reconciliation: existing upcoming-check-in pull + explicit backfill command; extend to “recently active conversations” if webhook gaps appear — **rate-limited Celery**, not GET.
 - IMAP poll stays Celery (not a side effect of opening one reservation).
 - WABA webhook remains primary; no Meta history fetch from UI.
 - Dedupe/idempotency tests per identity key; relink unlinked Channex/WA as jobs.
 - Observability: last webhook / last poll / ingest lag per channel on `GET …/system/status/` `messaging` (or a dedicated conversation block — do not overload ADR 0010 engine health with inbox lag).
-- Media: download at ingest; missing attachment is ingest debt, not a reason to refetch the thread from the provider on GET.
+- Media: download at ingest; missing attachment is ingest debt, not a reason to refetch the thread from the provider on GET:
+
+```text
+provider → ingest → media_file → GET
+
+media_file missing
+        ↓
+404 / local state + observability
+        ✕
+no Channex fetch from GET
+```
+
+##### Automatic Channex reconcile membership (locked)
+
+Reconcile is a **bounded catch-up for missed webhooks**, not a UI read path and not “every inbox thread”. Implementation order: lock this set (done) → change the Celery task → then media-at-ingest → then idempotency/version tests → then observability.
+
+**Eligible** (all required):
+
+- `import_source = channex`
+- `_reservation_can_sync_messages` is true
+- `status` not in `canceled`, `no_show`, `refused`, `pending`
+
+**Membership** = **A ∪ B ∪ C ∪ D**:
+
+| Leg | Rule |
+|-----|------|
+| **A** | `expected`, `check_in ∈ [today, today+7d]` — first Booking.com message before a local `ChannexMessage` exists |
+| **B** | `checked_in` (all in-house) |
+| **C** | `checked_out`, `check_out ∈ [today−1d, today]` |
+| **D** | a `ChannexMessage` exists with `created_at ≥ now−7d` (`created_at` = ingest time on the raw row, not OTA timestamp) |
+
+```text
+Eligible:
+- import_source = channex
+- _reservation_can_sync_messages = true
+- status not in canceled, no_show, refused, pending
+
+Membership = A ∪ B ∪ C ∪ D
+
+A: expected, check_in ∈ [today, today+7d]
+B: checked_in
+C: checked_out, check_out ∈ [today−1d, today]
+D: exists ChannexMessage.created_at ≥ now−7d
+
+Cadence:
+- every 15 min
+- one reconcile cycle for the whole set
+- dedupe reservations before the provider call
+```
+
+**D must not re-admit a reservation the status filter excludes.** A recent `ChannexMessage` on a `canceled` / `no_show` / `refused` / `pending` reservation does **not** put that reservation in the set. Apply Eligible (including the status filter) **after** the union, not only on A/B/C.
+
+**Explicit exclusions:**
+
+```text
+- far-out expected > +7d without recent activity (leg D)
+- checked_out older than 1 day without recent activity (leg D)
+- canceled / no_show / refused / pending
+- inbox thread membership is not a criterion
+```
+
+**Cadence:** keep **15 minutes**, one cycle for the whole set. Dedupe reservation PKs before `list_booking_messages`. Do not split cadence in the first Phase B PR unless load requires it.
+
+**Observation threshold (not a hard-coded business rule):** if a cycle exceeds **~80** reservations, inspect D / windows / cadence before widening the set. Do not grow membership to “all expected” or “all inbox threads” without amending this ADR.
+
+**Not in this set:** one-off CLI / future `POST …/messages/reconcile/` for a single reservation remains the escape hatch (incident, far-out first message, canceled thread). Those paths are write-side and must not be invoked from GET.
+
+Baseline (Uzorita, 2026-08-13): current task ≈ 5 reservations/cycle; A∪B∪C∪D ≈ 35. Leg D is required: without it, active threads outside the calendar window (already known to be corresponding) would not be healed.
 
 #### Phase C — Realtime UI
 
@@ -421,6 +489,7 @@ For any PR that touches guest messages, inbox, Channex/WABA/IMAP ingest, or rece
 5. On new UI-visible rows, is **`touch_reservation_version(messages)`** called — and **not** called on duplicates/receipts?
 6. If adding a channel or table, does it flow through the **timeline/inbox read model** (or Phase D canonical), not a one-off fetch?
 7. Does it avoid expanding ADR 0010 with inbox concepts (and avoid expanding this ADR with campaign DSL)?
+8. If it changes automatic Channex pull: is membership still **A ∪ B ∪ C ∪ D** with the Eligible status filter applied **after** D (canceled + recent `ChannexMessage` stays out)?
 
 If any answer is **no**: justified exception in the PR, or it is debt that must not merge.
 
@@ -433,6 +502,8 @@ If any answer is **no**: justified exception in the PR, or it is debt that must 
 - Canonical `GuestMessage` that is Channex-shaped (Booking-only columns as the product schema)
 - `(provider, provider_message_id)` as the **only** external identity **on** `GuestMessage` (those columns belong on `GuestMessageSource`; one logical message has 1..N sources)
 - Inventing a `provider_message_id` for IMAP (or any provider) that did not supply one
+- Widening automatic Channex reconcile beyond **A ∪ B ∪ C ∪ D** (all future expected, all inbox threads, GET-triggered pull)
+- Channex attachment fetch from a user-facing GET when `media_file` is missing
 
 ---
 
@@ -476,17 +547,23 @@ If any answer is **no**: justified exception in the PR, or it is debt that must 
 | Fold inbox into ADR 0010 | Engine is outbound automation; inbox/read/dedupe/realtime are a different domain |
 | UI reads providers directly (BFF to Channex/Meta) | Couples UX to third-party latency and auth; duplicates what we already persist |
 | Remote success required before showing outbound | Violates ADR 0016; receptionist blocked when Channex returns 403 |
+| Calendar-only reconcile (A∪B∪C, drop D) | Leaves a hole for threads already known to be active outside the stay window; D is bounded catch-up for missed webhooks, not inbox membership |
+| Automatic pull of every inbox thread / all future expected | Unbounded Channex API load; inbox is a read-model union (Phase D), not ingest eligibility |
 
 ---
 
-## First implementation slice (PR1)
+## Implementation slices
 
-After this ADR is accepted:
+Phase A is done (DB-first GET). This document’s 2026-08-13 amendment **only** locks Phase B Channex reconcile membership; it does not change Celery.
 
-1. **Phase A only** — DB-first GET for timeline + inbox; clients open with `sync=0`; provider fetch does not block.
-2. Leave Celery IMAP + Channex upcoming-check-in + webhooks running.
-3. Optionally add or document a non-blocking reconcile for pull-to-refresh.
-4. Do not start Phase D models in PR1.
+Next messaging PR (Phase B), in order:
+
+1. Implement automatic Channex reconcile as **A ∪ B ∪ C ∪ D** (Eligible filter after the union; 15 min; dedupe before provider calls).
+2. Media-at-ingest; GET must not fetch Channex attachments.
+3. Idempotency / version tests.
+4. Observability (`last_webhook_at` / `last_poll_at` / lag) — do not overload ADR 0010 engine health.
+
+Do not start Phase D models in the Phase B PR.
 
 ---
 
