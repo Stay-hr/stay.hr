@@ -17,7 +17,6 @@ from apps.communications.models import (
     GuestOutboundMessage,
     GuestOutboundMessageStatus,
 )
-from apps.integrations.channex.message_service import first_attachment_path
 from apps.integrations.models import ChannexMessage, WhatsAppMessage
 from apps.reservations.models import DocumentIntakeJob, Reservation
 
@@ -203,9 +202,8 @@ def serialize_channex(msg: ChannexMessage) -> dict:
         media_kind = "image"
         if not body:
             body = _OUTBOUND_IMAGE_PREVIEW
-    elif msg.have_attachment and first_attachment_path(msg.raw_payload or {}):
+    elif msg.have_attachment:
         message_type = "image"
-        media_url = channex_message_media_url(msg.pk)
         media_kind = "image"
         if not body:
             body = _MEDIA_PREVIEW.get("image", "📷 Dokument poslan")
