@@ -87,8 +87,8 @@ eVisitor se **ne šalje automatski** — i dalje ručno / gumb u Hospiri.
 3. U eVisitor listi provjeri:
    - broj gostiju = **Osobe** na rezervaciji (`persons_count`),
    - nema **„Novi gost”** s popunjenim dokumentom negdje drugdje,
-   - djeca &lt; 18: eVisitor „Nije potrebno” ako je DOB prepoznat.
-4. Po potrebi **Prijavi u eVisitor** po odraslom gostu.
+   - djeca također idu u eVisitor (dob ne izuzima nikoga); `TTPaymentCategory` je `"1"` / `"2"` prema dobi na `check_in`.
+4. Po potrebi **Prijavi u eVisitor** po svakom gostu (uključujući djecu).
 
 ---
 
@@ -149,7 +149,7 @@ POST /api/v1/reception/document-intake/jobs/{job_id}/apply/
 
 - Import i placeholderi: **`adults_count`** pri uvozu, **`persons_count`** pri OCR apply.
 - Dijete (npr. 16 god.) **treba guest red** ako je poslao osobnu — koristi `persons_count`.
-- eVisitor: &lt; 18 na dan check-ina → nije obavezno; guest red i dokument i dalje korisni za evidenciju.
+- eVisitor: svaki gost (uključujući djecu) obavezno ide u eVisitor; dob na `check_in` određuje samo `TTPaymentCategory` (`"1"` / `"2"` / property default).
 
 ---
 

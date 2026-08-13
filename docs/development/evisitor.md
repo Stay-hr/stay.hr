@@ -389,7 +389,7 @@ Funkcija `evisitor_summary_for_reservation` ([`summary.py`](../../backend/apps/i
 | `complete` | svi eligible gosti su **prijavljeni** (`sent`, `checkout_failed` ili mix s `checked_out`) — **ne** znači da je rezervacija odjavljena |
 | `checked_out` | svi eligible gosti su `checked_out` |
 
-Ako nema eligible gostiju (samo djeca), summary je `complete`.
+Djeca su eligible isto kao odrasli. Checkout je `incomplete` dok i maloljetnici nisu `sent` / `checkout_failed` / `checked_out`.
 
 > `summary == complete` dopušta pokušaj reservation checkouta. Ako CheckOut padne, rezervacija ostaje `checked_in` uz `CheckoutBlockedError(evisitor_checkout_failed)` dok svi gosti nisu `checked_out`.
 

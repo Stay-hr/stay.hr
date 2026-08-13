@@ -92,7 +92,7 @@ def find_id_document_for_side_merge(
 
 
 def find_missing_id_sides(reservation: Reservation) -> list[MissingIdSide]:
-    """Adult guests missing required front/back photos across all stored IdDocument rows."""
+    """Guests missing required front/back photos across all stored IdDocument rows."""
     reference_date = reservation.check_in
     gaps: list[MissingIdSide] = []
 
