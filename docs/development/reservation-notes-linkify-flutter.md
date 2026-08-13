@@ -1,6 +1,6 @@
 # Napomena rezervacije — klikabilni linkovi (Flutter / Hospira)
 
-**Flutter repo:** [github.com/avrcanio/uzorita_flutter](https://github.com/avrcanio/uzorita_flutter) (`hr.finestar.hospira`)
+**Flutter repo:** [github.com/Stay-hr/hospira_flutter](https://github.com/Stay-hr/hospira_flutter) (`hr.finestar.hospira`)
 
 **Reception web referenca (gotovo):** [`linkifyText.tsx`](../../web/reception/lib/linkifyText.tsx), [`ReservationDetailPanel.tsx`](../../web/reception/app/_components/ReservationDetailPanel.tsx)
 
@@ -39,7 +39,7 @@ Backend ne linkificira napomenu — parsiranje je isključivo na klijentu (web i
 
 ## Gdje mijenjati u Flutteru
 
-U repou `uzorita_flutter` pretražiti:
+U repou `hospira_flutter` pretražiti:
 
 - `reservation.notes`
 - string literal `"notes"` ili lokalizirani ključ za „Napomena”

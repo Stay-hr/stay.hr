@@ -255,8 +255,7 @@ Cross-reference: [AGENTS.md — Reservation versioning](../../AGENTS.md#reservat
 | File | Role |
 |------|------|
 | `web/reception/lib/useTimelineVersionPoll.ts` | Poll `scope`, ETag, pause when tab hidden |
-| `web/reception/lib/shouldRunFullSync.ts` | Retired (ADR 0019): always false; do not `sync=1` on GET |
-| `web/reception/app/_components/GuestMessagesPanel.tsx` | Mount `sync=0`; version change → `sync=0` background |
+| `web/reception/app/_components/GuestMessagesPanel.tsx` | Mount / version / refresh: `sync=0` (DB-only; [ADR 0019](adr/0019-messaging-conversation-store.md) Phase C) |
 
 Opening the messages panel is a DB read. Provider ingest is webhook + Celery, not mount/interval GET.
 

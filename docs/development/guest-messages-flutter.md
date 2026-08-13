@@ -1,6 +1,6 @@
 # Guest messages — Flutter (Hospira) implementacija
 
-**Flutter repo:** [github.com/avrcanio/uzorita_flutter](https://github.com/avrcanio/uzorita_flutter) (`hr.finestar.hospira`)
+**Flutter repo:** [github.com/Stay-hr/hospira_flutter](https://github.com/Stay-hr/hospira_flutter) (`hr.finestar.hospira`)
 
 **Backend:** [`reception_guest_messages_views.py`](../../backend/apps/api/reception_guest_messages_views.py), [`guest_message_send.py`](../../backend/apps/communications/guest_message_send.py), [`guest_compose.py`](../../backend/apps/communications/guest_compose.py)
 
@@ -100,7 +100,7 @@ flowchart TB
 
 ```http
 GET /api/v1/reception/message-threads/
-GET /api/v1/reception/message-threads/?needs_reply=1&sync=auto
+GET /api/v1/reception/message-threads/?needs_reply=1&sync=0
 ```
 
 | Query | Svrha |
@@ -108,7 +108,7 @@ GET /api/v1/reception/message-threads/?needs_reply=1&sync=auto
 | `page`, `page_size` | Paginacija (default 25) |
 | `needs_reply=1` | Samo threadovi gdje je zadnja poruka **inbound** |
 | `arriving_today=1` | Check-in danas (Europe/Zagreb) |
-| `sync=auto\|1\|0` | `auto` = Channex samo ako nema poruka u bazi; `1` = force Channex + **IMAP poll**; `0` = samo baza |
+| `sync` | Ignoriran (ADR 0019). Klijenti šalju `sync=0` ili izostave. `auto`/`1` ne vuku Channex/IMAP. |
 
 **Response:**
 
@@ -161,7 +161,7 @@ GET is **DB-only**. `sync` is ignored (`0` / `auto` / `1` all return the current
 
 | Vrijednost | Ponašanje |
 |------------|-----------|
-| omitted / `0` / `auto` / `1` | Samo lokalna baza. Flutter: always `sync=0`. |
+| omitted / `0` / `auto` / `1` | Samo lokalna baza. Web i Hospira šalju `sync=0` (Phase C). Stari Hospira build koji još šalje `auto`/`1` ostaje kompatibilan jer backend ignorira `sync`. |
 
 Catch-up (missed webhook) is Celery / CLI `sync_channex_booking_messages` / `poll_guest_email`, not a blocking GET.
 
@@ -687,7 +687,7 @@ void onFcmData(Map<String, dynamic> data) {
 
 ---
 
-## Predložena struktura datoteka (uzorita_flutter)
+## Predložena struktura datoteka (hospira_flutter)
 
 ```
 lib/

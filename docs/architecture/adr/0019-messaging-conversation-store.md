@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B (membership, media-at-ingest, ingest idempotency/version, observability) is implemented.
+**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B (membership, media-at-ingest, ingest idempotency/version, observability) is implemented. Phase C client GET contract is closed: Reception web and Hospira ([Stay-hr/hospira_flutter](https://github.com/Stay-hr/hospira_flutter) #1, `4273268`) use DB-only GET (`sync=0` or omitted). Backend still ignores `sync` so older Hospira builds remain compatible. Phase D models are not started.
 
 Canonical identity: `GuestMessage` is the logical UI row; `GuestMessageSource` holds 1..N external/raw identities. `provider_message_id` is nullable; missing provider IDs must not be fabricated.
 
@@ -470,11 +470,26 @@ Baseline (Uzorita, 2026-08-13): current task ≈ 5 reservations/cycle; A∪B∪C
 
 #### Phase C — Realtime UI
 
+Done for the client GET contract (not Phase D models, not a new SSE bus):
+
+```text
+event / mount / refresh / FCM / send
+        ↓
+DB-only GET (`sync=0` or omitted)
+        ↓
+UI
+
+never:
+client event → sync=1/auto → provider reconcile
+```
+
 - Opening and staying on a thread: DB reads only.
-- `shouldRunFullSync` either disappears or means “enqueue reconcile”, never “block GET on Channex”.
-- Pull-to-refresh shows local data immediately; reconcile is best-effort and updates via version bump.
+- Web: `GuestMessagesPanel` always `GET …/messages/?sync=0` (mount, version bump, refresh, post-send). Dead `shouldRunFullSync` is removed.
+- Hospira: inbox and thread GETs default `sync=0`; `refreshWithSync` / `forceSync` no longer mean provider reconcile ([hospira_flutter #1](https://github.com/Stay-hr/hospira_flutter/pull/1)).
+- Pull-to-refresh shows local data immediately; catch-up is ingest + version bump, not GET.
 - Inbox refresh is the same.
 - Do not add a second SSE channel for message bodies; reuse reservation versioning.
+- Reviews stay on their own `sync=auto` contract (out of this ADR).
 
 #### Phase D — Canonical store
 
@@ -575,7 +590,7 @@ Phase B is done:
 3. ~~Idempotency / version tests~~ (done).
 4. ~~Observability (`last_webhook_at` / `last_poll_at` / lag) on ``conversation``, not ADR 0010 ``messaging``~~ (done).
 
-Do not start Phase D models in a Phase B PR. Next implementation slice is Phase C (realtime UI = event → DB only).
+Phase C client GET contract is done (web already DB-only; Hospira #1 merged). Do not start Phase D models in a Phase C docs/cleanup PR.
 
 ---
 

@@ -81,7 +81,7 @@ All **four required artifacts** are present, aligned with the implementation, an
 | Criterion | Evidence |
 |-----------|----------|
 | `useTimelineVersionPoll` + `onVersionChange` | `useTimelineVersionPoll.ts` — panel uses callback, not transport |
-| `shouldRunFullSync` single decision point | `shouldRunFullSync.ts`; `GuestMessagesPanel` mount `sync=1`, version change → `sync=0` background |
+| Messages panel GET | `GuestMessagesPanel` always `sync=0` (ADR 0019 Phase C). `shouldRunFullSync` removed. |
 | Poll pauses when tab hidden | `document.hidden` guard in hook |
 | 5 s interval, ETag reuse | Default `intervalMs = 5_000`; `If-None-Match` on poll |
 
@@ -102,7 +102,7 @@ PostGIS test DB (`config.settings.test_postgis`).
 
 Procedure documented in [reservation-versioning.md § Manual verification checklist](reservation-versioning.md#manual-verification-checklist):
 
-1. Mount → one `sync=1` timeline fetch  
+1. Mount → one `sync=0` timeline fetch (DB-only; [ADR 0019](adr/0019-messaging-conversation-store.md))
 2. WhatsApp inbound → new message within ~5 s without F5  
 3. `delivered` webhook → no refresh  
 4. Tab hidden → no polls  

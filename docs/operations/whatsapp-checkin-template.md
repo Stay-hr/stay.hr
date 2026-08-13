@@ -34,7 +34,7 @@ Endpoint: `POST /api/v1/reception/reservations/{id}/messages/compose/`
 
 Oba check-in koraka vraćaju `llm_used: false`. **Ista pravila jezika** za poruku 1 i poruku 2 (tablica ispod); opcionalno `"language": "de"` override.
 
-### Flutter (uzorita_flutter)
+### Flutter (hospira_flutter)
 
 - Nakon uspješnog **OCR apply** postavi lokalni flag na rezervaciji.
 - Sljedeći **Reply → Generiraj** automatski šalje `hint: "checkin ready"` u pozadini — recepcija ne vidi hint.
