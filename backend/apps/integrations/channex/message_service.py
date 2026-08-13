@@ -167,6 +167,12 @@ def relink_unlinked_channex_messages(tenant: Tenant) -> int:
             continue
         row.reservation = reservation
         row.save(update_fields=["reservation"])
+        if _channex_message_visible_in_timeline(row):
+            touch_reservation_version(
+                reservation.pk,
+                ReservationVersionScope.MESSAGES,
+                reason="channex_message_relink",
+            )
         updated += 1
     return updated
 
