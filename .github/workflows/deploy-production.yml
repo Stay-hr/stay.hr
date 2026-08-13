@@ -60,6 +60,8 @@ jobs:
             cd "$DEPLOY_PATH"
             echo "==> Remote $(hostname) $(pwd)"
             echo "==> Before: $(git rev-parse --short HEAD) ($(git branch --show-current))"
+            # Login key (DEPLOY_SSH_KEY) must not be offered to git@github.com.
+            unset SSH_AUTH_SOCK || true
             git fetch origin main
             git checkout main
             git pull --ff-only origin main

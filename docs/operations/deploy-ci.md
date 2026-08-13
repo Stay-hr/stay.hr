@@ -123,6 +123,23 @@ gh secret set DEPLOY_SSH_KEY < stay-hr-deploy   # private key file
 
 Restrict the key if possible (ForcedCommand / limited user). Do **not** commit private keys.
 
+`DEPLOY_SSH_KEY` is the **hel1 login** key (`github-actions-deploy-stay-hr` in `authorized_keys`). It is **not** the identity GitHub accepts for `git fetch`. Production `origin` is `git@github.com:Stay-hr/stay.hr.git`, so fetch must use the server GitHub key (`/root/.ssh/id_ed25519`, account `avrcanio`).
+
+On hel1, pin that identity so a forwarded Actions agent cannot pick the login key:
+
+```text
+# /root/.ssh/config
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+```
+
+[Deploy production](../../.github/workflows/deploy-production.yml) also `unset SSH_AUTH_SOCK` before `git fetch`.
+
+**Symptom:** Actions **Deploy via SSH** fails with `git@github.com: Permission denied (publickey)` while interactive `./scripts/remote-deploy.sh` (no agent from Actions) succeeds. Example: [run 31711388194](https://github.com/Stay-hr/stay.hr/actions/runs/31711388194) on `28b159b`. Do not treat that as an application rollback.
+
 ## Manual / local remote deploy
 
 From WSL/Linux (same remote steps as CI):
