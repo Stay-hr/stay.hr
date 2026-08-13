@@ -255,10 +255,10 @@ Cross-reference: [AGENTS.md — Reservation versioning](../../AGENTS.md#reservat
 | File | Role |
 |------|------|
 | `web/reception/lib/useTimelineVersionPoll.ts` | Poll `scope`, ETag, pause when tab hidden |
-| `web/reception/lib/shouldRunFullSync.ts` | Single decision point for `sync=1` |
-| `web/reception/app/_components/GuestMessagesPanel.tsx` | Mount `sync=1`; version change → `sync=0` background |
+| `web/reception/lib/shouldRunFullSync.ts` | Retired (ADR 0019): always false; do not `sync=1` on GET |
+| `web/reception/app/_components/GuestMessagesPanel.tsx` | Mount `sync=0`; version change → `sync=0` background |
 
-`shouldRunFullSync` triggers full sync on: panel mount, tab visible again after ≥ 2 min hidden, or every 5 min while open.
+Opening the messages panel is a DB read. Provider ingest is webhook + Celery, not mount/interval GET.
 
 ---
 
@@ -266,7 +266,7 @@ Cross-reference: [AGENTS.md — Reservation versioning](../../AGENTS.md#reservat
 
 Use reservation `/reservations/973` (or any reservation with WhatsApp linked):
 
-1. Mount → one `sync=1` timeline fetch.
+1. Mount → one `sync=0` timeline fetch (DB-only; [ADR 0019](adr/0019-messaging-conversation-store.md)).
 2. WhatsApp inbound → new message appears within ~5 s without F5.
 3. `delivered` webhook → no timeline refresh / no version bump.
 4. Tab hidden → no `sync-versions` polls (Network tab quiet).

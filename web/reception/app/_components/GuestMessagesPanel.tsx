@@ -8,9 +8,7 @@ import {
   sanitizeBody,
   syncCorrelationIdFromResponse,
 } from "@/lib/guestMessageDebug";
-import { shouldRunFullSync } from "@/lib/shouldRunFullSync";
 import type {
-  GuestMessageChannelInfo,
   GuestMessageChannels,
   GuestMessageComposeResponse,
   GuestMessageTimelineItem,
@@ -99,8 +97,6 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   const [actionMessage, setActionMessage] = useState("");
   const [correlationId, setCorrelationId] = useState("");
   const channelLoggedRef = useRef("");
-  const lastFullSyncAtRef = useRef<number | null>(null);
-  const hiddenAtRef = useRef<number | null>(null);
 
   const baseUrl = `/api/stay/reception/reservations/${reservationId}/messages`;
 
@@ -110,15 +106,15 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   );
 
   const loadTimeline = useCallback(
-    async (opts?: { sync?: 0 | 1; background?: boolean }) => {
-      const sync = opts?.sync ?? 1;
+    async (opts?: { background?: boolean }) => {
       const background = Boolean(opts?.background);
       if (!background) {
         setLoading(true);
       }
       setError("");
       try {
-        const res = await fetch(`${baseUrl}/?sync=${sync}`);
+        // ADR 0019 Phase A: conversation GET is DB-only (sync=0).
+        const res = await fetch(`${baseUrl}/?sync=0`);
         if (!res.ok) throw new Error(t("loadFailed"));
         setTimeline((await res.json()) as GuestMessageTimelineItem[]);
       } catch (err) {
@@ -135,61 +131,16 @@ export function GuestMessagesPanel({ reservationId }: Props) {
     [baseUrl, t, tc],
   );
 
-  const maybeFullSync = useCallback(
-    (opts?: { isMount?: boolean; visibleAgain?: boolean; background?: boolean }) => {
-      const now = Date.now();
-      if (
-        shouldRunFullSync({
-          isMount: opts?.isMount,
-          hiddenAt: hiddenAtRef.current,
-          visibleAgain: opts?.visibleAgain,
-          lastFullSyncAt: lastFullSyncAtRef.current,
-          now,
-        })
-      ) {
-        void loadTimeline({ sync: 1, background: opts?.background ?? true });
-        lastFullSyncAtRef.current = now;
-      }
-    },
-    [loadTimeline],
-  );
-
   useEffect(() => {
-    lastFullSyncAtRef.current = null;
-    hiddenAtRef.current = null;
-    void loadTimeline({ sync: 1, background: false });
-    lastFullSyncAtRef.current = Date.now();
+    void loadTimeline({ background: false });
   }, [reservationId, loadTimeline]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      if (document.hidden) return;
-      maybeFullSync({ background: true });
-    }, 60_000);
-
-    return () => window.clearInterval(id);
-  }, [maybeFullSync]);
-
-  useEffect(() => {
-    function onVisibilityChange() {
-      if (document.hidden) {
-        hiddenAtRef.current = Date.now();
-        return;
-      }
-      maybeFullSync({ visibleAgain: true, background: true });
-      hiddenAtRef.current = null;
-    }
-
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [maybeFullSync]);
 
   useReservationVersionWatch({
     reservationId,
     scope: "messages",
     transport: "poll",
     onVersionChange: () => {
-      void loadTimeline({ sync: 0, background: true });
+      void loadTimeline({ background: true });
     },
   });
 
@@ -412,7 +363,7 @@ export function GuestMessagesPanel({ reservationId }: Props) {
       setComposeHint("");
       setCorrelationId("");
       channelLoggedRef.current = "";
-      await loadTimeline({ sync: 0, background: true });
+      await loadTimeline({ background: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : tc("error"));
     } finally {
@@ -421,8 +372,7 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   }
 
   function handleManualRefresh() {
-    lastFullSyncAtRef.current = Date.now();
-    void loadTimeline({ sync: 1, background: false });
+    void loadTimeline({ background: false });
   }
 
   return (

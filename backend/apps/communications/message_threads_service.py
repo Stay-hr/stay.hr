@@ -8,7 +8,6 @@ from typing import Any
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from apps.communications.guest_message_sync import poll_guest_inbox_on_force_sync
 from apps.communications.guest_message_timeline import last_timeline_entry
 from apps.communications.models import (
     GuestInboundMessage,
@@ -16,10 +15,7 @@ from apps.communications.models import (
     GuestOutboundMessage,
 )
 from apps.core.timezone import tenant_local_now
-from apps.integrations.channex.booking_service import parse_channex_booking_id
-from apps.integrations.channex.exceptions import ChannexApiError, ChannexBookingIngestError
-from apps.integrations.channex.message_service import list_messages_for_reservation
-from apps.integrations.models import ChannexMessage, IntegrationConfig, WhatsAppMessage
+from apps.integrations.models import ChannexMessage, WhatsAppMessage
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
 
@@ -53,33 +49,6 @@ def _room_name_for_reservation(reservation: Reservation) -> str:
         return ""
     first = units[0]
     return (first.room_name or "").strip() or (first.unit.name if first.unit_id else "")
-
-
-def _sync_channex_for_reservations(
-    integration: IntegrationConfig,
-    reservations: list[Reservation],
-    *,
-    sync_param: str,
-) -> None:
-    if sync_param == "0":
-        return
-    for reservation in reservations:
-        if reservation.import_source != "channex":
-            continue
-        if not parse_channex_booking_id(reservation.external_id):
-            continue
-        has_channex = ChannexMessage.objects.filter(reservation=reservation).exists()
-        if sync_param == "auto" and has_channex:
-            continue
-        try:
-            list_messages_for_reservation(
-                integration,
-                reservation,
-                sync_if_empty=sync_param == "auto",
-                force_sync=sync_param == "1",
-            )
-        except (ChannexBookingIngestError, ChannexApiError):
-            continue
 
 
 def _parse_timeline_datetime(raw: str | None) -> datetime | None:
@@ -142,16 +111,12 @@ def _serialize_thread(
 def list_message_threads_for_tenant(
     tenant: Tenant,
     *,
-    integration: IntegrationConfig | None = None,
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
     needs_reply_only: bool = False,
     arriving_today_only: bool = False,
-    sync_param: str = "auto",
 ) -> tuple[list[dict[str, Any]], int, int]:
-    """Return (threads, total, needs_reply_count)."""
-    poll_guest_inbox_on_force_sync(tenant, sync_param=sync_param)
-
+    """Return (threads, total, needs_reply_count). DB-only (ADR 0019 Phase A)."""
     reservation_ids = _reservation_ids_with_messages(tenant)
     if not reservation_ids:
         return [], 0, 0
@@ -162,9 +127,6 @@ def list_message_threads_for_tenant(
         .prefetch_related("units", "units__unit")
         .order_by("-updated_at")
     )
-
-    if integration is not None and sync_param in ("auto", "1"):
-        _sync_channex_for_reservations(integration, reservations, sync_param=sync_param)
 
     reservation_pks = [r.pk for r in reservations]
     dismissed_map = {

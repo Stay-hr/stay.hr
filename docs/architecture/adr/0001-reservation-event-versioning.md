@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-07)
+Accepted (2026-07) · amended 2026-08 ([ADR 0019](0019-messaging-conversation-store.md) supersedes messages-panel `sync=1` on mount)
 
 ## Summary
 
@@ -25,7 +25,7 @@ Use an **event-driven monotonic counter** per `(reservation_id, scope)`:
 1. **Writers** call `touch_reservation_version()` when UI-visible state changes.
 2. **Frontend** polls `GET /api/v1/reception/sync-versions/?reservation_id=X&scope=messages` every ~5 s (tab visible).
 3. Poll uses **ETag / 304** — unchanged version returns no body.
-4. On version change, the panel runs a **background** full fetch (`sync=0`); heavy `sync=1` runs only on mount, long tab-hidden return, or 5-minute interval.
+4. On version change, the panel runs a **background** full fetch (`sync=0`). For **messages**, provider fetch must not block opening the conversation — first paint and version refresh are DB-only (`sync=0`). Blocking `sync=1` on mount / tab-return / interval is **superseded** by [ADR 0019](0019-messaging-conversation-store.md). Other scopes may still use a heavy first fetch until they have their own ingest ADR.
 
 Scopes use **stable domain names** (`messages`, `payments`, …), not module or package names.
 
@@ -42,7 +42,7 @@ Scopes use **stable domain names** (`messages`, `payments`, …), not module or 
 
 ### Negative
 
-- Writers must **explicitly** call `touch`; forgetting a hook means stale UI until the next full `sync=1`.
+- Writers must **explicitly** call `touch`; forgetting a hook means stale UI until the next ingest or explicit reconcile (messages: not a blocking GET to the provider — [ADR 0019](0019-messaging-conversation-store.md)).
 - Counter semantics must be documented (UI-visible only — no bump on `delivered`/`read` webhooks).
 - Parallel versioning mechanisms (`PaymentVersion`, per-panel `MAX` polls) are forbidden without a new ADR.
 
@@ -61,4 +61,5 @@ Scopes use **stable domain names** (`messages`, `payments`, …), not module or 
 - [Reservation versioning](../reservation-versioning.md)
 - [Architecture review (2026-07)](../reservation-versioning-architecture-review.md)
 - [AGENTS.md — Reservation versioning](../../../AGENTS.md#reservation-versioning)
+- [ADR 0019 — Conversation store](0019-messaging-conversation-store.md) — messages read path; GET must not call providers
 - Implementation: `backend/apps/reservations/reservation_version.py`, `backend/apps/reservations/sync_versions.py`, `web/reception/lib/useTimelineVersionPoll.ts`

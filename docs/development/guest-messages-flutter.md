@@ -152,16 +152,18 @@ GET /api/v1/reception/message-threads/?needs_reply=1&sync=auto
 
 ```http
 GET /api/v1/reception/reservations/798/messages/
-GET /api/v1/reception/reservations/798/messages/?sync=1
+GET /api/v1/reception/reservations/798/messages/?sync=0
 ```
 
-#### Query `sync` (samo Channex rezervacije)
+#### Query `sync` ([ADR 0019](../architecture/adr/0019-messaging-conversation-store.md) Phase A)
+
+GET is **DB-only**. `sync` is ignored (`0` / `auto` / `1` all return the current Postgres snapshot). Opening a thread must not wait on Channex or IMAP.
 
 | Vrijednost | Ponašanje |
 |------------|-----------|
-| `auto` (default) | Ako u bazi nema Channex poruka, povući ih iz Channex API-ja |
-| `1` | Uvijek osvježi iz Channex API-ja — **koristi za pull-to-refresh** |
-| `0` | Samo lokalna baza, bez Channex API poziva |
+| omitted / `0` / `auto` / `1` | Samo lokalna baza. Flutter: always `sync=0`. |
+
+Catch-up (missed webhook) is Celery / CLI `sync_channex_booking_messages` / `poll_guest_email`, not a blocking GET.
 
 **Response:** JSON niz, sortiran asc po `created_at`:
 
@@ -584,19 +586,18 @@ Future<void> handleSend() async {
 
 ### Faza D — Refresh i sync
 
-| Akcija | API poziv | Channex | Mail IMAP | WhatsApp |
-|--------|-----------|---------|-----------|----------|
-| Inbox — prvi load | `GET …/message-threads/?sync=auto` | auto | ne | DB read |
-| Inbox — Refresh / swipe | `GET …/message-threads/?sync=1` | force | **poll** | DB read |
-| Thread — prvi load | `GET …/messages/?sync=auto` | auto | ne | DB read |
-| Thread — Refresh / swipe | `GET …/messages/?sync=1` | force | **poll** | DB read |
-| Nakon uspješnog send | `GET …/messages/?sync=0` | ne | ne | DB read |
+Svi GET-ovi su DB-only ([ADR 0019](../architecture/adr/0019-messaging-conversation-store.md) Phase A). `sync` query se ignorira.
 
-**WhatsApp:** nema pull API-ja — inbound stiže webhookom (+ FCM). Refresh samo ponovno učitava timeline iz baze.
+| Akcija | API poziv |
+|--------|-----------|
+| Inbox — prvi load / Refresh | `GET …/message-threads/?sync=0` |
+| Thread — prvi load / Refresh / swipe | `GET …/messages/?sync=0` |
+| Nakon uspješnog send | `GET …/messages/?sync=0` |
+| FCM `guest.message.received` | `GET …/messages/?sync=0` |
 
-**Mail IMAP:** `sync=1` poziva `poll_tenant_guest_inbox()` (isto kao Celery / `poll_guest_email` CLI). Radi samo ako je `guest_imap_enabled` u tenant postavkama.
+**WhatsApp / Channex / Mail inbound** stižu webhookom ili Celery pollom u bazu, zatim FCM + `touch_reservation_version(messages)`. UI nikad ne zove Channex/IMAP na otvaranju chata.
 
-Za Channex rezervacije ručni refresh **mora** koristiti `sync=1` da se povuku poruke koje možda nisu stigle webhookom.
+Backfill (ops): `sync_channex_booking_messages`, `poll_guest_email`.
 
 ---
 
@@ -622,11 +623,11 @@ Backend šalje push **`guest.message.received`** kad stigne nova inbound poruka 
 | Izvor | Trigger |
 |-------|---------|
 | Channex / Booking.com (webhook) | `process_channex_message_webhook` — samo nova guest poruka |
-| Channex / Booking.com (API pull) | `sync_booking_messages_from_channex` — nova guest poruka (`sync=1`, Celery upcoming check-ins) |
-| Mail / IMAP | `ingest_parsed_email` — Celery `guest-email-imap-poll` (~120 s), `sync=1` poll, `poll_guest_email` CLI |
+| Channex / Booking.com (API pull) | `sync_booking_messages_from_channex` — Celery upcoming check-ins / CLI backfill (not GET) |
+| Mail / IMAP | `ingest_parsed_email` — Celery `guest-email-imap-poll` (~120 s), `poll_guest_email` CLI |
 | WhatsApp | `process_inbound_message` — nakon linkanja na rezervaciju |
 
-FCM stiže **nakon** server-side ingest-a u bazu. Flutter na push radi GET s `sync=auto` (poruka je već u DB). Ručni Refresh (`sync=1`) i FCM su komplementarni: FCM = obavijest + refresh iz baze; Refresh = proaktivni Channex pull + IMAP poll.
+FCM stiže **nakon** server-side ingest-a u bazu. Flutter na push radi GET s `sync=0` (poruka je već u DB). Pull-to-refresh je isti DB read — ne Channex pull.
 
 #### FCM data payload
 
@@ -732,7 +733,7 @@ Integriraj u postojeći reservation detail — ne gradi zaseban tab bar ako već
 - [ ] Compose → tri kanala ako gost ima email + tel.
 - [ ] Default kanal = Channex
 - [ ] Send `booking` → poruka vidljiva u B.com extranet Poruke
-- [ ] Pull-to-refresh (`sync=1`) povlači nove poruke
+- [ ] Pull-to-refresh (`sync=0`) učitava timeline iz baze (ne čeka Channex)
 
 ### 2. Vlastita platforma (`source=api`)
 
@@ -773,7 +774,7 @@ Integriraj u postojeći reservation detail — ne gradi zaseban tab bar ako već
 **Channex API pull (webhook miss):**
 
 - [ ] Simuliraj: nova poruka vidljiva u B.com, ali webhook nije stigao
-- [ ] Drugi tablet ili Refresh `sync=1` na threadu → poruka u timelineu
+- [ ] Ops: `sync_channex_booking_messages --reservation-id …` (ne UI `sync=1`) → poruka u timelineu
 - [ ] Nakon deploya Faze 2: API pull koji prvi put spremi guest poruku šalje FCM i ostalim tabletima
 
 ### 6. Greške
@@ -784,11 +785,11 @@ Integriraj u postojeći reservation detail — ne gradi zaseban tab bar ako već
 
 ### 7. Refresh sync (inbox + thread)
 
-- [ ] Inbox gumb Refresh → `sync=1`, nove Channex/mail poruke ako postoje
+- [ ] Inbox gumb Refresh → `sync=0`, DB snapshot (brz)
 - [ ] Inbox swipe down → isto kao Refresh
-- [ ] Thread Refresh / swipe → `sync=1` + IMAP poll
-- [ ] Prvi ulazak u inbox → brz (`sync=auto`), bez IMAP poll
-- [ ] WhatsApp inbound (webhook) → vidljiv nakon refresha bez posebnog WA synca
+- [ ] Thread Refresh / swipe → `sync=0` (nema IMAP/Channex na GET)
+- [ ] Prvi ulazak u inbox → `sync=0`
+- [ ] WhatsApp inbound (webhook) → vidljiv nakon version/FCM refresh bez WA pull API-ja
 
 ---
 
@@ -797,7 +798,7 @@ Integriraj u postojeći reservation detail — ne gradi zaseban tab bar ako već
 | Simptom | Provjera |
 |---------|----------|
 | `booking.available=false` na Channex rezervaciji | `reservation.importSource == 'channex'`? `externalId` ima Channex booking ID? |
-| Inbound ne stiže u timeline | Webhook `message` event u Channex UI; probaj `sync=1` |
+| Inbound ne stiže u timeline | Webhook `message` u Channex UI; Celery IMAP; CLI `sync_channex_booking_messages` / `poll_guest_email` (GET `sync=1` više ne vuče providera) |
 | Send booking → 400/502 | Channex Messages app nije aktivan — vidi [guest-messages-channels.md](../operations/guest-messages-channels.md) |
 | Mail send → `status: failed` | Tenant SMTP nije konfiguriran u Reception settings |
 | WhatsApp inbound ne stiže | WhatsApp webhook + link na rezervaciju |
