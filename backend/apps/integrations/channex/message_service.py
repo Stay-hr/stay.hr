@@ -10,6 +10,8 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from apps.communications.conversation_ingest_status import mark_conversation_ingest
+
 from apps.integrations.channex.booking_service import (
     _channex_booking_lookup_codes,
     _resolve_channex_booking_payload,
@@ -474,6 +476,7 @@ def process_channex_message_webhook(
         reservation=reservation,
     )
     ensure_channex_message_media(row)
+    mark_conversation_ingest("channex", "webhook")
     logger.info(
         "channex message webhook processed",
         extra={

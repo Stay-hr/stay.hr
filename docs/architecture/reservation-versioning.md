@@ -196,7 +196,7 @@ Push is implemented in `publish_reservation_version_changed()` via `ReservationV
 
 **Observability (Phase 1):**
 
-- `GET /api/v1/reception/system/status/` — **reception:read** (operational; not public). `schema_version: 3`, Gunicorn config, worker PID/uptime, SSE counters (`active`, `peak`, `connections_opened_total`, `connections_closed_total`, `average_duration_seconds`), EventBus raw fields, thin `database` probe, Messaging Engine inventory (`messaging` — ADR 0010), and derived `components.{event_bus,sse,database}` (`healthy`|`warning`|`critical` + `reason`) — per worker.
+- `GET /api/v1/reception/system/status/` — **reception:read** (operational; not public). `schema_version: 4`, Gunicorn config, worker PID/uptime, SSE counters (`active`, `peak`, `connections_opened_total`, `connections_closed_total`, `average_duration_seconds`), EventBus raw fields, thin `database` probe, Messaging Engine inventory (`messaging` — ADR 0010), conversation ingest stamps (`conversation` — ADR 0019; `metrics_scope=cluster`), and derived `components.{event_bus,sse,database}` (`healthy`|`warning`|`critical` + `reason`). SSE/`event_bus` remain per worker.
 - Structured logs: `sse_stream_opened`, `sse_stream_closed` with `duration_s`, `worker_pid`
 - Gunicorn env: `GUNICORN_*` via `scripts/run-gunicorn.sh`; monitoring checklist: [gunicorn-sse-monitoring.md](../operations/gunicorn-sse-monitoring.md)
 - Incident postmortem: [2026-07-08 SSE worker exhaustion](../operations/incidents/2026-07-08-sse-worker-exhaustion.md)

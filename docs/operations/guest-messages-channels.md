@@ -42,6 +42,8 @@ Operativni runbook za slanje i primanje poruka gostima iz stay.hr recepcije (web
 
 Timeline and inbox GET are **DB-only** ([ADR 0019](../architecture/adr/0019-messaging-conversation-store.md) Phase A). Query `?sync=1` / `auto` is ignored and does **not** pull Channex or poll IMAP. Ingest is webhook + Celery (`poll_guest_email_inbox`, `sync_channex_messages_for_upcoming_checkins`).
 
+Ingest freshness: `GET /api/v1/reception/system/status/` → ``conversation.channels.{channex,whatsapp,email}`` (`last_webhook_at`, `last_poll_at`, `ingest_lag_seconds`). This block is **cluster** scope (Redis, shared by Gunicorn + Celery), not the per-worker SSE counters. It is **not** ADR 0010 ``messaging`` engine health.
+
 Automatic Channex reconcile (every 15 min, Uzorita) is **A ∪ B ∪ C ∪ D** after an Eligible filter (`import_source=channex`, can sync, status not canceled/no_show/refused/pending). D (recent `ChannexMessage`) cannot re-admit excluded statuses. CLI `sync_channex_booking_messages` remains the one-off backfill / incident escape hatch — not GET.
 
 Channex attachments are downloaded at ingest (webhook + reconcile). `GET …/channex-messages/{id}/media/` serves local `media_file` only; missing file is **404**, never a live Channex fetch.
@@ -102,6 +104,7 @@ docker compose exec django python manage.py sync_channex_booking_messages \
 |---------|----------|
 | Send booking → 403 | Messages & Reviews app nije aktivan na Channex propertyju |
 | Inbound mail ne stiže | Provjeri `guest_imap_enabled`, SMTP lozinku, `poll_guest_email --tenant=uzorita`; mail mora biti s `@guest.booking.com` |
+| Channex/WA/IMAP ingest tih | `GET …/system/status/` → `conversation.channels.*` (`last_webhook_at` / `last_poll_at` / `ingest_lag_seconds`); rastući lag = webhook ili Celery poll nije radio |
 | Poruka u Pulseu/mailu, ne u messengeru | Mail/Pulse nisu ingest kanal — samo Channex webhook/API. Provjeri `external_id` (`channex:uuid` vs samo booking code), CLI `sync_channex_booking_messages --reservation-id` (ne UI `sync=1`), Channex Messages & Reviews app |
 | `booking.available=false` | Rezervacija nije `import_source=channex` ili nema Channex linka (UUID, booking code ili revision) |
 | Mail ne odlazi | Tenant SMTP u Reception settings (`guest_contact_email` + password) |

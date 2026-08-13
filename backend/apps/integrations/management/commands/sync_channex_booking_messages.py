@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.core.management.base import BaseCommand, CommandError
 
+from apps.communications.conversation_ingest_status import mark_conversation_ingest
 from apps.integrations.channex.ari_service import get_active_channex_integration
 from apps.integrations.channex.exceptions import ChannexApiError, ChannexBookingIngestError
 from apps.integrations.channex.message_service import sync_booking_messages_from_channex
@@ -57,4 +58,5 @@ class Command(BaseCommand):
                 f"{len(rows)} message(s)"
             )
 
+        mark_conversation_ingest("channex", "poll")
         self.stdout.write(self.style.SUCCESS(f"Synced {total_rows} message row(s)."))
