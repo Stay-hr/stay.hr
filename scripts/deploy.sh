@@ -30,7 +30,8 @@ log() { printf '==> %s\n' "$*"; }
 
 service_image_id() {
   local service="$1"
-  docker compose images -q "$service" 2>/dev/null | head -n1
+  # docker compose reads stdin; never inherit the find file list.
+  docker compose images -q "$service" </dev/null 2>/dev/null | head -n1
 }
 
 service_image_created_epoch() {
@@ -39,7 +40,7 @@ service_image_created_epoch() {
   image_id="$(service_image_id "$service")"
   [[ -n "$image_id" ]] || return 1
 
-  created_ts="$(docker inspect -f '{{.Created}}' "$image_id" 2>/dev/null || true)"
+  created_ts="$(docker inspect -f '{{.Created}}' "$image_id" </dev/null 2>/dev/null || true)"
   [[ -n "$created_ts" ]] || return 1
 
   date -d "$created_ts" +%s 2>/dev/null \
@@ -64,9 +65,22 @@ files_newer_than_epoch() {
 
 files_newer_than_service_image() {
   local service="$1"
-  local image_ts
-  image_ts="$(service_image_created_epoch "$service")" || return 0
-  files_newer_than_epoch "$image_ts"
+  local image_ts list
+
+  # Snapshot find output first. `docker compose images` consumes stdin, which
+  # previously emptied this list and skipped required frontend/backend rebuilds.
+  list="$(mktemp)"
+  cat >"$list"
+  if ! image_ts="$(service_image_created_epoch "$service" </dev/null)"; then
+    rm -f "$list"
+    return 0
+  fi
+  if files_newer_than_epoch "$image_ts" <"$list"; then
+    rm -f "$list"
+    return 0
+  fi
+  rm -f "$list"
+  return 1
 }
 
 migration_files_newer_than_image() {

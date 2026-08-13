@@ -81,7 +81,7 @@ Workflow [`.github/workflows/deploy-production.yml`](../../.github/workflows/dep
 - **Action:** SSH to production → `git pull --ff-only origin main` → [`./scripts/deploy.sh`](../../scripts/deploy.sh)
 - **Concurrency:** one deploy at a time (`deploy-production`)
 
-`deploy.sh` rebuilds Django/Celery and/or Next images when backend/frontend sources (or migrations) changed since the last image build; otherwise restarts services.
+`deploy.sh` rebuilds Django/Celery and/or Next images when backend/frontend sources (or migrations) changed since the last image build; otherwise restarts services. Rebuild detection snapshots the `find` file list before calling `docker compose images`, which reads stdin and would otherwise swallow that list and skip the rebuild.
 
 ## Required secrets
 
