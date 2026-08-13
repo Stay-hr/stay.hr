@@ -228,3 +228,95 @@ class ChannexMessageWebhookTests(TestCase):
 
         sync_booking_messages_from_channex(self.integration, self.reservation)
         mock_notify.assert_not_called()
+
+    @patch("apps.integrations.channex.message_service.ChannexClient")
+    def test_webhook_downloads_attachment_onto_media_file(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client.fetch_attachment_bytes.return_value = (b"\xff\xd8jpeg", "image/jpeg")
+        mock_client_cls.return_value = mock_client
+        payload = {
+            **self.payload,
+            "id": "msg-with-photo",
+            "have_attachment": True,
+            "attachments": ["attachments/guest.jpg"],
+        }
+
+        record_channex_webhook(
+            integration_row=self.integration,
+            tenant=self.tenant,
+            event="message",
+            property_id="prop-uuid-123",
+            body={"payload": payload},
+        )
+
+        row = ChannexMessage.objects.get(channex_message_id="msg-with-photo")
+        self.assertTrue(row.have_attachment)
+        self.assertTrue(row.media_file)
+        self.assertIn("guest.jpg", row.media_file.name)
+        mock_client.fetch_attachment_bytes.assert_called_once_with("attachments/guest.jpg")
+
+    @patch("apps.integrations.channex.message_service.ChannexClient")
+    def test_webhook_keeps_message_when_attachment_download_fails(self, mock_client_cls):
+        from apps.integrations.channex.exceptions import ChannexApiError
+
+        mock_client = MagicMock()
+        mock_client.fetch_attachment_bytes.side_effect = ChannexApiError("boom")
+        mock_client_cls.return_value = mock_client
+        payload = {
+            **self.payload,
+            "id": "msg-photo-fail",
+            "have_attachment": True,
+            "attachments": ["attachments/missing.jpg"],
+        }
+
+        record_channex_webhook(
+            integration_row=self.integration,
+            tenant=self.tenant,
+            event="message",
+            property_id="prop-uuid-123",
+            body={"payload": payload},
+        )
+
+        row = ChannexMessage.objects.get(channex_message_id="msg-photo-fail")
+        self.assertTrue(row.have_attachment)
+        self.assertFalse(bool(row.media_file))
+
+    @patch("apps.integrations.channex.message_service.ChannexClient")
+    def test_sync_heals_missing_media_file_without_refetch_when_present(self, mock_client_cls):
+        row = ChannexMessage.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            channex_booking_id=self.booking_id,
+            channex_message_id="msg-heal-media",
+            direction=ChannexMessage.Direction.INBOUND,
+            sender=ChannexMessage.Sender.GUEST,
+            body="photo",
+            have_attachment=True,
+            raw_payload={"attachments": ["attachments/heal.jpg"]},
+        )
+        mock_client = MagicMock()
+        mock_client.fetch_attachment_bytes.return_value = (b"heal-bytes", "image/jpeg")
+        mock_client.list_booking_messages.return_value = {
+            "data": [
+                {
+                    "id": "msg-heal-media",
+                    "message": "photo",
+                    "sender": "guest",
+                    "booking_id": self.booking_id,
+                    "have_attachment": True,
+                    "attachments": ["attachments/heal.jpg"],
+                }
+            ]
+        }
+        mock_client_cls.return_value = mock_client
+
+        sync_booking_messages_from_channex(self.integration, self.reservation)
+        row.refresh_from_db()
+        self.assertTrue(row.media_file)
+        mock_client.fetch_attachment_bytes.assert_called_once_with("attachments/heal.jpg")
+
+        mock_client.fetch_attachment_bytes.reset_mock()
+        sync_booking_messages_from_channex(self.integration, self.reservation)
+        mock_client.fetch_attachment_bytes.assert_not_called()
+

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 from datetime import datetime, timezone as dt_timezone
+from pathlib import PurePosixPath
 from typing import Any
 
 from django.core.files.base import ContentFile
@@ -239,6 +241,79 @@ def first_attachment_path(payload: dict[str, Any]) -> str | None:
     return paths[0] if paths else None
 
 
+def _channex_attachment_filename(path: str, content_type: str) -> str:
+    name = PurePosixPath(path.split("?", 1)[0]).name
+    if name and "." in name:
+        return name[:200]
+    mime = (content_type or "").split(";", 1)[0].strip()
+    ext = mimetypes.guess_extension(mime) or ".bin"
+    return f"attachment{ext}"
+
+
+def ensure_channex_message_media(
+    row: ChannexMessage,
+    *,
+    client: ChannexClient | None = None,
+) -> bool:
+    """Store the first Channex attachment on ``media_file`` if missing.
+
+    Ingest-only. GET must not call this. Failures are logged and do not raise.
+    """
+    if getattr(row, "media_file", None) and row.media_file:
+        return True
+    path = first_attachment_path(row.raw_payload or {})
+    if not path:
+        if row.have_attachment:
+            logger.warning(
+                "channex media ingest skipped missing path",
+                extra={
+                    "channex_message_id": row.channex_message_id,
+                    "reservation_id": row.reservation_id,
+                },
+            )
+        return False
+
+    owns_client = client is None
+    active_client = client
+    try:
+        if active_client is None:
+            integration = row.integration
+            if integration is None:
+                from apps.integrations.channex.ari_service import get_active_channex_integration
+
+                integration = get_active_channex_integration(row.tenant.slug)
+            config = ChannexRuntimeConfig.from_integration_dict(integration.get_config_dict())
+            active_client = ChannexClient(config)
+        file_bytes, content_type = active_client.fetch_attachment_bytes(path)
+        if not file_bytes:
+            logger.warning(
+                "channex media ingest empty body",
+                extra={
+                    "channex_message_id": row.channex_message_id,
+                    "reservation_id": row.reservation_id,
+                },
+            )
+            return False
+        filename = _channex_attachment_filename(path, content_type)
+        row.have_attachment = True
+        row.media_file.save(filename, ContentFile(file_bytes), save=False)
+        row.save(update_fields=["have_attachment", "media_file"])
+        return True
+    except (ChannexApiError, ChannexBookingIngestError) as exc:
+        logger.warning(
+            "channex media ingest failed",
+            extra={
+                "channex_message_id": row.channex_message_id,
+                "reservation_id": row.reservation_id,
+                "error": str(exc),
+            },
+        )
+        return False
+    finally:
+        if owns_client and active_client is not None:
+            active_client.close()
+
+
 def _message_sender(payload: dict[str, Any]) -> str:
     sender = str(payload.get("sender") or "").strip().lower()
     if sender == ChannexMessage.Sender.GUEST:
@@ -392,6 +467,7 @@ def process_channex_message_webhook(
         payload=payload,
         reservation=reservation,
     )
+    ensure_channex_message_media(row)
     logger.info(
         "channex message webhook processed",
         extra={
@@ -480,6 +556,7 @@ def sync_booking_messages_from_channex(
                 payload=row_payload,
                 reservation=reservation,
             )
+            ensure_channex_message_media(message, client=client)
             _maybe_notify_channex_guest_message(message, created=created)
             stored.append(message)
     finally:

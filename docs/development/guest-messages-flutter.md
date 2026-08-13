@@ -717,7 +717,7 @@ Integriraj u postojeći reservation detail — ne gradi zaseban tab bar ako već
 | Feature | Razlog |
 |---------|--------|
 | Email inbound (mailbox parse) | **Da** — Celery `guest-email-imap-poll` (2 min) + `poll_guest_email` CLI |
-| Channex attachments | `have_attachment` postoji u modelu, download nije implementiran |
+| Channex attachments | Downloaded at ingest onto `media_file`; GET serves local file or 404 (no Channex fetch) |
 | Legacy `/channex-messages/` endpoint | Zamijenjen unified `/messages/` |
 | Guest app / in-app messaging | Ne postoji za direct booking |
 | Automatsko slanje WhatsApp poruke | Samo handoff — recepcija šalje ručno |

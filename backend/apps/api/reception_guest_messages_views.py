@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 
 from django.db import transaction
@@ -56,12 +57,10 @@ from apps.communications.models import (
     GuestOutboundMessage,
     GuestOutboundMessageStatus,
 )
-from apps.integrations.channex.ari_service import get_active_channex_integration
-from apps.integrations.channex.client import ChannexClient
-from apps.integrations.channex.config import ChannexRuntimeConfig
-from apps.integrations.channex.message_service import first_attachment_path
 from apps.integrations.models import ChannexMessage, WhatsAppMessage
 from apps.reservations.models import Reservation
+
+logger = logging.getLogger(__name__)
 
 
 class GuestMessageComposeSerializer(serializers.Serializer):
@@ -574,13 +573,9 @@ class ChannexMessageMediaView(ReceptionReadView, APIView):
     def get(self, request, message_id: int):
         import mimetypes
 
-        from django.http import FileResponse, HttpResponse
+        from django.http import FileResponse
 
-        row = (
-            ChannexMessage.objects.filter(tenant=request.tenant, pk=message_id)
-            .select_related("integration")
-            .first()
-        )
+        row = ChannexMessage.objects.filter(tenant=request.tenant, pk=message_id).first()
         if row is None:
             raise NotFound("Media nije dostupna.")
 
@@ -591,23 +586,15 @@ class ChannexMessageMediaView(ReceptionReadView, APIView):
                 content_type=content_type or "image/jpeg",
             )
 
-        attachment_path = first_attachment_path(row.raw_payload or {})
-        if not attachment_path:
-            raise NotFound("Media nije dostupna.")
-
-        integration = row.integration or get_active_channex_integration(request.tenant.slug)
-        if integration is None:
-            raise NotFound("Channex integracija nije dostupna.")
-
-        config = ChannexRuntimeConfig.from_integration_dict(integration.get_config_dict())
-        with ChannexClient(config) as client:
-            file_bytes, content_type = client.fetch_attachment_bytes(attachment_path)
-
-        guessed, _ = mimetypes.guess_type(attachment_path)
-        return HttpResponse(
-            file_bytes,
-            content_type=guessed or content_type or "image/jpeg",
+        logger.info(
+            "channex media get missing local file",
+            extra={
+                "message_id": row.pk,
+                "have_attachment": row.have_attachment,
+                "reservation_id": row.reservation_id,
+            },
         )
+        raise NotFound("Media nije dostupna.")
 
 
 class ReceptionGuestMessageDismissReplyView(ReceptionWriteView, APIView):

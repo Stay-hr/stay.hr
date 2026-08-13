@@ -2,6 +2,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -158,3 +159,48 @@ class ReceptionChannexMessagesTests(TestCase):
             HTTP_HOST="app.stay.hr",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_media_get_serves_local_file(self):
+        row = ChannexMessage.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            channex_booking_id=self.booking_id,
+            channex_message_id="stored-photo-1",
+            direction=ChannexMessage.Direction.INBOUND,
+            sender=ChannexMessage.Sender.GUEST,
+            body="photo",
+            have_attachment=True,
+        )
+        row.media_file.save("guest.jpg", ContentFile(b"\xff\xd8local"), save=True)
+        self._login()
+        response = self.client.get(
+            f"/api/v1/reception/channex-messages/{row.pk}/media/",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), b"\xff\xd8local")
+
+    @patch("apps.integrations.channex.client.ChannexClient")
+    def test_media_get_does_not_fetch_channex_when_file_missing(self, mock_client_cls):
+        row = ChannexMessage.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            channex_booking_id=self.booking_id,
+            channex_message_id="missing-photo-1",
+            direction=ChannexMessage.Direction.INBOUND,
+            sender=ChannexMessage.Sender.GUEST,
+            body="photo",
+            have_attachment=True,
+            raw_payload={"attachments": ["attachments/remote.jpg"]},
+        )
+        self._login()
+        response = self.client.get(
+            f"/api/v1/reception/channex-messages/{row.pk}/media/",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(response.status_code, 404)
+        mock_client_cls.assert_not_called()
+        mock_client_cls.return_value.fetch_attachment_bytes.assert_not_called()
+

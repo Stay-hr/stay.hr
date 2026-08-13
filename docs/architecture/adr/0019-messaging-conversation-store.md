@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B automatic Channex reconcile membership (**A ∪ B ∪ C ∪ D**) is locked below and implemented in Celery; media-at-ingest is the next Phase B slice.
+**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B membership (**A ∪ B ∪ C ∪ D**) and Channex media-at-ingest are implemented; remaining Phase B is idempotency/version tests then observability.
 
 Canonical identity: `GuestMessage` is the logical UI row; `GuestMessageSource` holds 1..N external/raw identities. `provider_message_id` is nullable; missing provider IDs must not be fabricated.
 
@@ -401,7 +401,7 @@ no Channex fetch from GET
 
 ##### Automatic Channex reconcile membership (locked)
 
-Reconcile is a **bounded catch-up for missed webhooks**, not a UI read path and not “every inbox thread”. Celery membership is implemented (`channex_reconcile_membership_qs`). Remaining Phase B order: media-at-ingest → idempotency/version tests → observability.
+Reconcile is a **bounded catch-up for missed webhooks**, not a UI read path and not “every inbox thread”. Celery membership is implemented (`channex_reconcile_membership_qs`). Channex media is downloaded at ingest (`ensure_channex_message_media`); GET must not fetch. Remaining Phase B order: idempotency/version tests → observability.
 
 **Eligible** (all required):
 
@@ -559,7 +559,7 @@ Phase A is done (DB-first GET). Automatic Channex reconcile membership (**A ∪ 
 Remaining Phase B order:
 
 1. ~~Implement automatic Channex reconcile as **A ∪ B ∪ C ∪ D**~~ (done).
-2. Media-at-ingest; GET must not fetch Channex attachments.
+2. ~~Media-at-ingest; GET must not fetch Channex attachments~~ (done).
 3. Idempotency / version tests.
 4. Observability (`last_webhook_at` / `last_poll_at` / lag) — do not overload ADR 0010 engine health.
 

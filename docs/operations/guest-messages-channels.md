@@ -44,6 +44,8 @@ Timeline and inbox GET are **DB-only** ([ADR 0019](../architecture/adr/0019-mess
 
 Automatic Channex reconcile (every 15 min, Uzorita) is **A ∪ B ∪ C ∪ D** after an Eligible filter (`import_source=channex`, can sync, status not canceled/no_show/refused/pending). D (recent `ChannexMessage`) cannot re-admit excluded statuses. CLI `sync_channex_booking_messages` remains the one-off backfill / incident escape hatch — not GET.
 
+Channex attachments are downloaded at ingest (webhook + reconcile). `GET …/channex-messages/{id}/media/` serves local `media_file` only; missing file is **404**, never a live Channex fetch.
+
 `channel` u send: `email` | `booking` | `whatsapp`
 
 ---
