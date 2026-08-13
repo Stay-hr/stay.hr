@@ -64,6 +64,8 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
     ? "rounded-xl bg-stay-blue px-3 py-2 text-sm font-medium text-white shadow-sm"
     : "rounded-xl px-3 py-2 text-sm font-medium text-stay-muted transition hover:bg-stay-blue-light hover:text-stay-blue";
 
+  const onTimeline = pathname === "/";
+
   return (
     <header className="border-b border-stay-border bg-white shadow-sm">
       <SessionLocaleSync />
@@ -75,11 +77,8 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
           ) : null}
         </div>
         <nav className="flex flex-wrap items-center gap-1">
-          <Link href="/" className={linkClass("/")}>
-            {t("timeline")}
-          </Link>
-          <Link href="/calendar/rooms" className={linkClass("/calendar/rooms")}>
-            {t("calendar")}
+          <Link href={onTimeline ? "/calendar/rooms" : "/"} className="btn-ghost">
+            {onTimeline ? t("calendar") : t("timeline")}
           </Link>
           {featureFlags?.reception_create_reservation ? (
             <Link href="/reservations/new" className={linkClass("/reservations/new")}>
