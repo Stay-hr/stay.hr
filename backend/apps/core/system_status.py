@@ -51,6 +51,21 @@ def _messaging_status_block() -> dict:
         }
 
 
+def _conversation_status_block() -> dict:
+    """ADR 0019 ingest lag per channel — not ADR 0010 engine health."""
+    try:
+        from apps.communications.conversation_ingest_status import (
+            conversation_ingest_snapshot,
+        )
+
+        return conversation_ingest_snapshot()
+    except Exception as exc:  # noqa: BLE001 — status must stay available
+        return {
+            "ok": False,
+            "error": str(exc)[:200],
+        }
+
+
 def _channex_status_block() -> dict:
     """Outbound guard + verify/repair process counters (ADR 0014)."""
     try:
@@ -93,6 +108,7 @@ def build_system_status_payload(*, reporter_process: str | None = None) -> dict:
         "event_bus": event_bus,
         "database": database,
         "messaging": _messaging_status_block(),
+        "conversation": _conversation_status_block(),
         "channex": _channex_status_block(),
         "components": build_components_status(
             event_bus=event_bus,

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B membership, media-at-ingest, and ingest idempotency/version tests are implemented; remaining Phase B is observability.
+**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B (membership, media-at-ingest, ingest idempotency/version, observability) is implemented.
 
 Canonical identity: `GuestMessage` is the logical UI row; `GuestMessageSource` holds 1..N external/raw identities. `provider_message_id` is nullable; missing provider IDs must not be fabricated.
 
@@ -386,7 +386,7 @@ Goal: what Phase A already reads quickly from the DB is **reliably ingested**. P
 - IMAP poll stays Celery (not a side effect of opening one reservation).
 - WABA webhook remains primary; no Meta history fetch from UI.
 - Dedupe/idempotency tests per identity key; relink unlinked Channex/WA as jobs.
-- Observability: last webhook / last poll / ingest lag per channel on `GET …/system/status/` `messaging` (or a dedicated conversation block — do not overload ADR 0010 engine health with inbox lag).
+- Observability: last webhook / last poll / ingest lag per channel on `GET …/system/status/` top-level ``conversation`` (`metrics_scope=cluster`). Do **not** put inbox lag on ADR 0010 ``messaging`` engine health.
 - Media: download at ingest; missing attachment is ingest debt, not a reason to refetch the thread from the provider on GET:
 
 ```text
@@ -399,9 +399,21 @@ media_file missing
 no Channex fetch from GET
 ```
 
+##### Conversation ingest observability (locked)
+
+Dedicated top-level ``conversation`` on `GET /api/v1/reception/system/status/` (`reception:read`). `metrics_scope=cluster` — shared across Gunicorn workers and Celery via Redis, unlike per-worker SSE counters. Do **not** add these fields to ADR 0010 ``messaging``.
+
+| Channel | `last_webhook_at` | `last_poll_at` |
+|---------|-------------------|----------------|
+| **channex** | `process_channex_message_webhook` (including duplicate upserts) | Celery reconcile cycle and CLI `sync_channex_booking_messages` |
+| **whatsapp** | `record_inbound_whatsapp_message` (including duplicate `wamid`; not missing `wamid`) | none (webhook-only) |
+| **email** | none (IMAP poll) | after successful IMAP `INBOX` select (empty UID search still counts; connect failure does not) |
+
+`ingest_lag_seconds` = whole seconds since `max(last_webhook_at, last_poll_at)` for that channel; `null` when neither stamp exists.
+
 ##### Automatic Channex reconcile membership (locked)
 
-Reconcile is a **bounded catch-up for missed webhooks**, not a UI read path and not “every inbox thread”. Celery membership is implemented (`channex_reconcile_membership_qs`). Channex media is downloaded at ingest (`ensure_channex_message_media`); GET must not fetch. Remaining Phase B order: observability.
+Reconcile is a **bounded catch-up for missed webhooks**, not a UI read path and not “every inbox thread”. Celery membership is implemented (`channex_reconcile_membership_qs`). Channex media is downloaded at ingest (`ensure_channex_message_media`); GET must not fetch. Ingest stamps (`last_webhook_at` / `last_poll_at` / `ingest_lag_seconds`) live on `GET …/system/status/` ``conversation``.
 
 **Eligible** (all required):
 
@@ -556,14 +568,14 @@ If any answer is **no**: justified exception in the PR, or it is debt that must 
 
 Phase A is done (DB-first GET). Automatic Channex reconcile membership (**A ∪ B ∪ C ∪ D**) is implemented in Celery.
 
-Remaining Phase B order:
+Phase B is done:
 
 1. ~~Implement automatic Channex reconcile as **A ∪ B ∪ C ∪ D**~~ (done).
 2. ~~Media-at-ingest; GET must not fetch Channex attachments~~ (done).
 3. ~~Idempotency / version tests~~ (done).
-4. Observability (`last_webhook_at` / `last_poll_at` / lag) — do not overload ADR 0010 engine health.
+4. ~~Observability (`last_webhook_at` / `last_poll_at` / lag) on ``conversation``, not ADR 0010 ``messaging``~~ (done).
 
-Do not start Phase D models in a Phase B PR.
+Do not start Phase D models in a Phase B PR. Next implementation slice is Phase C (realtime UI = event → DB only).
 
 ---
 

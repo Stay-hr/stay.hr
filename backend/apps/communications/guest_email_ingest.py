@@ -13,6 +13,7 @@ from email.utils import parseaddr, parsedate_to_datetime
 
 from django.utils import timezone
 
+from apps.communications.conversation_ingest_status import mark_conversation_ingest
 from apps.communications.models import GuestInboundMessage, GuestMessageChannel
 from apps.reservations.models import Reservation, ReservationVersionScope
 from apps.reservations.reservation_version import touch_reservation_version
@@ -339,6 +340,7 @@ def poll_tenant_guest_inbox(
 
     try:
         client.select("INBOX")
+        mark_conversation_ingest("email", "poll")
         search_from = max(start_uid, 0) + 1
         status, data = client.uid("SEARCH", None, f"UID {search_from}:*")
         if status != "OK" or not data or not data[0]:

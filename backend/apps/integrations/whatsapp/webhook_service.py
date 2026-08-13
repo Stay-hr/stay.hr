@@ -8,6 +8,7 @@ from typing import Any
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.communications.conversation_ingest_status import mark_conversation_ingest
 from apps.communications.models import GuestOutboundDeliveryStatus, GuestOutboundMessage
 from apps.integrations.models import IntegrationConfig, WhatsAppMessage
 from apps.integrations.whatsapp.media_download import extract_media_from_message
@@ -170,8 +171,10 @@ def record_inbound_whatsapp_message(
             },
         )
     except IntegrityError:
+        mark_conversation_ingest("whatsapp", "webhook")
         return {"status": "duplicate", "wamid": parsed.wamid}
 
+    mark_conversation_ingest("whatsapp", "webhook")
     if not created:
         return {"status": "duplicate", "wamid": parsed.wamid}
 

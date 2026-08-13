@@ -7,6 +7,7 @@ from celery import shared_task
 from django.db.models import Q, QuerySet
 from django.utils import timezone
 
+from apps.communications.conversation_ingest_status import mark_conversation_ingest
 from apps.integrations.channex.ari_service import get_active_channex_integration
 from apps.integrations.channex.exceptions import ChannexApiError, ChannexBookingIngestError
 from apps.integrations.channex.message_service import (
@@ -133,4 +134,5 @@ def sync_channex_messages_for_upcoming_checkins(*, tenant_slug: str = "uzorita")
             "relinked": result["relinked"],
         },
     )
+    mark_conversation_ingest("channex", "poll")
     return result

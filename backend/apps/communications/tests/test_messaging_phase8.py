@@ -478,8 +478,10 @@ class MessagingHealthTests(_MessagingFixturesMixin, TestCase):
     def test_system_status_includes_messaging_block(self):
         self._make_dispatch(status=MessageDispatchStatus.PLANNED)
         payload = build_system_status_payload()
-        self.assertEqual(payload["schema_version"], 3)
+        self.assertEqual(payload["schema_version"], 4)
         messaging = payload["messaging"]
+        self.assertIn("conversation", payload)
+        self.assertNotIn("last_webhook_at", messaging)
         self.assertIn("definitions", messaging)
         self.assertIn("outbox", messaging)
         self.assertIn("welcome_templates", messaging)
