@@ -623,7 +623,7 @@ Backend šalje push **`guest.message.received`** kad stigne nova inbound poruka 
 | Izvor | Trigger |
 |-------|---------|
 | Channex / Booking.com (webhook) | `process_channex_message_webhook` — samo nova guest poruka |
-| Channex / Booking.com (API pull) | `sync_booking_messages_from_channex` — Celery upcoming check-ins / CLI backfill (not GET) |
+| Channex / Booking.com (API pull) | `sync_booking_messages_from_channex` — Celery A∪B∪C∪D reconcile / CLI backfill (not GET) |
 | Mail / IMAP | `ingest_parsed_email` — Celery `guest-email-imap-poll` (~120 s), `poll_guest_email` CLI |
 | WhatsApp | `process_inbound_message` — nakon linkanja na rezervaciju |
 

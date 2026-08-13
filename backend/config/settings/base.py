@@ -315,6 +315,7 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 900.0,
     },
     "channex-messages-upcoming-checkins": {
+        # ADR 0019 Phase B: A∪B∪C∪D membership; Celery path kept for beat stability.
         "task": "apps.integrations.channex.message_tasks.sync_channex_messages_for_upcoming_checkins",
         "schedule": 900.0,
         "kwargs": {"tenant_slug": "uzorita"},
