@@ -1,6 +1,6 @@
 # Hospira — timeline filteri (Stay API + Flutter)
 
-**Flutter repo:** [github.com/avrcanio/uzorita_flutter](https://github.com/avrcanio/uzorita_flutter) (`hr.finestar.hospira`)
+**Flutter repo:** [github.com/Stay-hr/hospira_flutter](https://github.com/Stay-hr/hospira_flutter) (`hr.finestar.hospira`)
 
 **Backend:** `backend/apps/api/reception_views.py` → `ReservationTimelineListView`
 
@@ -172,11 +172,11 @@ Primjer: otkaz u `2026-06-05 00:11` (Zagreb) → vidljiv u filteru za **5.6.**, 
 
 ## Flutter — trenutna implementacija
 
-Izvor: [`timeline_controller.dart`](https://github.com/avrcanio/uzorita_flutter/blob/main/lib/features/reception/presentation/timeline_controller.dart) u repou `uzorita_flutter`.
+Izvor: [`timeline_controller.dart`](https://github.com/Stay-hr/hospira_flutter/blob/main/lib/features/reception/presentation/timeline_controller.dart) u repou `hospira_flutter`.
 
 ### Datum „danas”
 
-Koristi se [`DateUtilsIso`](https://github.com/avrcanio/uzorita_flutter/blob/main/lib/core/utils/date_utils.dart) (`Europe/Zagreb`), ne UTC ni lokalno vrijeme uređaja:
+Koristi se [`DateUtilsIso`](https://github.com/Stay-hr/hospira_flutter/blob/main/lib/core/utils/date_utils.dart) (`Europe/Zagreb`), ne UTC ni lokalno vrijeme uređaja:
 
 ```dart
 final today = DateUtilsIso.todayIso();
@@ -194,13 +194,13 @@ Dva paralelna poziva u `_loadReservations`:
 1. `period_from` / `period_to` (+ opcionalni `status` iz dropdowna)
 2. `booked_from` / `booked_to` + `include_canceled=1` — kombinirani pool za stat kartice „Nove danas” i „Otkazane danas”
 
-Odgovor drugog poziva dijeli [`splitTodayActivityPools`](https://github.com/avrcanio/uzorita_flutter/blob/main/lib/features/reception/presentation/timeline_summary.dart) na `_bookedTodayPool` i `_canceledTodayPool`.
+Odgovor drugog poziva dijeli [`splitTodayActivityPools`](https://github.com/Stay-hr/hospira_flutter/blob/main/lib/features/reception/presentation/timeline_summary.dart) na `_bookedTodayPool` i `_canceledTodayPool`.
 
 Klijentski slojevi (redoslijed):
 
 1. `filterTimelineByStatus` — status dropdown + checkbox otkazane
-2. `reservationVisibleOnTimeline` — period; `checked_in` uvijek vidljiv ([`timeline_period_filter.dart`](https://github.com/avrcanio/uzorita_flutter/blob/main/lib/features/reception/presentation/timeline_period_filter.dart))
-3. `filterTimelineOperational` — Dolasci / Odlasci / Prijavljeni ([`timeline_operational_filter.dart`](https://github.com/avrcanio/uzorita_flutter/blob/main/lib/features/reception/presentation/timeline_operational_filter.dart))
+2. `reservationVisibleOnTimeline` — period; `checked_in` uvijek vidljiv ([`timeline_period_filter.dart`](https://github.com/Stay-hr/hospira_flutter/blob/main/lib/features/reception/presentation/timeline_period_filter.dart))
+3. `filterTimelineOperational` — Dolasci / Odlasci / Prijavljeni ([`timeline_operational_filter.dart`](https://github.com/Stay-hr/hospira_flutter/blob/main/lib/features/reception/presentation/timeline_operational_filter.dart))
 
 **Default:** `_operationalFilter = arrivals` — lista na startu prikazuje samo dolazak u odabranom periodu (npr. Danas).
 
@@ -210,7 +210,7 @@ Klijentski slojevi (redoslijed):
 - Today fokus (`focusLens == activityToday`)
 - globalna pretraga
 
-Vidi [`timeline_status_filter_field.dart`](https://github.com/avrcanio/uzorita_flutter/blob/main/lib/features/reception/presentation/widgets/timeline_status_filter_field.dart).
+Vidi [`timeline_status_filter_field.dart`](https://github.com/Stay-hr/hospira_flutter/blob/main/lib/features/reception/presentation/widgets/timeline_status_filter_field.dart).
 
 Korisnik može tapnuti aktivnu karticu (npr. Dolasci) da je ugasi → `operationalFilter = none` → puna operativna lista + Status dropdown se ponovo prikaže.
 

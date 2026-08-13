@@ -2,7 +2,7 @@
 
 Backend (svibanj 2026) podržava status **`no_show`** („Nije došao”) i za Channex/Booking.com rezervacije automatski šalje prijavu na kanal preko Channex Reporting API-ja.
 
-**Repo:** [github.com/avrcanio/uzorita_flutter](https://github.com/avrcanio/uzorita_flutter) (`hr.finestar.hospira`)
+**Repo:** [github.com/Stay-hr/hospira_flutter](https://github.com/Stay-hr/hospira_flutter) (`hr.finestar.hospira`)
 
 ---
 

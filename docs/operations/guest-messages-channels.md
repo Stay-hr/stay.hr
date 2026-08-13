@@ -40,7 +40,7 @@ Operativni runbook za slanje i primanje poruka gostima iz stay.hr recepcije (web
 | POST | `/api/v1/reception/reservations/{id}/messages/send/` — body: `{ draft_id, channel, body_text }` |
 | GET | `/api/v1/reception/reservations/{id}/channex-messages/` — samo Channex (legacy; DB-only GET) |
 
-Timeline and inbox GET are **DB-only** ([ADR 0019](../architecture/adr/0019-messaging-conversation-store.md) Phase A). Query `?sync=1` / `auto` is ignored and does **not** pull Channex or poll IMAP. Ingest is webhook + Celery (`poll_guest_email_inbox`, `sync_channex_messages_for_upcoming_checkins`).
+Timeline and inbox GET are **DB-only** ([ADR 0019](../architecture/adr/0019-messaging-conversation-store.md) Phase A/C). Reception web and Hospira send `?sync=0` (or omit). Query `?sync=1` / `auto` is ignored and does **not** pull Channex or poll IMAP — older Hospira builds stay compatible. Ingest is webhook + Celery (`poll_guest_email_inbox`, `sync_channex_messages_for_upcoming_checkins`).
 
 Ingest freshness: `GET /api/v1/reception/system/status/` → ``conversation.channels.{channex,whatsapp,email}`` (`last_webhook_at`, `last_poll_at`, `ingest_lag_seconds`). This block is **cluster** scope (Redis, shared by Gunicorn + Celery), not the per-worker SSE counters. It is **not** ADR 0010 ``messaging`` engine health.
 
