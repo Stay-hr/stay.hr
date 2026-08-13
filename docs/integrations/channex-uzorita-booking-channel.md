@@ -165,7 +165,7 @@ Secret: `CHANNEX_WEBHOOK_SECRET` u `.env` / IntegrationConfig.
 | GET | `/api/v1/reception/reservations/{id}/channex-messages/` |
 | POST | `/api/v1/reception/reservations/{id}/channex-messages/` — body `{"message": "..."}` |
 
-GET prazne liste automatski povlači poruke iz Channexa (`GET /bookings/{id}/messages`). Query `?sync=0` isključuje pull.
+GET prazne liste **ne** povlači Channex ([ADR 0019](../architecture/adr/0019-messaging-conversation-store.md) Phase A). Backfill: `python manage.py sync_channex_booking_messages`.
 
 ### Guest reviews (stay.hr backend)
 

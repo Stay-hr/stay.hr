@@ -266,10 +266,12 @@ class ReceptionMessageThreadsAPITests(TestCase):
         mock_poll.assert_not_called()
 
     @patch("apps.communications.guest_message_sync.poll_tenant_guest_inbox")
-    def test_list_threads_sync_one_polls_imap(self, mock_poll):
+    @patch("apps.integrations.channex.message_service.list_messages_for_reservation")
+    def test_list_threads_sync_one_does_not_call_providers(self, mock_channex, mock_poll):
         response = self.client.get(
             "/api/v1/reception/message-threads/?sync=1",
             **self.auth,
         )
         self.assertEqual(response.status_code, 200)
-        mock_poll.assert_called_once_with(self.tenant)
+        mock_poll.assert_not_called()
+        mock_channex.assert_not_called()

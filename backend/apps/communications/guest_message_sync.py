@@ -1,4 +1,8 @@
-"""Force-sync guest message sources on manual refresh (sync=1)."""
+"""IMAP poll helper for explicit reconcile (not GET).
+
+ADR 0019 Phase A: conversation/inbox GET must not call this.
+Phase B may invoke it from Celery or POST reconcile.
+"""
 
 from __future__ import annotations
 

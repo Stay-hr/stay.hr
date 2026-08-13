@@ -38,7 +38,9 @@ Operativni runbook za slanje i primanje poruka gostima iz stay.hr recepcije (web
 | GET | `/api/v1/reception/reservations/{id}/messages/` — unified chat timeline |
 | POST | `/api/v1/reception/reservations/{id}/messages/compose/` |
 | POST | `/api/v1/reception/reservations/{id}/messages/send/` — body: `{ draft_id, channel, body_text }` |
-| GET | `/api/v1/reception/reservations/{id}/channex-messages/` — samo Channex (legacy/sync) |
+| GET | `/api/v1/reception/reservations/{id}/channex-messages/` — samo Channex (legacy; DB-only GET) |
+
+Timeline and inbox GET are **DB-only** ([ADR 0019](../architecture/adr/0019-messaging-conversation-store.md) Phase A). Query `?sync=1` / `auto` is ignored and does **not** pull Channex or poll IMAP. Ingest is webhook + Celery (`poll_guest_email`, `sync_channex_booking_messages`).
 
 `channel` u send: `email` | `booking` | `whatsapp`
 
@@ -96,7 +98,7 @@ docker compose exec django python manage.py sync_channex_booking_messages \
 |---------|----------|
 | Send booking → 403 | Messages & Reviews app nije aktivan na Channex propertyju |
 | Inbound mail ne stiže | Provjeri `guest_imap_enabled`, SMTP lozinku, `poll_guest_email --tenant=uzorita`; mail mora biti s `@guest.booking.com` |
-| Poruka u Pulseu/mailu, ne u messengeru | Mail/Pulse nisu ingest kanal — samo Channex webhook/API. Provjeri `external_id` (`channex:uuid` vs samo booking code), `sync_channex_booking_messages --reservation-id`, Channex Messages & Reviews app |
+| Poruka u Pulseu/mailu, ne u messengeru | Mail/Pulse nisu ingest kanal — samo Channex webhook/API. Provjeri `external_id` (`channex:uuid` vs samo booking code), CLI `sync_channex_booking_messages --reservation-id` (ne UI `sync=1`), Channex Messages & Reviews app |
 | `booking.available=false` | Rezervacija nije `import_source=channex` ili nema Channex linka (UUID, booking code ili revision) |
 | Mail ne odlazi | Tenant SMTP u Reception settings (`guest_contact_email` + password) |
 
@@ -104,6 +106,7 @@ docker compose exec django python manage.py sync_channex_booking_messages \
 
 ## Povezano
 
+- [ADR 0019 — Conversation store](../architecture/adr/0019-messaging-conversation-store.md)
 - [guest-messages-flutter.md](../development/guest-messages-flutter.md) — Flutter implementacija
 - [channex-uzorita-booking-channel.md](../integrations/channex-uzorita-booking-channel.md)
 - [whatsapp-checkin-template.md](./whatsapp-checkin-template.md)

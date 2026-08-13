@@ -106,20 +106,8 @@ class ReceptionChannexMessagesTests(TestCase):
         self.assertEqual(data["messages"][0]["body"], "Existing message")
 
     @patch("apps.integrations.channex.message_service.ChannexClient")
-    def test_get_syncs_from_channex_when_empty(self, mock_client_cls):
+    def test_get_does_not_sync_from_channex_when_empty(self, mock_client_cls):
         mock_client = MagicMock()
-        mock_client.list_booking_messages.return_value = {
-            "data": [
-                {
-                    "id": "remote-msg-1",
-                    "attributes": {
-                        "message": "Synced from Channex",
-                        "sender": "guest",
-                        "booking_id": self.booking_id,
-                    },
-                }
-            ]
-        }
         mock_client_cls.return_value = mock_client
 
         self._login()
@@ -128,10 +116,9 @@ class ReceptionChannexMessagesTests(TestCase):
             HTTP_HOST="app.stay.hr",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()["messages"]), 1)
-        self.assertTrue(
-            ChannexMessage.objects.filter(channex_message_id="remote-msg-1").exists()
-        )
+        self.assertEqual(response.json()["messages"], [])
+        mock_client.list_booking_messages.assert_not_called()
+        self.assertFalse(ChannexMessage.objects.filter(channex_message_id="remote-msg-1").exists())
 
     @patch("apps.integrations.channex.message_service.ChannexClient")
     def test_post_sends_outbound_message(self, mock_client_cls):

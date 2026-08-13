@@ -90,10 +90,12 @@ class ReceptionGuestMessagesAPITests(TestCase):
         mock_poll.assert_not_called()
 
     @patch("apps.communications.guest_message_sync.poll_tenant_guest_inbox")
-    def test_list_messages_sync_one_polls_imap(self, mock_poll):
+    @patch("apps.integrations.channex.message_service.list_messages_for_reservation")
+    def test_list_messages_sync_one_does_not_call_providers(self, mock_channex, mock_poll):
         response = self.client.get(f"{self.base}/?sync=1", **self.auth)
         self.assertEqual(response.status_code, 200)
-        mock_poll.assert_called_once_with(self.tenant)
+        mock_poll.assert_not_called()
+        mock_channex.assert_not_called()
 
     def test_message_channels(self):
         response = self.client.get(f"{self.base}/channels/", **self.auth)
@@ -563,9 +565,7 @@ class ReceptionGuestMessagesAPITests(TestCase):
         self.assertEqual(data[0]["body_text"], "Hello from guest")
 
     @patch("apps.integrations.channex.message_service.ChannexClient")
-    def test_timeline_syncs_channex_when_empty(self, mock_client_cls):
-        from unittest.mock import MagicMock
-
+    def test_timeline_get_does_not_sync_channex_when_empty(self, mock_client_cls):
         from apps.integrations.channex.booking_service import channex_external_id
         from apps.integrations.models import IntegrationConfig
         from apps.tenants.models import ChannelManager, TenantReceptionSettings
@@ -584,29 +584,10 @@ class ReceptionGuestMessagesAPITests(TestCase):
         self.reservation.external_id = channex_external_id(booking_id)
         self.reservation.save(update_fields=["import_source", "external_id"])
 
-        mock_client = MagicMock()
-        mock_client.list_booking_messages.return_value = {
-            "data": [
-                {
-                    "id": "remote-timeline-msg",
-                    "attributes": {
-                        "message": "Guest reply from Booking.com",
-                        "sender": "guest",
-                        "booking_id": booking_id,
-                        "inserted_at": "2026-05-27T08:10:00.000000",
-                    },
-                }
-            ]
-        }
-        mock_client_cls.return_value = mock_client
-
         response = self.client.get(f"{self.base}/", **self.auth)
         self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["source"], "booking")
-        self.assertEqual(data[0]["direction"], "inbound")
-        self.assertEqual(data[0]["body_text"], "Guest reply from Booking.com")
+        self.assertEqual(response.json(), [])
+        mock_client_cls.assert_not_called()
 
     @patch.dict(os.environ, {}, clear=False)
     def test_compose_direct_platform_has_email_not_booking(self):

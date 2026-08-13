@@ -631,18 +631,18 @@ class ReceptionReservationChannexMessagesView(TenantAPIView, APIView):
         except ChannexBookingIngestError as exc:
             raise ValidationError(str(exc)) from exc
 
-        sync_param = request.query_params.get("sync", "auto")
         try:
             from apps.integrations.channex.message_service import (
                 list_messages_for_reservation,
                 serialize_channex_message,
             )
 
+            # ADR 0019 Phase A: GET never pulls Channex. ``sync`` query is ignored.
             rows = list_messages_for_reservation(
                 integration,
                 reservation,
-                sync_if_empty=sync_param == "auto",
-                force_sync=sync_param == "1",
+                sync_if_empty=False,
+                force_sync=False,
             )
         except ChannexBookingIngestError as exc:
             raise ValidationError(str(exc)) from exc

@@ -405,5 +405,6 @@ Rules for Adoption PRs:
 - Ops rollout (LIVE cutover): [messaging-orchestration-rollout-checklist.md](../../operations/messaging-orchestration-rollout-checklist.md)
 - [ADR 0004 — Guest web check-in session](0004-guest-checkin-session.md) — session SoT; engine distributes CHECKIN_* / WELCOME
 - [ADR 0008 — Property settings](0008-property-settings.md) — automation settings shell for schedule keys
+- [ADR 0019 — Conversation store, provider ingest and delivery](0019-messaging-conversation-store.md) — inbox/timeline/read model; engine is a producer into that store, not the inbox
 - Outbox precedent: `ChannexAriOutbox` (`backend/apps/integrations/models.py`)
 - Package (implementation): `backend/apps/communications/messaging/`

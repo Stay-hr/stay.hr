@@ -492,10 +492,14 @@ def list_messages_for_reservation(
     integration_row: IntegrationConfig,
     reservation: Reservation,
     *,
-    sync_if_empty: bool = True,
+    sync_if_empty: bool = False,
     force_sync: bool = False,
     client: ChannexClient | None = None,
 ) -> list[ChannexMessage]:
+    """Return stored Channex rows. Does not call the provider unless explicitly asked.
+
+    GET handlers must pass sync_if_empty=False and force_sync=False (ADR 0019).
+    """
     qs = ChannexMessage.objects.filter(
         tenant=reservation.tenant,
         reservation=reservation,
