@@ -110,11 +110,16 @@ class DocumentIntakeSidesTests(TestCase):
         self.assertEqual(gaps[0].side, "front")
         self.assertTrue(gaps[0].is_passport)
 
-    def test_child_with_partial_id_is_ignored(self):
+    def test_child_with_partial_id_missing_back(self):
         child = self._child()
         self._attach_front(child)
 
-        self.assertEqual(find_missing_id_sides(self.reservation), [])
+        gaps = find_missing_id_sides(self.reservation)
+
+        self.assertEqual(len(gaps), 1)
+        self.assertEqual(gaps[0].guest_name, "Adomas Sirokinas")
+        self.assertEqual(gaps[0].side, "back")
+        self.assertFalse(gaps[0].is_passport)
 
     def test_render_message_lists_guest_and_side(self):
         adult = self._adult(first="Audrius", last="Kavaliauskas", dob=date(1989, 2, 13))

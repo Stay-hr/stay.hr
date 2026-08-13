@@ -117,7 +117,29 @@ class CheckoutGuestCleanupTests(TestCase):
         self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_OUT)
 
     @patch("apps.reservations.checkout.checkout_reservation_guests_in_evisitor")
-    def test_checkout_allowed_when_adult_sent_and_minor_not_sent(self, mock_evisitor_checkout):
+    def test_checkout_blocked_when_minor_not_sent(self, mock_evisitor_checkout):
+        self._primary(
+            date_of_birth=date(1975, 3, 1),
+            evisitor_status=EvisitorGuestStatus.SENT,
+        )
+        self._secondary(
+            first_name="Emir",
+            last_name="Atacan",
+            name="Emir Atacan",
+            date_of_birth=date(2014, 7, 16),
+            document_number="U12345678",
+            evisitor_status=EvisitorGuestStatus.NOT_SENT,
+        )
+
+        with self.assertRaises(CheckoutBlockedError) as ctx:
+            perform_reservation_checkout(self.reservation)
+
+        self.assertEqual(ctx.exception.code, "evisitor_incomplete")
+        mock_evisitor_checkout.assert_not_called()
+        self.assertEqual(self.reservation.status, Reservation.Status.CHECKED_IN)
+
+    @patch("apps.reservations.checkout.checkout_reservation_guests_in_evisitor")
+    def test_checkout_allowed_when_adult_and_minor_sent(self, mock_evisitor_checkout):
         mock_evisitor_checkout.return_value = []
         self._primary(
             date_of_birth=date(1975, 3, 1),
@@ -129,7 +151,7 @@ class CheckoutGuestCleanupTests(TestCase):
             name="Emir Atacan",
             date_of_birth=date(2014, 7, 16),
             document_number="U12345678",
-            evisitor_status=EvisitorGuestStatus.NOT_SENT,
+            evisitor_status=EvisitorGuestStatus.SENT,
         )
 
         perform_reservation_checkout(self.reservation)
