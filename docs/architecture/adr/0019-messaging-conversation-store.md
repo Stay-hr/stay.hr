@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B membership for automatic Channex reconcile is locked below (2026-08-13); Celery implementation of that set is **not** in this amendment.
+**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B automatic Channex reconcile membership (**A ∪ B ∪ C ∪ D**) is locked below and implemented in Celery; media-at-ingest is the next Phase B slice.
 
 Canonical identity: `GuestMessage` is the logical UI row; `GuestMessageSource` holds 1..N external/raw identities. `provider_message_id` is nullable; missing provider IDs must not be fabricated.
 
@@ -48,7 +48,7 @@ Guest messaging on stay.hr already spans three channels, four persistence tables
 
 | Layer | Today |
 |-------|--------|
-| Channex / Booking.com | `ChannexMessage`; webhook `message`; API `list_booking_messages` / send; Celery upcoming-check-in pull (15 min, Uzorita) — **current code** is `expected` + `check_in` today/tomorrow only; Phase B membership (A∪B∪C∪D) is locked in §9, not yet implemented |
+| Channex / Booking.com | `ChannexMessage`; webhook `message`; API `list_booking_messages` / send; Celery reconcile (15 min, Uzorita) = Eligible ∩ (A∪B∪C∪D) per §9 |
 | WhatsApp Cloud API | `WhatsAppMessage`; inbound webhook; `WhatsAppInboundRouting` for unlinked messages; media on `media_file` |
 | Email | `GuestInboundMessage` via IMAP poll (Celery 120 s); outbound via tenant SMTP into `GuestOutboundMessage` |
 | Outbound audit | `GuestOutboundMessage` for compose/send (email / booking / whatsapp) |
@@ -401,7 +401,7 @@ no Channex fetch from GET
 
 ##### Automatic Channex reconcile membership (locked)
 
-Reconcile is a **bounded catch-up for missed webhooks**, not a UI read path and not “every inbox thread”. Implementation order: lock this set (done) → change the Celery task → then media-at-ingest → then idempotency/version tests → then observability.
+Reconcile is a **bounded catch-up for missed webhooks**, not a UI read path and not “every inbox thread”. Celery membership is implemented (`channex_reconcile_membership_qs`). Remaining Phase B order: media-at-ingest → idempotency/version tests → observability.
 
 **Eligible** (all required):
 
@@ -554,16 +554,16 @@ If any answer is **no**: justified exception in the PR, or it is debt that must 
 
 ## Implementation slices
 
-Phase A is done (DB-first GET). This document’s 2026-08-13 amendment **only** locks Phase B Channex reconcile membership; it does not change Celery.
+Phase A is done (DB-first GET). Automatic Channex reconcile membership (**A ∪ B ∪ C ∪ D**) is implemented in Celery.
 
-Next messaging PR (Phase B), in order:
+Remaining Phase B order:
 
-1. Implement automatic Channex reconcile as **A ∪ B ∪ C ∪ D** (Eligible filter after the union; 15 min; dedupe before provider calls).
+1. ~~Implement automatic Channex reconcile as **A ∪ B ∪ C ∪ D**~~ (done).
 2. Media-at-ingest; GET must not fetch Channex attachments.
 3. Idempotency / version tests.
 4. Observability (`last_webhook_at` / `last_poll_at` / lag) — do not overload ADR 0010 engine health.
 
-Do not start Phase D models in the Phase B PR.
+Do not start Phase D models in a Phase B PR.
 
 ---
 

@@ -40,7 +40,9 @@ Operativni runbook za slanje i primanje poruka gostima iz stay.hr recepcije (web
 | POST | `/api/v1/reception/reservations/{id}/messages/send/` — body: `{ draft_id, channel, body_text }` |
 | GET | `/api/v1/reception/reservations/{id}/channex-messages/` — samo Channex (legacy; DB-only GET) |
 
-Timeline and inbox GET are **DB-only** ([ADR 0019](../architecture/adr/0019-messaging-conversation-store.md) Phase A). Query `?sync=1` / `auto` is ignored and does **not** pull Channex or poll IMAP. Ingest is webhook + Celery (`poll_guest_email`, `sync_channex_booking_messages`).
+Timeline and inbox GET are **DB-only** ([ADR 0019](../architecture/adr/0019-messaging-conversation-store.md) Phase A). Query `?sync=1` / `auto` is ignored and does **not** pull Channex or poll IMAP. Ingest is webhook + Celery (`poll_guest_email_inbox`, `sync_channex_messages_for_upcoming_checkins`).
+
+Automatic Channex reconcile (every 15 min, Uzorita) is **A ∪ B ∪ C ∪ D** after an Eligible filter (`import_source=channex`, can sync, status not canceled/no_show/refused/pending). D (recent `ChannexMessage`) cannot re-admit excluded statuses. CLI `sync_channex_booking_messages` remains the one-off backfill / incident escape hatch — not GET.
 
 `channel` u send: `email` | `booking` | `whatsapp`
 
