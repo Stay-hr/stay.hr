@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 from django.utils.dateparse import parse_datetime
 
@@ -41,6 +43,9 @@ _SOURCE_PRIORITY = {
     "outbound": 2,
     "inbound": 3,
 }
+
+RAW_TYPE_ORDER = ("channex", "whatsapp", "inbound", "outbound")
+_RAW_TYPE_RANK = {name: index for index, name in enumerate(RAW_TYPE_ORDER)}
 
 _STATUS_PRIORITY = {
     "sent": 0,
@@ -151,14 +156,14 @@ def serialize_whatsapp(msg: WhatsAppMessage) -> dict:
     }
 
 
-def _whatsapp_outbound_mirrors_guest_outbound(
+def _matching_whatsapp_for_outbound(
     outbound: GuestOutboundMessage,
     whatsapp_rows: list[WhatsAppMessage],
-) -> bool:
-    """True when a WhatsAppMessage row already represents this API/handoff send."""
+) -> WhatsAppMessage | None:
+    """Return the WhatsApp row that already represents this API/handoff send."""
     body = (outbound.body_text or "").strip()
     if not body:
-        return False
+        return None
     for msg in whatsapp_rows:
         if msg.direction != WhatsAppMessage.Direction.OUTBOUND:
             continue
@@ -166,8 +171,16 @@ def _whatsapp_outbound_mirrors_guest_outbound(
             continue
         delta = abs((msg.created_at - outbound.created_at).total_seconds())
         if delta <= 5:
-            return True
-    return False
+            return msg
+    return None
+
+
+def _whatsapp_outbound_mirrors_guest_outbound(
+    outbound: GuestOutboundMessage,
+    whatsapp_rows: list[WhatsAppMessage],
+) -> bool:
+    """True when a WhatsAppMessage row already represents this API/handoff send."""
+    return _matching_whatsapp_for_outbound(outbound, whatsapp_rows) is not None
 
 
 def serialize_inbound(inbound: GuestInboundMessage) -> dict:
@@ -349,11 +362,9 @@ def _merge_item_group(group: list[dict]) -> dict:
     return merged
 
 
-def merge_timeline_duplicates(items: list[dict]) -> list[dict]:
-    """Collapse cross-channel duplicates into one entry with channels[]."""
+def _union_find_groups(items: list[dict]) -> list[list[int]]:
     if not items:
         return []
-
     n = len(items)
     parent = list(range(n))
 
@@ -374,50 +385,189 @@ def merge_timeline_duplicates(items: list[dict]) -> list[dict]:
             if _should_merge_items(items[i], items[j]):
                 union(i, j)
 
-    groups: dict[int, list[dict]] = {}
-    for index, item in enumerate(items):
-        root = find(index)
-        groups.setdefault(root, []).append(item)
+    groups: dict[int, list[int]] = {}
+    for index in range(n):
+        groups.setdefault(find(index), []).append(index)
+    return list(groups.values())
 
-    merged = [_merge_item_group(group) for group in groups.values()]
+
+def merge_timeline_duplicates(items: list[dict]) -> list[dict]:
+    """Collapse cross-channel duplicates into one entry with channels[]."""
+    if not items:
+        return []
+    merged = [_merge_item_group([items[i] for i in group]) for group in _union_find_groups(items)]
     merged.sort(key=lambda item: item["created_at"])
     return merged
 
 
-def timeline_for_reservation(reservation: Reservation) -> list[dict]:
-    rows: list[tuple[str, dict]] = []
+@dataclass(frozen=True)
+class TimelineMember:
+    raw: Any
+    item: dict
 
-    whatsapp_rows = list(
-        WhatsAppMessage.objects.filter(reservation=reservation).order_by("created_at", "pk")
+    @property
+    def raw_type(self) -> str:
+        return raw_type_for(self.raw)
+
+    @property
+    def raw_pk(self) -> int:
+        return int(self.raw.pk)
+
+
+@dataclass(frozen=True)
+class TimelineMergeGroup:
+    display_members: tuple[TimelineMember, ...]
+    source_members: tuple[TimelineMember, ...]
+    display: dict
+
+    @property
+    def occurred_at(self) -> datetime | None:
+        return parse_datetime(self.display.get("created_at") or "")
+
+
+def raw_type_for(raw) -> str:
+    if isinstance(raw, ChannexMessage):
+        return "channex"
+    if isinstance(raw, WhatsAppMessage):
+        return "whatsapp"
+    if isinstance(raw, GuestInboundMessage):
+        return "inbound"
+    if isinstance(raw, GuestOutboundMessage):
+        return "outbound"
+    raise TypeError(f"Unsupported raw type: {type(raw)!r}")
+
+
+def _channex_visible_in_timeline(msg: ChannexMessage) -> bool:
+    if (msg.body or "").strip():
+        return True
+    if msg.have_attachment:
+        return True
+    return bool(getattr(msg, "media_file", None) and msg.media_file)
+
+
+def _apply_pk_cutoff(qs, cutoff_id: int | None):
+    if cutoff_id is None:
+        return qs
+    return qs.filter(pk__lte=cutoff_id)
+
+
+def _load_reservation_raws(reservation: Reservation, *, cutoff=None):
+    wa_qs = WhatsAppMessage.objects.filter(reservation=reservation)
+    out_qs = GuestOutboundMessage.objects.filter(reservation=reservation).select_related(
+        "api_application"
+    )
+    ch_qs = ChannexMessage.objects.filter(reservation=reservation)
+    in_qs = GuestInboundMessage.objects.filter(reservation=reservation)
+    if cutoff is not None:
+        wa_qs = _apply_pk_cutoff(wa_qs, cutoff.whatsapp_id)
+        out_qs = _apply_pk_cutoff(out_qs, cutoff.outbound_id)
+        ch_qs = _apply_pk_cutoff(ch_qs, cutoff.channex_id)
+        in_qs = _apply_pk_cutoff(in_qs, cutoff.inbound_id)
+    return (
+        list(wa_qs.order_by("created_at", "pk")),
+        list(out_qs.order_by("created_at", "pk")),
+        list(ch_qs.order_by("created_at", "pk")),
+        list(in_qs.order_by("created_at", "pk")),
     )
 
-    for outbound in GuestOutboundMessage.objects.filter(reservation=reservation).select_related(
-        "api_application"
-    ):
+
+def _collect_display_and_mirrors(
+    reservation: Reservation, *, cutoff=None
+) -> tuple[list[TimelineMember], list[TimelineMember]]:
+    whatsapp_rows, outbound_rows, channex_rows, inbound_rows = _load_reservation_raws(
+        reservation, cutoff=cutoff
+    )
+    display: list[TimelineMember] = []
+    mirrors: list[TimelineMember] = []
+
+    for outbound in outbound_rows:
+        item = serialize_outbound(outbound)
+        member = TimelineMember(raw=outbound, item=item)
         if (
             outbound.channel == GuestMessageChannel.WHATSAPP
             and outbound.status == GuestOutboundMessageStatus.SENT
             and _whatsapp_outbound_mirrors_guest_outbound(outbound, whatsapp_rows)
         ):
+            mirrors.append(member)
             continue
-        rows.append((outbound.created_at.isoformat(), serialize_outbound(outbound)))
+        display.append(member)
 
     for msg in whatsapp_rows:
-        rows.append((msg.created_at.isoformat(), serialize_whatsapp(msg)))
+        display.append(TimelineMember(raw=msg, item=serialize_whatsapp(msg)))
 
-    for msg in ChannexMessage.objects.filter(reservation=reservation):
-        if (msg.body or "").strip() or msg.have_attachment or (
-            getattr(msg, "media_file", None) and msg.media_file
-        ):
-            rows.append((msg.created_at.isoformat(), serialize_channex(msg)))
+    for msg in channex_rows:
+        if _channex_visible_in_timeline(msg):
+            display.append(TimelineMember(raw=msg, item=serialize_channex(msg)))
 
-    for msg in GuestInboundMessage.objects.filter(reservation=reservation):
+    for msg in inbound_rows:
         if (msg.body_text or "").strip():
-            ts = msg.received_at or msg.created_at
-            rows.append((ts.isoformat(), serialize_inbound(msg)))
+            display.append(TimelineMember(raw=msg, item=serialize_inbound(msg)))
 
-    rows.sort(key=lambda r: r[0])
-    return merge_timeline_duplicates([item for _, item in rows])
+    display.sort(key=lambda member: (member.item.get("created_at") or "", member.raw_type, member.raw_pk))
+    return display, mirrors
+
+
+def timeline_for_reservation(reservation: Reservation) -> list[dict]:
+    display, _mirrors = _collect_display_and_mirrors(reservation)
+    return merge_timeline_duplicates([member.item for member in display])
+
+
+def timeline_merge_groups_for_reservation(
+    reservation: Reservation, *, cutoff=None
+) -> list[TimelineMergeGroup]:
+    """Same merge as GET, but keep raw members and attach suppressed WA outbound mirrors."""
+    display_members, mirrors = _collect_display_and_mirrors(reservation, cutoff=cutoff)
+    if not display_members and not mirrors:
+        return []
+
+    items = [member.item for member in display_members]
+    whatsapp_rows = [member.raw for member in display_members if isinstance(member.raw, WhatsAppMessage)]
+    groups: list[TimelineMergeGroup] = []
+    used_mirror_pks: set[int] = set()
+
+    for indices in _union_find_groups(items):
+        members = tuple(display_members[i] for i in indices)
+        display_items = [member.item for member in members]
+        source = list(members)
+        group_wa = [member.raw for member in members if isinstance(member.raw, WhatsAppMessage)]
+        for mirror in mirrors:
+            if mirror.raw_pk in used_mirror_pks:
+                continue
+            matched = _matching_whatsapp_for_outbound(mirror.raw, group_wa or whatsapp_rows)
+            if matched is None:
+                continue
+            if any(isinstance(m.raw, WhatsAppMessage) and m.raw_pk == matched.pk for m in members):
+                source.append(mirror)
+                used_mirror_pks.add(mirror.raw_pk)
+        source.sort(key=lambda member: (_RAW_TYPE_RANK[member.raw_type], member.raw_pk))
+        groups.append(
+            TimelineMergeGroup(
+                display_members=members,
+                source_members=tuple(source),
+                display=_merge_item_group(display_items),
+            )
+        )
+
+    orphan_mirrors = [mirror for mirror in mirrors if mirror.raw_pk not in used_mirror_pks]
+    for mirror in orphan_mirrors:
+        groups.append(
+            TimelineMergeGroup(
+                display_members=(),
+                source_members=(mirror,),
+                display=dict(mirror.item),
+            )
+        )
+
+    _sort_min = datetime.min.replace(tzinfo=timezone.utc)
+    groups.sort(
+        key=lambda group: (
+            reservation.pk,
+            group.occurred_at or _sort_min,
+            _RAW_TYPE_RANK[group.source_members[0].raw_type] if group.source_members else 99,
+            group.source_members[0].raw_pk if group.source_members else 0,
+        )
+    )
+    return groups
 
 
 def last_timeline_entry(reservation: Reservation) -> dict | None:

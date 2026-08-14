@@ -526,6 +526,33 @@ class GuestMessageSource(TenantScopedModel):
             raise ValidationError(errors)
 
 
+class CanonicalConversationBackfill(models.Model):
+    """Per-tenant D3 backfill cutoff and complete flag. GET still uses timeline."""
+
+    tenant = models.OneToOneField(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="canonical_backfill",
+    )
+    cutoff_at = models.DateTimeField(null=True, blank=True)
+    cutoff_channex_id = models.PositiveIntegerField(null=True, blank=True)
+    cutoff_whatsapp_id = models.PositiveIntegerField(null=True, blank=True)
+    cutoff_inbound_id = models.PositiveIntegerField(null=True, blank=True)
+    cutoff_outbound_id = models.PositiveIntegerField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    snapshot = models.JSONField(default=dict, blank=True)
+    completed_by = models.CharField(max_length=128, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Canonical conversation backfill"
+        verbose_name_plural = "Canonical conversation backfills"
+
+    def __str__(self) -> str:
+        state = "complete" if self.completed_at else "open"
+        return f"CanonicalBackfill tenant={self.tenant_id} {state}"
+
+
 class GuestMessageThreadState(TenantScopedModel):
     """Per-reservation inbox flags (e.g. dismissed needs-reply)."""
 
