@@ -434,5 +434,13 @@
     "channelBooking": "Channex",
     "channelEmail": "Mail",
     "channelWhatsapp": "WhatsApp"
+  },
+  "guestMessages": {
+    "translateAction": "Traducir",
+    "showOriginal": "Mostrar original",
+    "showTranslation": "Mostrar traducción",
+    "translatedLabel": "Traducción automática (OpenAI)",
+    "translateFailed": "Error al traducir.",
+    "retry": "Reintentar"
   }
 }

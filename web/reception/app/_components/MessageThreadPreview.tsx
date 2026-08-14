@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { MessageBodyWithTranslate } from "@/app/_components/MessageBodyWithTranslate";
 import { LinkifiedText } from "@/lib/linkifyText";
 import {
   buildReservationMessagesUrl,
@@ -47,7 +48,13 @@ function ChevronIcon({ up }: { up: boolean }) {
   );
 }
 
-function InboxTimelineBubbles({ items }: { items: GuestMessageTimelineItem[] }) {
+function InboxTimelineBubbles({
+  reservationId,
+  items,
+}: {
+  reservationId: number;
+  items: GuestMessageTimelineItem[];
+}) {
   const t = useTranslations("messageInbox");
   return (
     <div className="max-h-80 space-y-2 overflow-y-auto">
@@ -83,12 +90,17 @@ function InboxTimelineBubbles({ items }: { items: GuestMessageTimelineItem[] }) 
                   </span>
                 ) : null}
               </div>
-              <LinkifiedText
+              <MessageBodyWithTranslate
+                reservationId={reservationId}
+                item={item}
                 className="whitespace-pre-wrap"
                 linkClassName={outbound ? "text-white underline" : "text-stay-blue underline"}
-              >
-                {item.body_text}
-              </LinkifiedText>
+                controlClassName={
+                  outbound
+                    ? "text-xs font-medium text-white/90 hover:underline"
+                    : "text-xs font-medium text-stay-blue hover:underline"
+                }
+              />
             </div>
           </div>
         );
@@ -225,7 +237,7 @@ export function MessageThreadPreview({
           ) : timeline.length === 0 ? (
             <p className="text-sm text-muted">{t("empty")}</p>
           ) : (
-            <InboxTimelineBubbles items={timeline} />
+            <InboxTimelineBubbles reservationId={reservationId} items={timeline} />
           )}
         </div>
       ) : null}
