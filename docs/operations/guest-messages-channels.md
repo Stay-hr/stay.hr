@@ -54,7 +54,9 @@ Channex attachments are downloaded at ingest (webhook + reconcile). `GET …/cha
 
 ## Reception web
 
-Detalj rezervacije → sekcija **Poruke gostu** ([`GuestMessagesPanel.tsx`](../../web/reception/app/_components/GuestMessagesPanel.tsx)):
+Property-wide inbox: **Poruke** → `/messages` (`GET …/message-threads/?sync=0`). Kartica otvara `/reservations/{id}#messages` u novom tabu. Compose ostaje na detalju rezervacije.
+
+Detalj rezervacije → sekcija **Poruke gostu** (`#messages`, [`GuestMessagesPanel.tsx`](../../web/reception/app/_components/GuestMessagesPanel.tsx)):
 
 - Chat timeline
 - Generiraj (check-in / odgovor / prilagođeno)

@@ -13,6 +13,8 @@ import type {
   GuestMessageComposeResponse,
   GuestMessageTimelineItem,
 } from "@/lib/types";
+import { LinkifiedText } from "@/lib/linkifyText";
+import { MESSAGES_SECTION_ID, scrollToMessagesHash } from "@/lib/messageInbox";
 import { useReservationVersionWatch } from "@/lib/useReservationVersionWatch";
 
 type Props = {
@@ -134,6 +136,18 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   useEffect(() => {
     void loadTimeline({ background: false });
   }, [reservationId, loadTimeline]);
+
+  useEffect(() => {
+    scrollToMessagesHash();
+  }, [reservationId]);
+
+  useEffect(() => {
+    if (loading) return;
+    const frame = window.requestAnimationFrame(() => {
+      scrollToMessagesHash();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading]);
 
   useReservationVersionWatch({
     reservationId,
@@ -376,7 +390,7 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   }
 
   return (
-    <section className="space-y-3">
+    <section id={MESSAGES_SECTION_ID} className="scroll-mt-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-semibold">{t("title")}</h2>
         <button
@@ -422,7 +436,14 @@ export function GuestMessagesPanel({ reservationId }: Props) {
                       </span>
                     ) : null}
                   </div>
-                  <p className="whitespace-pre-wrap">{item.body_text}</p>
+                  <LinkifiedText
+                    className="whitespace-pre-wrap"
+                    linkClassName={
+                      outbound ? "text-white underline" : "text-stay-blue underline"
+                    }
+                  >
+                    {item.body_text}
+                  </LinkifiedText>
                   {item.document_intake_job_id ? (
                     <p className="mt-1 text-xs opacity-80">
                       OCR #{item.document_intake_job_id}

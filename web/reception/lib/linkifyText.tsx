@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
+import { handlePreviewUrlClick } from "@/lib/messageInbox";
 
 const URL_REGEX = /https?:\/\/[^\s]+/g;
 
@@ -10,12 +11,35 @@ function splitUrlAndTrailingPunct(url: string): { href: string; trailing: string
   return { href: url, trailing: "" };
 }
 
+export function extractHttpUrls(text: string): string[] {
+  const hrefs: string[] = [];
+  for (const match of text.matchAll(URL_REGEX)) {
+    hrefs.push(splitUrlAndTrailingPunct(match[0]).href);
+  }
+  return hrefs;
+}
+
+export function linkifiedAnchorProps(href: string): {
+  href: string;
+  target: "_blank";
+  rel: "noopener noreferrer";
+  "data-message-preview-url": "";
+} {
+  return {
+    href,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    "data-message-preview-url": "",
+  };
+}
+
 type LinkifiedTextProps = {
   children: string;
   className?: string;
+  linkClassName?: string;
 };
 
-export function LinkifiedText({ children, className }: LinkifiedTextProps) {
+export function LinkifiedText({ children, className, linkClassName }: LinkifiedTextProps) {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
   let key = 0;
@@ -30,10 +54,11 @@ export function LinkifiedText({ children, className }: LinkifiedTextProps) {
     nodes.push(
       <a
         key={key++}
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-stay-blue underline"
+        {...linkifiedAnchorProps(href)}
+        className={linkClassName ?? "text-stay-blue underline"}
+        onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+          handlePreviewUrlClick(event);
+        }}
       >
         {href}
       </a>,

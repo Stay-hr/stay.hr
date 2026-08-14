@@ -16,6 +16,7 @@
     "reception": "Réception",
     "timeline": "Timeline",
     "calendar": "Calendrier",
+    "messages": "Messages",
     "settings": "Paramètres",
     "logout": "Déconnexion"
   },
@@ -412,5 +413,21 @@
         "title": "Users"
       }
     }
+  },
+  "messageInbox": {
+    "title": "Messages",
+    "empty": "Aucun message à afficher.",
+    "loadFailed": "Échec du chargement des messages.",
+    "filterNeedsReply": "En attente de réponse",
+    "filterArrivingToday": "Arrivée aujourd'hui",
+    "needsReply": "En attente de réponse",
+    "arrivingToday": "Arrivée aujourd'hui",
+    "prevPage": "Précédent",
+    "nextPage": "Suivant",
+    "pageStatus": "Page {page} sur {pages}",
+    "openReservation": "Ouvrir la réservation",
+    "channelBooking": "Channex",
+    "channelEmail": "Mail",
+    "channelWhatsapp": "WhatsApp"
   }
 }

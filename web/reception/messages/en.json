@@ -19,6 +19,7 @@
     "calendar": "Calendar",
     "newReservation": "New booking",
     "reviews": "Reviews",
+    "messages": "Messages",
     "reports": "Reports",
     "settings": "Settings",
     "whatsapp": "WhatsApp",
@@ -415,6 +416,22 @@
     "intentCheckin": "Check-in",
     "intentReply": "Reply",
     "intentCustom": "Custom"
+  },
+  "messageInbox": {
+    "title": "Messages",
+    "empty": "No messages to show.",
+    "loadFailed": "Failed to load messages.",
+    "filterNeedsReply": "Needs reply",
+    "filterArrivingToday": "Arriving today",
+    "needsReply": "Needs reply",
+    "arrivingToday": "Arriving today",
+    "prevPage": "Previous",
+    "nextPage": "Next",
+    "pageStatus": "Page {page} of {pages}",
+    "openReservation": "Open reservation",
+    "channelBooking": "Channex",
+    "channelEmail": "Mail",
+    "channelWhatsapp": "WhatsApp"
   },
   "guestReviews": {
     "title": "Guest reviews",
