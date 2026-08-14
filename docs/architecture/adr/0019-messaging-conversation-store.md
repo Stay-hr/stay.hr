@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B (membership, media-at-ingest, ingest idempotency/version, observability) is implemented. Phase C client GET contract is closed: Reception web and Hospira ([Stay-hr/hospira_flutter](https://github.com/Stay-hr/hospira_flutter) #1, `4273268`) use DB-only GET (`sync=0` or omitted). Backend still ignores `sync` so older Hospira builds remain compatible. Phase D **D1 schema** and **D2 dual-write** are on `main`. **D3** adds `backfill_canonical_guest_messages` (historical groups → canonical store, including hidden outbound mirrors); GET still reads `timeline_for_reservation()`. GET cutover (D4) is not started.
+**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B (membership, media-at-ingest, ingest idempotency/version, observability) is implemented. Phase C client GET contract is closed: Reception web and Hospira ([Stay-hr/hospira_flutter](https://github.com/Stay-hr/hospira_flutter) #1, `4273268`) use DB-only GET (`sync=0` or omitted). Backend still ignores `sync` so older Hospira builds remain compatible. Phase D **D1 schema** and **D2 dual-write** are on `main`. **D3** backfill is on `main` (`backfill_canonical_guest_messages`). **D4** adds a tenant read-flag (`read_canonical_at`) so GET/inbox can read visible `GuestMessage` with the same JSON shape plus additive `canonical_id`; default GET stays on raw `timeline_for_reservation()` until `--enable`.
 
 Canonical identity: `GuestMessage` is the logical UI row; `GuestMessageSource` holds 1..N external/raw identities. `provider_message_id` is nullable; missing provider IDs must not be fabricated.
 
@@ -497,7 +497,9 @@ client event → sync=1/auto → provider reconcile
 
 **D2 (dual-write):** `record_canonical_source` after every raw upsert (create and existing) in the same `transaction.atomic()` as the raw write. Four funnels: Channex upsert/relink, IMAP ingest, routed WhatsApp inbound, outbound `GuestOutboundMessage` / WhatsApp. Unrouted WA stays in routing queues. GET/timeline unchanged.
 
-**D3 (historical backfill):** `python manage.py backfill_canonical_guest_messages --tenant-slug` writes one `GuestMessage` per today's timeline merge group and one `GuestMessageSource` per source member (display members plus suppressed WA/outbound mirrors). Cutoff PKs and `completed_at` live on `CanonicalConversationBackfill`. GET/timeline unchanged; no send, poll, or D4 read-flag.
+**D3 (historical backfill):** `python manage.py backfill_canonical_guest_messages --tenant-slug` writes one `GuestMessage` per today's timeline merge group and one `GuestMessageSource` per source member (display members plus suppressed WA/outbound mirrors). Cutoff PKs and `completed_at` live on `CanonicalConversationBackfill`. GET/timeline unchanged until D4 `--enable`.
+
+**D4 (read cutover):** `set_canonical_guest_message_read --tenant-slug` (`--parity` / `--validate` / `--enable` / `--disable`). Synthetic `id` stays; additive `canonical_id` is `GuestMessage.pk`. Hidden WA/outbound mirrors never become the primary display source. `--enable` requires D3 complete, live validation, and JSON parity. Deploy does not auto-enable.
 
 - Add `Conversation` + `GuestMessage` + `GuestMessageSource` as specified in §7; dual-write from ingest/send; backfill by **merged groups**, not 1:1 raw→canonical.
 - Switch `timeline_for_reservation` to `GuestMessage`; then stop UI reads of raw tables.

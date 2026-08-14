@@ -527,7 +527,7 @@ class GuestMessageSource(TenantScopedModel):
 
 
 class CanonicalConversationBackfill(models.Model):
-    """Per-tenant D3 backfill cutoff and complete flag. GET still uses timeline."""
+    """Per-tenant D3 cutoff/complete and D4 read-flag. Default GET stays raw."""
 
     tenant = models.OneToOneField(
         "tenants.Tenant",
@@ -542,6 +542,9 @@ class CanonicalConversationBackfill(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     snapshot = models.JSONField(default=dict, blank=True)
     completed_by = models.CharField(max_length=128, blank=True, default="")
+    read_canonical_at = models.DateTimeField(null=True, blank=True)
+    read_canonical_by = models.CharField(max_length=128, blank=True, default="")
+    read_snapshot = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -550,7 +553,8 @@ class CanonicalConversationBackfill(models.Model):
 
     def __str__(self) -> str:
         state = "complete" if self.completed_at else "open"
-        return f"CanonicalBackfill tenant={self.tenant_id} {state}"
+        read = "read-on" if self.read_canonical_at else "read-off"
+        return f"CanonicalBackfill tenant={self.tenant_id} {state} {read}"
 
 
 class GuestMessageThreadState(TenantScopedModel):
