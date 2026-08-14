@@ -8,6 +8,8 @@ from typing import Any
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from apps.communications.canonical_read import tenant_reads_canonical
+from apps.communications.canonical_timeline import canonical_timelines_by_reservation
 from apps.communications.guest_message_timeline import last_timeline_entry
 from apps.communications.models import (
     GuestInboundMessage,
@@ -115,8 +117,11 @@ def list_message_threads_for_tenant(
     page_size: int = DEFAULT_PAGE_SIZE,
     needs_reply_only: bool = False,
     arriving_today_only: bool = False,
+    read_canonical: bool | None = None,
 ) -> tuple[list[dict[str, Any]], int, int]:
     """Return (threads, total, needs_reply_count). DB-only (ADR 0019 Phase A)."""
+    if read_canonical is None:
+        read_canonical = tenant_reads_canonical(tenant)
     reservation_ids = _reservation_ids_with_messages(tenant)
     if not reservation_ids:
         return [], 0, 0
@@ -136,11 +141,24 @@ def list_message_threads_for_tenant(
             reservation_id__in=reservation_pks,
         )
     }
+    last_by_reservation: dict[int, dict[str, Any] | None] = {}
+    if read_canonical:
+        timelines = canonical_timelines_by_reservation(reservations)
+        last_by_reservation = {
+            reservation.pk: (timeline[-1] if timeline else None)
+            for reservation, timeline in (
+                (reservation, timelines.get(reservation.pk, []))
+                for reservation in reservations
+            )
+        }
 
     threads: list[dict[str, Any]] = []
     needs_reply_count = 0
     for reservation in reservations:
-        last = last_timeline_entry(reservation)
+        if read_canonical:
+            last = last_by_reservation.get(reservation.pk)
+        else:
+            last = last_timeline_entry(reservation, read_canonical=False)
         if last is None:
             continue
         row = _serialize_thread(

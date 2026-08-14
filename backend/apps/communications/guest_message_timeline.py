@@ -126,12 +126,20 @@ def _whatsapp_media_fields(msg: WhatsAppMessage, job_id: int | None) -> tuple[st
     return None, media_kind
 
 
-def serialize_whatsapp(msg: WhatsAppMessage) -> dict:
-    job_id = (
-        DocumentIntakeJob.objects.filter(whatsapp_message_id=msg.pk)
-        .values_list("pk", flat=True)
-        .first()
-    )
+def serialize_whatsapp(
+    msg: WhatsAppMessage,
+    *,
+    document_intake_job_id: int | None = None,
+    resolve_intake_job: bool = True,
+) -> dict:
+    if document_intake_job_id is None and resolve_intake_job:
+        job_id = (
+            DocumentIntakeJob.objects.filter(whatsapp_message_id=msg.pk)
+            .values_list("pk", flat=True)
+            .first()
+        )
+    else:
+        job_id = document_intake_job_id
     is_outbound = msg.direction == WhatsAppMessage.Direction.OUTBOUND
     media_url, media_kind = _whatsapp_media_fields(msg, job_id)
     body = whatsapp_display_body(msg)
@@ -507,9 +515,23 @@ def _collect_display_and_mirrors(
     return display, mirrors
 
 
-def timeline_for_reservation(reservation: Reservation) -> list[dict]:
+def raw_timeline_for_reservation(reservation: Reservation) -> list[dict]:
     display, _mirrors = _collect_display_and_mirrors(reservation)
     return merge_timeline_duplicates([member.item for member in display])
+
+
+def timeline_for_reservation(
+    reservation: Reservation, *, read_canonical: bool | None = None
+) -> list[dict]:
+    if read_canonical is None:
+        from apps.communications.canonical_read import tenant_reads_canonical
+
+        read_canonical = tenant_reads_canonical(reservation.tenant_id)
+    if read_canonical:
+        from apps.communications.canonical_timeline import canonical_timeline_for_reservation
+
+        return canonical_timeline_for_reservation(reservation)
+    return raw_timeline_for_reservation(reservation)
 
 
 def timeline_merge_groups_for_reservation(
@@ -570,6 +592,8 @@ def timeline_merge_groups_for_reservation(
     return groups
 
 
-def last_timeline_entry(reservation: Reservation) -> dict | None:
-    timeline = timeline_for_reservation(reservation)
+def last_timeline_entry(
+    reservation: Reservation, *, read_canonical: bool | None = None
+) -> dict | None:
+    timeline = timeline_for_reservation(reservation, read_canonical=read_canonical)
     return timeline[-1] if timeline else None
