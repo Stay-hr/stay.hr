@@ -6,6 +6,7 @@ export type BarSpan = {
 };
 
 export const ROLLING_WINDOW_DAYS = 30;
+export const HISTORY_LOOKBACK_DAYS = 365;
 
 export type CalendarDay = {
   iso: string;
@@ -22,6 +23,26 @@ function compareIso(a: string, b: string): number {
 
 export function maxDate(a: string, b: string): string {
   return compareIso(a, b) >= 0 ? a : b;
+}
+
+export function operationalFloorIso(today: string): string {
+  return addDaysIso(today, -1);
+}
+
+export function historyMinStartIso(floor: string): string {
+  return addDaysIso(floor, -HISTORY_LOOKBACK_DAYS);
+}
+
+export function clampRangeStart(next: string, minStart: string): string {
+  return maxDate(minStart, next);
+}
+
+export function canGoPrev(rangeStart: string, minStart: string): boolean {
+  return rangeStart > minStart;
+}
+
+export function shouldShowHistoryPrefix(rangeStart: string, floor: string): boolean {
+  return rangeStart < floor;
 }
 
 export function minDate(a: string, b: string): string {

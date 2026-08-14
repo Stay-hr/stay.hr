@@ -52,6 +52,6 @@ export function isUnitFreeForRange(
   return true;
 }
 
-export function isDayTappable(dateIso: string): boolean {
-  return dateIso >= todayIso();
+export function isDayTappable(dateIso: string, today: string = todayIso()): boolean {
+  return dateIso >= today;
 }
