@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { MessageThreadPreview } from "@/app/_components/MessageThreadPreview";
 import { ReceptionNav } from "@/app/_components/ReceptionNav";
-import { LinkifiedText } from "@/lib/linkifyText";
 import { formatStayDateRange } from "@/lib/locale-format";
 import {
   MESSAGE_INBOX_PAGE_SIZE,
@@ -17,6 +17,7 @@ import {
   inboxPagination,
   inboxViewState,
   reservationCardLinkProps,
+  setThreadExpanded,
   shouldRunInboxPoll,
   shouldStartInboxFetch,
   uniqueThreadChannels,
@@ -43,6 +44,7 @@ export default function MessagesInboxPage() {
     needsReply: false,
     arrivingToday: false,
   });
+  const [expandedById, setExpandedById] = useState<Record<number, boolean>>({});
   const inflightRef = useRef(false);
   const requestSeqRef = useRef(0);
 
@@ -101,6 +103,10 @@ export default function MessagesInboxPage() {
   useEffect(() => {
     void loadThreads({ background: false });
   }, [loadThreads]);
+
+  useEffect(() => {
+    setExpandedById({});
+  }, [filters.arrivingToday, filters.needsReply, filters.page]);
 
   useEffect(() => {
     const stop = createInboxPollController({
@@ -224,11 +230,19 @@ export default function MessagesInboxPage() {
                     <span className="sr-only">{t("openReservation")}</span>
                   </a>
                   {thread.last_message_preview ? (
-                    <div className="border-t border-stay-border px-3 py-2">
-                      <LinkifiedText className="line-clamp-3 whitespace-pre-wrap text-sm text-muted">
-                        {thread.last_message_preview}
-                      </LinkifiedText>
-                    </div>
+                    <MessageThreadPreview
+                      preview={thread.last_message_preview}
+                      expanded={Boolean(expandedById[thread.reservation_id])}
+                      onToggle={() =>
+                        setExpandedById((current) =>
+                          setThreadExpanded(
+                            current,
+                            thread.reservation_id,
+                            !current[thread.reservation_id],
+                          ),
+                        )
+                      }
+                    />
                   ) : null}
                 </article>
               );

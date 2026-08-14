@@ -429,6 +429,8 @@
     "nextPage": "Sljedeća",
     "pageStatus": "Stranica {page} od {pages}",
     "openReservation": "Otvori rezervaciju",
+    "expandPreview": "Proširi",
+    "collapsePreview": "Sažmi",
     "channelBooking": "Channex",
     "channelEmail": "Mail",
     "channelWhatsapp": "WhatsApp"
