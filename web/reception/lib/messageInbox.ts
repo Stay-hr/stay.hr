@@ -3,7 +3,12 @@ import type { MessageThread } from "@/lib/types";
 export const MESSAGE_THREADS_PATH = "/api/stay/reception/message-threads/";
 export const MESSAGE_INBOX_PAGE_SIZE = 25;
 export const MESSAGE_INBOX_POLL_MS = 45_000;
+export const TIMELINE_NEEDS_REPLY_PAGE_SIZE = 100;
 export const MESSAGES_SECTION_ID = "messages";
+
+export type TimelineNeedsReplyEntry = {
+  preview: string | null;
+};
 
 export type MessageThreadsQuery = {
   page?: number;
@@ -32,6 +37,56 @@ export function buildMessageThreadsUrl(opts: MessageThreadsQuery = {}): string {
 /** Badge fetch: needs_reply_count only — do not load the inbox list. */
 export function buildNeedsReplyBadgeUrl(): string {
   return buildMessageThreadsUrl({ page: 1, pageSize: 1 });
+}
+
+/** Timeline overlay: unanswered threads only, capped at TIMELINE_NEEDS_REPLY_PAGE_SIZE. */
+export function buildTimelineNeedsReplyUrl(): string {
+  return buildMessageThreadsUrl({ needsReply: true, pageSize: TIMELINE_NEEDS_REPLY_PAGE_SIZE });
+}
+
+export function needsReplyByReservationId(
+  threads: Array<Pick<MessageThread, "reservation_id" | "needs_reply" | "last_message_preview">>,
+): Map<number, TimelineNeedsReplyEntry> {
+  const map = new Map<number, TimelineNeedsReplyEntry>();
+  for (const thread of threads) {
+    if (!thread.needs_reply) continue;
+    const trimmed = (thread.last_message_preview ?? "").trim();
+    map.set(thread.reservation_id, { preview: trimmed || null });
+  }
+  return map;
+}
+
+export function shouldShowTimelineNeedsReply(
+  reservationId: number,
+  map: Map<number, TimelineNeedsReplyEntry>,
+): boolean {
+  return map.has(reservationId);
+}
+
+export function shouldShowTimelineNeedsReplyPreview(
+  entry: TimelineNeedsReplyEntry | undefined,
+): boolean {
+  return Boolean(entry?.preview);
+}
+
+export function timelineReservationHref(reservationId: number, needsReply: boolean): string {
+  return needsReply ? reservationMessagesHref(reservationId) : `/reservations/${reservationId}`;
+}
+
+/** Failed poll keeps the last successful map; a successful payload replaces it. */
+export function nextNeedsReplyMap(
+  previous: Map<number, TimelineNeedsReplyEntry>,
+  next: Map<number, TimelineNeedsReplyEntry> | null,
+): Map<number, TimelineNeedsReplyEntry> {
+  return next ?? previous;
+}
+
+export function shouldApplyNeedsReplyThreadsResult(opts: {
+  requestId: number;
+  activeRequestId: number;
+  unmounted: boolean;
+}): boolean {
+  return !isStaleTimelineResponse(opts);
 }
 
 export function reservationMessagesHref(reservationId: number): string {
@@ -210,6 +265,17 @@ export function shouldRunInboxPoll(opts: {
 }): boolean {
   if (opts.requestInFlight) return false;
   if (opts.pathname !== "/messages") return false;
+  if (opts.visibilityState === "hidden") return false;
+  return true;
+}
+
+export function shouldRunTimelineNeedsReplyPoll(opts: {
+  pathname: string;
+  visibilityState: string;
+  requestInFlight: boolean;
+}): boolean {
+  if (opts.requestInFlight) return false;
+  if (opts.pathname !== "/") return false;
   if (opts.visibilityState === "hidden") return false;
   return true;
 }
