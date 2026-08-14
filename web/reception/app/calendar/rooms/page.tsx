@@ -10,7 +10,12 @@ import {
 import { ReceptionNav } from "@/app/_components/ReceptionNav";
 import { RoomCalendarDayDetail } from "@/app/_components/RoomCalendarDayDetail";
 import { RoomCalendarGrid } from "@/app/_components/RoomCalendarGrid";
-import { maxDate, ROLLING_WINDOW_DAYS } from "@/lib/calendarLayout";
+import { RoomCalendarRangeControls } from "@/app/_components/RoomCalendarRangeControls";
+import {
+  historyMinStartIso,
+  operationalFloorIso,
+  ROLLING_WINDOW_DAYS,
+} from "@/lib/calendarLayout";
 import { formatDateRangeLabel } from "@/lib/locale-format";
 import type {
   AppConfig,
@@ -46,7 +51,8 @@ export default function RoomCalendarPage() {
   const locale = useLocale();
   const [tenantName, setTenantName] = useState("");
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [rangeStart, setRangeStart] = useState(() => todayIso());
+  const [rangeStart, setRangeStart] = useState(() => operationalFloorIso(todayIso()));
+  const [historyEnabled, setHistoryEnabled] = useState(false);
   const [byRoom, setByRoom] = useState<Record<number, CalendarReservation[]>>({});
   const [blocks, setBlocks] = useState<CalendarBlock[]>([]);
   const [selection, setSelection] = useState<CalendarSelection | null>(null);
@@ -88,7 +94,8 @@ export default function RoomCalendarPage() {
 
   const rangeEnd = addDaysIso(rangeStart, ROLLING_WINDOW_DAYS);
   const today = todayIso();
-  const canGoPrev = rangeStart > today;
+  const floor = operationalFloorIso(today);
+  const historyMin = historyMinStartIso(floor);
   const rangeLabel = formatDateRangeLabel(locale, rangeStart, rangeEnd);
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
@@ -194,14 +201,6 @@ export default function RoomCalendarPage() {
 
   const selectedReservations = selection ? byRoom[selection.roomId] || [] : [];
 
-  function shiftRange(deltaDays: number) {
-    setRangeStart((current) => maxDate(todayIso(), addDaysIso(current, deltaDays)));
-  }
-
-  function goToday() {
-    setRangeStart(todayIso());
-  }
-
   function openBulkWizard(prefill: BulkWizardPrefill = {}) {
     setWizardPrefill(prefill);
     setWizardOpen(true);
@@ -213,36 +212,15 @@ export default function RoomCalendarPage() {
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-6">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-bold">{t("title")}</h1>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="btn-ghost px-2.5 disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label={t("prevPeriod")}
-              disabled={!canGoPrev}
-              onClick={() => shiftRange(-ROLLING_WINDOW_DAYS)}
-            >
-              ‹
-            </button>
-            <span className="min-w-[12rem] text-center text-sm font-semibold text-stay-navy">
-              {rangeLabel}
-            </span>
-            <button
-              type="button"
-              className="btn-ghost px-2.5"
-              aria-label={t("nextPeriod")}
-              onClick={() => shiftRange(ROLLING_WINDOW_DAYS)}
-            >
-              ›
-            </button>
-          </div>
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={rangeStart === today}
-            onClick={goToday}
-          >
-            {t("today")}
-          </button>
+          <RoomCalendarRangeControls
+            rangeStart={rangeStart}
+            rangeLabel={rangeLabel}
+            floor={floor}
+            historyMin={historyMin}
+            historyEnabled={historyEnabled}
+            onRangeStartChange={setRangeStart}
+            onHistoryEnabledChange={setHistoryEnabled}
+          />
           <button type="button" className="btn" onClick={() => void load()}>
             {tc("refresh")}
           </button>
