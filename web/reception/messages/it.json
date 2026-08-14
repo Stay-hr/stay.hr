@@ -428,6 +428,9 @@
     "openReservation": "Apri prenotazione",
     "expandPreview": "Espandi",
     "collapsePreview": "Comprimi",
+    "timelineLoadFailed": "Impossibile caricare la conversazione.",
+    "retry": "Riprova",
+    "statusFailed": "Non riuscito",
     "channelBooking": "Channex",
     "channelEmail": "Mail",
     "channelWhatsapp": "WhatsApp"

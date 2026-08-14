@@ -15,13 +15,20 @@ import {
   handlePreviewUrlClick,
   inboxPagination,
   inboxViewState,
+  buildReservationMessagesUrl,
+  expandedIdIfVisible,
   isApiPreviewTruncated,
   isPreviewUrlClickTarget,
+  isStaleTimelineResponse,
+  nextExpandedId,
   previewClampClass,
   previewOverflows,
-  setThreadExpanded,
+  shouldRefetchOpenTimeline,
   shouldResetPreviewExpanded,
   shouldShowPreviewToggle,
+  shouldShowThreadChevron,
+  shouldStoreTimelineCache,
+  timelineCacheKey,
   reservationCardLinkProps,
   reservationMessagesHref,
   scrollToMessagesHash,
@@ -256,10 +263,53 @@ describe("preview expand / collapse", () => {
     expect(previewClampClass(false)).toContain("line-clamp-3");
   });
 
-  it("expands only the selected reservation id", () => {
-    const next = setThreadExpanded({ 10: true }, 20, true);
-    expect(next).toEqual({ 10: true, 20: true });
-    expect(setThreadExpanded(next, 20, false)).toEqual({ 10: true });
+  it("uses accordion: one open id, same click closes", () => {
+    expect(nextExpandedId(null, 10)).toBe(10);
+    expect(nextExpandedId(10, 10)).toBeNull();
+    expect(nextExpandedId(10, 20)).toBe(20);
+  });
+
+  it("shows a chevron on every valid reservation row, not overflow or preview text", () => {
+    expect(shouldShowThreadChevron(798)).toBe(true);
+    expect(shouldShowThreadChevron(0)).toBe(false);
+    expect(shouldShowThreadChevron(Number.NaN)).toBe(false);
+  });
+
+  it("builds a DB-only timeline URL with sync=0", () => {
+    const url = buildReservationMessagesUrl(798);
+    expect(url).toBe("/api/stay/reception/reservations/798/messages/?sync=0");
+    expect(url).not.toContain("sync=1");
+  });
+
+  it("refetches the open timeline only when last_message_at changes", () => {
+    const key = timelineCacheKey(798, "2026-08-14T00:04:00+00:00");
+    expect(shouldRefetchOpenTimeline(key, key)).toBe(false);
+    expect(
+      shouldRefetchOpenTimeline(key, timelineCacheKey(798, "2026-08-14T00:10:00+00:00")),
+    ).toBe(true);
+  });
+
+  it("ignores a stale timeline response for a previous card or unmount", () => {
+    expect(
+      isStaleTimelineResponse({ requestId: 1, activeRequestId: 2, unmounted: false }),
+    ).toBe(true);
+    expect(
+      isStaleTimelineResponse({ requestId: 2, activeRequestId: 2, unmounted: true }),
+    ).toBe(true);
+    expect(
+      isStaleTimelineResponse({ requestId: 2, activeRequestId: 2, unmounted: false }),
+    ).toBe(false);
+  });
+
+  it("does not store a failed timeline fetch as a cache hit", () => {
+    expect(shouldStoreTimelineCache(true)).toBe(true);
+    expect(shouldStoreTimelineCache(false)).toBe(false);
+  });
+
+  it("clears expandedId when the thread leaves the inbox page", () => {
+    expect(expandedIdIfVisible(10, [10, 20])).toBe(10);
+    expect(expandedIdIfVisible(10, [20, 30])).toBeNull();
+    expect(expandedIdIfVisible(null, [10])).toBeNull();
   });
 
   it("resets expanded cards on page or filter change, not on poll", () => {

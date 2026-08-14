@@ -16,8 +16,9 @@ import {
   formatThreadMessageTime,
   inboxPagination,
   inboxViewState,
+  expandedIdIfVisible,
+  nextExpandedId,
   reservationCardLinkProps,
-  setThreadExpanded,
   shouldRunInboxPoll,
   shouldStartInboxFetch,
   uniqueThreadChannels,
@@ -44,7 +45,7 @@ export default function MessagesInboxPage() {
     needsReply: false,
     arrivingToday: false,
   });
-  const [expandedById, setExpandedById] = useState<Record<number, boolean>>({});
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const inflightRef = useRef(false);
   const requestSeqRef = useRef(0);
 
@@ -79,8 +80,15 @@ export default function MessagesInboxPage() {
         if (!res.ok) throw new Error(t("loadFailed"));
         const data = (await res.json()) as MessageThreadsListResponse;
         if (seq !== requestSeqRef.current) return;
-        setThreads(data.threads ?? []);
+        const rows = data.threads ?? [];
+        setThreads(rows);
         setTotal(Number.isFinite(data.total) ? data.total : 0);
+        setExpandedId((current) =>
+          expandedIdIfVisible(
+            current,
+            rows.map((row) => row.reservation_id),
+          ),
+        );
       } catch (err) {
         if (seq !== requestSeqRef.current) return;
         if (!background) {
@@ -105,7 +113,7 @@ export default function MessagesInboxPage() {
   }, [loadThreads]);
 
   useEffect(() => {
-    setExpandedById({});
+    setExpandedId(null);
   }, [filters.arrivingToday, filters.needsReply, filters.page]);
 
   useEffect(() => {
@@ -229,21 +237,15 @@ export default function MessagesInboxPage() {
                     </p>
                     <span className="sr-only">{t("openReservation")}</span>
                   </a>
-                  {thread.last_message_preview ? (
-                    <MessageThreadPreview
-                      preview={thread.last_message_preview}
-                      expanded={Boolean(expandedById[thread.reservation_id])}
-                      onToggle={() =>
-                        setExpandedById((current) =>
-                          setThreadExpanded(
-                            current,
-                            thread.reservation_id,
-                            !current[thread.reservation_id],
-                          ),
-                        )
-                      }
-                    />
-                  ) : null}
+                  <MessageThreadPreview
+                    reservationId={thread.reservation_id}
+                    preview={thread.last_message_preview || ""}
+                    lastMessageAt={thread.last_message_at}
+                    expanded={expandedId === thread.reservation_id}
+                    onToggle={() =>
+                      setExpandedId((current) => nextExpandedId(current, thread.reservation_id))
+                    }
+                  />
                 </article>
               );
             })
