@@ -164,6 +164,55 @@ export function shouldRunInboxPoll(opts: {
   return true;
 }
 
+export type InboxPreviewFilters = {
+  page: number;
+  needsReply: boolean;
+  arrivingToday: boolean;
+};
+
+export function previewOverflows(box: { scrollHeight: number; clientHeight: number } | null): boolean {
+  if (!box) return false;
+  return box.scrollHeight > box.clientHeight;
+}
+
+export function shouldShowPreviewToggle(opts: { overflows: boolean; expanded: boolean }): boolean {
+  return opts.expanded || opts.overflows;
+}
+
+export function previewClampClass(expanded: boolean): string {
+  return expanded ? "whitespace-pre-wrap" : "line-clamp-3 whitespace-pre-wrap";
+}
+
+export function setThreadExpanded(
+  map: Record<number, boolean>,
+  reservationId: number,
+  expanded: boolean,
+): Record<number, boolean> {
+  if (!expanded) {
+    const next = { ...map };
+    delete next[reservationId];
+    return next;
+  }
+  return { ...map, [reservationId]: true };
+}
+
+export function shouldResetPreviewExpanded(
+  prev: InboxPreviewFilters,
+  next: InboxPreviewFilters,
+): boolean {
+  return (
+    prev.page !== next.page ||
+    prev.needsReply !== next.needsReply ||
+    prev.arrivingToday !== next.arrivingToday
+  );
+}
+
+/** API inbox preview is truncated at 200 chars — not the original full message. */
+export function isApiPreviewTruncated(preview: string): boolean {
+  const text = preview.trim();
+  return text.endsWith("...") || text.length >= 200;
+}
+
 export function handlePreviewUrlClick(event: { stopPropagation: () => void }): void {
   event.stopPropagation();
 }

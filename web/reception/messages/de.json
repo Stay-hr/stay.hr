@@ -426,6 +426,8 @@
     "nextPage": "Weiter",
     "pageStatus": "Seite {page} von {pages}",
     "openReservation": "Reservierung öffnen",
+    "expandPreview": "Erweitern",
+    "collapsePreview": "Einklappen",
     "channelBooking": "Channex",
     "channelEmail": "Mail",
     "channelWhatsapp": "WhatsApp"

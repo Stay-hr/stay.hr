@@ -15,7 +15,13 @@ import {
   handlePreviewUrlClick,
   inboxPagination,
   inboxViewState,
+  isApiPreviewTruncated,
   isPreviewUrlClickTarget,
+  previewClampClass,
+  previewOverflows,
+  setThreadExpanded,
+  shouldResetPreviewExpanded,
+  shouldShowPreviewToggle,
   reservationCardLinkProps,
   reservationMessagesHref,
   scrollToMessagesHash,
@@ -230,6 +236,53 @@ describe("LinkifiedText http(s) only", () => {
 
   it("does not treat relative /reservations/123 as a link", () => {
     expect(extractHttpUrls("Open /reservations/123#messages please")).toEqual([]);
+  });
+});
+
+describe("preview expand / collapse", () => {
+  it("does not show a toggle when the clamped box has no overflow", () => {
+    expect(previewOverflows({ scrollHeight: 48, clientHeight: 48 })).toBe(false);
+    expect(shouldShowPreviewToggle({ overflows: false, expanded: false })).toBe(false);
+  });
+
+  it("shows the chevron when scrollHeight exceeds clientHeight", () => {
+    expect(previewOverflows({ scrollHeight: 120, clientHeight: 48 })).toBe(true);
+    expect(shouldShowPreviewToggle({ overflows: true, expanded: false })).toBe(true);
+  });
+
+  it("keeps the toggle after expand so the card can collapse again", () => {
+    expect(shouldShowPreviewToggle({ overflows: true, expanded: true })).toBe(true);
+    expect(previewClampClass(true)).not.toContain("line-clamp-3");
+    expect(previewClampClass(false)).toContain("line-clamp-3");
+  });
+
+  it("expands only the selected reservation id", () => {
+    const next = setThreadExpanded({ 10: true }, 20, true);
+    expect(next).toEqual({ 10: true, 20: true });
+    expect(setThreadExpanded(next, 20, false)).toEqual({ 10: true });
+  });
+
+  it("resets expanded cards on page or filter change, not on poll", () => {
+    const current = { page: 1, needsReply: false, arrivingToday: false };
+    expect(shouldResetPreviewExpanded(current, current)).toBe(false);
+    expect(shouldResetPreviewExpanded(current, { ...current, page: 2 })).toBe(true);
+    expect(shouldResetPreviewExpanded(current, { ...current, needsReply: true })).toBe(true);
+    expect(shouldResetPreviewExpanded(current, { ...current, arrivingToday: true })).toBe(true);
+  });
+
+  it("stops propagation so the toggle does not open the reservation", () => {
+    const stopPropagation = vi.fn();
+    handlePreviewUrlClick({ stopPropagation });
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(reservationCardLinkProps(798).href).toBe("/reservations/798#messages");
+    expect(linkifiedAnchorProps("https://uzorita-sibenik.stay.hr/g/abc").target).toBe("_blank");
+  });
+
+  it("treats a 200-char API preview as truncated, not the full original message", () => {
+    const preview = `${"x".repeat(197)}...`;
+    expect(preview.length).toBe(200);
+    expect(isApiPreviewTruncated(preview)).toBe(true);
+    expect(isApiPreviewTruncated("Merci pour votre réservation !")).toBe(false);
   });
 });
 
