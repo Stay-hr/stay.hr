@@ -174,6 +174,30 @@ export type GuestMessageComposeResponse = {
   channels: GuestMessageChannels;
 };
 
+export type MessageThread = {
+  reservation_id: number;
+  booker_name: string;
+  check_in: string | null;
+  check_out: string | null;
+  room_name: string;
+  status: string;
+  arrives_today: boolean;
+  last_message_at: string | null;
+  last_message_preview: string;
+  last_channel: string;
+  last_channels: string[];
+  last_direction: string;
+  needs_reply: boolean;
+};
+
+export type MessageThreadsListResponse = {
+  page: number;
+  page_size: number;
+  total: number;
+  needs_reply_count: number;
+  threads: MessageThread[];
+};
+
 export type ChannexReviewScore = {
   category: string;
   score: number;

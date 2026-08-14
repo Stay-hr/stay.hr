@@ -10,7 +10,11 @@ import {
   settingsSurfaceEnabled,
   type PropertySettingsRoot,
 } from "@/lib/propertySettings";
-import type { AppConfig } from "@/lib/types";
+import {
+  buildNeedsReplyBadgeUrl,
+  formatNeedsReplyBadgeCount,
+} from "@/lib/messageInbox";
+import type { AppConfig, MessageThreadsListResponse } from "@/lib/types";
 
 type Props = {
   tenantName?: string;
@@ -24,6 +28,7 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
   const [featureFlags, setFeatureFlags] = useState(featureFlagsProp);
   const [channelManager, setChannelManager] = useState<string | undefined>();
   const [settingsEnabled, setSettingsEnabled] = useState(false);
+  const [needsReplyBadge, setNeedsReplyBadge] = useState<string | null>(null);
 
   useEffect(() => {
     if (featureFlagsProp) {
@@ -44,6 +49,20 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
       })
       .catch(() => setSettingsEnabled(false));
   }, [featureFlagsProp]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(buildNeedsReplyBadgeUrl())
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: MessageThreadsListResponse | null) => {
+        if (cancelled || !data) return;
+        setNeedsReplyBadge(formatNeedsReplyBadgeCount(data.needs_reply_count));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -90,6 +109,16 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
               {t("reviews")}
             </Link>
           ) : null}
+          <Link href="/messages" className={linkClass("/messages")}>
+            <span className="inline-flex items-center gap-1.5">
+              {t("messages")}
+              {needsReplyBadge ? (
+                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[10px] font-semibold leading-4 text-white">
+                  {needsReplyBadge}
+                </span>
+              ) : null}
+            </span>
+          </Link>
           <Link href="/reports/property-financial" className={linkClass("/reports/property-financial")}>
             {t("reports")}
           </Link>

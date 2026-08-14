@@ -19,6 +19,7 @@
     "calendar": "Kalendar",
     "newReservation": "Nova rezervacija",
     "reviews": "Recenzije",
+    "messages": "Poruke",
     "reports": "Izvještaji",
     "settings": "Postavke",
     "whatsapp": "WhatsApp",
@@ -415,6 +416,22 @@
     "intentCheckin": "Check-in",
     "intentReply": "Odgovor",
     "intentCustom": "Prilagođeno"
+  },
+  "messageInbox": {
+    "title": "Poruke",
+    "empty": "Nema poruka za prikaz.",
+    "loadFailed": "Učitavanje poruka nije uspjelo.",
+    "filterNeedsReply": "Čeka odgovor",
+    "filterArrivingToday": "Dolazak danas",
+    "needsReply": "Čeka odgovor",
+    "arrivingToday": "Dolazak danas",
+    "prevPage": "Prethodna",
+    "nextPage": "Sljedeća",
+    "pageStatus": "Stranica {page} od {pages}",
+    "openReservation": "Otvori rezervaciju",
+    "channelBooking": "Channex",
+    "channelEmail": "Mail",
+    "channelWhatsapp": "WhatsApp"
   },
   "guestReviews": {
     "title": "Recenzije gosta",

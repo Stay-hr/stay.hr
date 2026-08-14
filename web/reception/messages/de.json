@@ -16,6 +16,7 @@
     "reception": "Rezeption",
     "timeline": "Timeline",
     "calendar": "Kalender",
+    "messages": "Nachrichten",
     "settings": "Einstellungen",
     "logout": "Abmelden"
   },
@@ -412,5 +413,21 @@
         "title": "Users"
       }
     }
+  },
+  "messageInbox": {
+    "title": "Nachrichten",
+    "empty": "Keine Nachrichten vorhanden.",
+    "loadFailed": "Nachrichten konnten nicht geladen werden.",
+    "filterNeedsReply": "Antwort ausstehend",
+    "filterArrivingToday": "Anreise heute",
+    "needsReply": "Antwort ausstehend",
+    "arrivingToday": "Anreise heute",
+    "prevPage": "Zurück",
+    "nextPage": "Weiter",
+    "pageStatus": "Seite {page} von {pages}",
+    "openReservation": "Reservierung öffnen",
+    "channelBooking": "Channex",
+    "channelEmail": "Mail",
+    "channelWhatsapp": "WhatsApp"
   }
 }
