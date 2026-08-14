@@ -431,6 +431,9 @@
     "openReservation": "Otvori rezervaciju",
     "expandPreview": "Proširi",
     "collapsePreview": "Sažmi",
+    "timelineLoadFailed": "Učitavanje razgovora nije uspjelo.",
+    "retry": "Pokušaj ponovno",
+    "statusFailed": "Neuspjelo",
     "channelBooking": "Channex",
     "channelEmail": "Mail",
     "channelWhatsapp": "WhatsApp"

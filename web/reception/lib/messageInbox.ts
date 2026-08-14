@@ -38,6 +38,56 @@ export function reservationMessagesHref(reservationId: number): string {
   return `/reservations/${reservationId}#${MESSAGES_SECTION_ID}`;
 }
 
+export function buildReservationMessagesUrl(reservationId: number): string {
+  return `/api/stay/reception/reservations/${reservationId}/messages/?sync=0`;
+}
+
+export function threadWellId(reservationId: number): string {
+  return `message-thread-${reservationId}`;
+}
+
+export function shouldShowThreadChevron(reservationId: number): boolean {
+  return Number.isFinite(reservationId) && reservationId > 0;
+}
+
+export function nextExpandedId(current: number | null, clicked: number): number | null {
+  return current === clicked ? null : clicked;
+}
+
+export function timelineCacheKey(reservationId: number, lastMessageAt: string | null | undefined): string {
+  return `${reservationId}:${lastMessageAt ?? ""}`;
+}
+
+export function shouldRefetchOpenTimeline(
+  cachedAt: string | null | undefined,
+  currentAt: string | null | undefined,
+): boolean {
+  return (cachedAt ?? "") !== (currentAt ?? "");
+}
+
+export function expandedIdIfVisible(
+  expandedId: number | null,
+  reservationIds: Iterable<number>,
+): number | null {
+  if (expandedId == null) return null;
+  for (const id of reservationIds) {
+    if (id === expandedId) return expandedId;
+  }
+  return null;
+}
+
+export function isStaleTimelineResponse(opts: {
+  requestId: number;
+  activeRequestId: number;
+  unmounted: boolean;
+}): boolean {
+  return opts.unmounted || opts.requestId !== opts.activeRequestId;
+}
+
+export function shouldStoreTimelineCache(ok: boolean): boolean {
+  return ok;
+}
+
 export function reservationCardLinkProps(reservationId: number): {
   href: string;
   target: "_blank";
