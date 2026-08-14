@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B (membership, media-at-ingest, ingest idempotency/version, observability) is implemented. Phase C client GET contract is closed: Reception web and Hospira ([Stay-hr/hospira_flutter](https://github.com/Stay-hr/hospira_flutter) #1, `4273268`) use DB-only GET (`sync=0` or omitted). Backend still ignores `sync` so older Hospira builds remain compatible. Phase D **D1 schema** and **D2 dual-write** are on `main`. **D3** backfill is on `main` (`backfill_canonical_guest_messages`). **D4** adds a tenant read-flag (`read_canonical_at`) so GET/inbox can read visible `GuestMessage` with the same JSON shape plus additive `canonical_id`; default GET stays on raw `timeline_for_reservation()` until `--enable`.
+**Accepted** (2026-08-13) — conversation/inbox architecture locked. Phase A (DB-first GET) is on `main`. Phase B (membership, media-at-ingest, ingest idempotency/version, observability) is implemented. Phase C client GET contract is closed: Reception web and Hospira ([Stay-hr/hospira_flutter](https://github.com/Stay-hr/hospira_flutter) #1, `4273268`) use DB-only GET (`sync=0` or omitted). Backend still ignores `sync` so older Hospira builds remain compatible. Phase D **D1–D3** are on `main`. **D4** read cutover is **closed for `uzorita`** (2026-08-14): PR [#87](https://github.com/Stay-hr/stay.hr/pull/87), `376fe9f`, then tenant `--enable` after live validate + JSON parity. `uzorita` GET/inbox read visible `GuestMessage` with the same JSON shape plus additive `canonical_id`; synthetic `id` stays. Tenants without `read_canonical_at` still read raw `timeline_for_reservation()`. Deploy does not auto-enable.
 
 Canonical identity: `GuestMessage` is the logical UI row; `GuestMessageSource` holds 1..N external/raw identities. `provider_message_id` is nullable; missing provider IDs must not be fabricated.
 
@@ -501,10 +501,17 @@ client event → sync=1/auto → provider reconcile
 
 **D4 (read cutover):** `set_canonical_guest_message_read --tenant-slug` (`--parity` / `--validate` / `--enable` / `--disable`). Synthetic `id` stays; additive `canonical_id` is `GuestMessage.pk`. Hidden WA/outbound mirrors never become the primary display source. `--enable` requires D3 complete, live validation, and JSON parity. Deploy does not auto-enable.
 
+**D4 closed for `uzorita` (2026-08-14).** Production lock:
+
+- GET/inbox read canonical `GuestMessage`; D2 continues dual-write of new rows; raw tables remain the audit source.
+- Timeline parity 2038/2038 (276 reservations); inbox 276 threads with unchanged membership, order, and thread fields.
+- `read_canonical_at=2026-08-14T03:57:08.034445+00:00`; post-enable GET/inbox/UI smoke passed (reservation 13).
+- Not in this lock (need a later signal): `--disable`, other tenants, translation re-key, breaking `id`, D7 hide-loser.
+
 - Add `Conversation` + `GuestMessage` + `GuestMessageSource` as specified in §7; dual-write from ingest/send; backfill by **merged groups**, not 1:1 raw→canonical.
-- Switch `timeline_for_reservation` to `GuestMessage`; then stop UI reads of raw tables.
+- Switch `timeline_for_reservation` to `GuestMessage` **per tenant** when `read_canonical_at` is set (`uzorita` done); other tenants still read raw tables.
 - Heuristic echo merge becomes “attach `GuestMessageSource`”, not a second canonical row.
-- Replace synthetic ids behind a compatible API.
+- Replace synthetic ids behind a compatible API (later; `canonical_id` is the additive bridge).
 - Pagination/search may land here, not before.
 
 #### Phase E — Delivery
@@ -598,7 +605,9 @@ Phase B is done:
 3. ~~Idempotency / version tests~~ (done).
 4. ~~Observability (`last_webhook_at` / `last_poll_at` / lag) on ``conversation``, not ADR 0010 ``messaging``~~ (done).
 
-Phase C client GET contract is done (web already DB-only; Hospira #1 merged). Do not start Phase D models in a Phase C docs/cleanup PR.
+Phase C client GET contract is done (web already DB-only; Hospira #1 merged).
+
+Phase D: D1–D3 on `main`; D4 closed for `uzorita` only. This docs lock does not enable other tenants, disable `uzorita`, re-key translations, break synthetic `id`, or start D7 / Phase E.
 
 ---
 
