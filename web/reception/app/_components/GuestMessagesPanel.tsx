@@ -13,7 +13,8 @@ import type {
   GuestMessageComposeResponse,
   GuestMessageTimelineItem,
 } from "@/lib/types";
-import { LinkifiedText } from "@/lib/linkifyText";
+import { MessageBodyWithTranslate } from "@/app/_components/MessageBodyWithTranslate";
+import { MessageTranslateCacheProvider } from "@/app/_components/MessageTranslateCacheProvider";
 import { MESSAGES_SECTION_ID, scrollToMessagesHash } from "@/lib/messageInbox";
 import { useReservationVersionWatch } from "@/lib/useReservationVersionWatch";
 
@@ -390,7 +391,8 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   }
 
   return (
-    <section id={MESSAGES_SECTION_ID} className="scroll-mt-4 space-y-3">
+    <MessageTranslateCacheProvider>
+      <section id={MESSAGES_SECTION_ID} className="scroll-mt-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-semibold">{t("title")}</h2>
         <button
@@ -436,14 +438,19 @@ export function GuestMessagesPanel({ reservationId }: Props) {
                       </span>
                     ) : null}
                   </div>
-                  <LinkifiedText
+                  <MessageBodyWithTranslate
+                    reservationId={reservationId}
+                    item={item}
                     className="whitespace-pre-wrap"
                     linkClassName={
                       outbound ? "text-white underline" : "text-stay-blue underline"
                     }
-                  >
-                    {item.body_text}
-                  </LinkifiedText>
+                    controlClassName={
+                      outbound
+                        ? "text-xs font-medium text-white/90 hover:underline"
+                        : "text-xs font-medium text-stay-blue hover:underline"
+                    }
+                  />
                   {item.document_intake_job_id ? (
                     <p className="mt-1 text-xs opacity-80">
                       OCR #{item.document_intake_job_id}
@@ -545,6 +552,7 @@ export function GuestMessagesPanel({ reservationId }: Props) {
 
       {actionMessage ? <p className="text-sm text-green-700">{actionMessage}</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-    </section>
+      </section>
+    </MessageTranslateCacheProvider>
   );
 }

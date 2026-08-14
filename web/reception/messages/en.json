@@ -415,7 +415,13 @@
     "hintCustomPlaceholder": "Describe what you want to tell the guest…",
     "intentCheckin": "Check-in",
     "intentReply": "Reply",
-    "intentCustom": "Custom"
+    "intentCustom": "Custom",
+    "translateAction": "Translate",
+    "showOriginal": "Show original",
+    "showTranslation": "Show translation",
+    "translatedLabel": "Auto-translated (OpenAI)",
+    "translateFailed": "Translation failed.",
+    "retry": "Try again"
   },
   "messageInbox": {
     "title": "Messages",

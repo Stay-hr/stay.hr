@@ -415,7 +415,13 @@
     "hintCustomPlaceholder": "Opišite što želite reći gostu…",
     "intentCheckin": "Check-in",
     "intentReply": "Odgovor",
-    "intentCustom": "Prilagođeno"
+    "intentCustom": "Prilagođeno",
+    "translateAction": "Prevedi",
+    "showOriginal": "Prikaži original",
+    "showTranslation": "Prikaži prijevod",
+    "translatedLabel": "Automatski prijevod (OpenAI)",
+    "translateFailed": "Prijevod nije uspio.",
+    "retry": "Pokušaj ponovno"
   },
   "messageInbox": {
     "title": "Poruke",

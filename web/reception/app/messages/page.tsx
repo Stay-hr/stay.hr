@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { MessageThreadPreview } from "@/app/_components/MessageThreadPreview";
+import { MessageTranslateCacheProvider } from "@/app/_components/MessageTranslateCacheProvider";
 import { ReceptionNav } from "@/app/_components/ReceptionNav";
 import { formatStayDateRange } from "@/lib/locale-format";
 import {
@@ -152,7 +153,8 @@ export default function MessagesInboxPage() {
   const dash = tc("dash");
 
   return (
-    <div className="min-h-screen">
+    <MessageTranslateCacheProvider>
+      <div className="min-h-screen">
       <ReceptionNav tenantName={tenantName} />
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -282,6 +284,7 @@ export default function MessagesInboxPage() {
           </div>
         ) : null}
       </main>
-    </div>
+      </div>
+    </MessageTranslateCacheProvider>
   );
 }
