@@ -45,8 +45,7 @@ export function RoomCalendarRangeControls({
     onRangeStartChange(floor);
   }
 
-  function toggleHistory() {
-    const next = !historyEnabled;
+  function setHistory(next: boolean) {
     onHistoryEnabledChange(next);
     if (!next && rangeStart < floor) {
       onRangeStartChange(floor);
@@ -85,19 +84,16 @@ export function RoomCalendarRangeControls({
       >
         {t("today")}
       </button>
-      <button
-        type="button"
-        className={
-          historyEnabled
-            ? "btn-ghost border-stay-navy font-semibold"
-            : "btn-ghost"
-        }
-        aria-pressed={historyEnabled}
-        aria-label={t("historyAria")}
-        onClick={toggleHistory}
-      >
-        {t("history")}
-      </button>
+      <label className="inline-flex items-center gap-1.5 text-sm text-stay-navy">
+        <input
+          type="checkbox"
+          checked={historyEnabled}
+          onChange={(e) => setHistory(e.target.checked)}
+          aria-label={t("historyAria")}
+          className="h-3.5 w-3.5 shrink-0 rounded border-stay-border text-stay-blue focus:ring-stay-blue"
+        />
+        <span>{t("history")}</span>
+      </label>
     </>
   );
 }

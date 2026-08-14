@@ -39,7 +39,7 @@ function Harness({
 }
 
 function historyToggle() {
-  return screen.getByRole("button", { name: hr.calendar.historyAria });
+  return screen.getByRole("checkbox", { name: hr.calendar.historyAria });
 }
 
 function prevButton() {
@@ -59,22 +59,19 @@ function rangeStart() {
 }
 
 describe("RoomCalendarRangeControls", () => {
-  it("toggles aria-pressed and snaps back to the floor when history is turned off in the past", () => {
+  it("toggles the history checkbox and snaps back to the floor when unchecked in the past", () => {
     render(<Harness />);
 
-    expect(historyToggle().getAttribute("aria-pressed")).toBe("false");
-    expect(historyToggle().className).not.toMatch(/font-semibold/);
+    expect(historyToggle()).toHaveProperty("checked", false);
 
     fireEvent.click(historyToggle());
-    expect(historyToggle().getAttribute("aria-pressed")).toBe("true");
-    expect(historyToggle().className).toMatch(/font-semibold/);
-    expect(historyToggle().className).toMatch(/border-stay-navy/);
+    expect(historyToggle()).toHaveProperty("checked", true);
 
     fireEvent.click(prevButton());
     expect(rangeStart()).toBe(addDaysIso(FLOOR, -30));
 
     fireEvent.click(historyToggle());
-    expect(historyToggle().getAttribute("aria-pressed")).toBe("false");
+    expect(historyToggle()).toHaveProperty("checked", false);
     expect(rangeStart()).toBe(FLOOR);
   });
 
