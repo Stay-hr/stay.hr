@@ -33,9 +33,19 @@ import {
   reservationMessagesHref,
   scrollToMessagesHash,
   shouldRunInboxPoll,
+  shouldRunTimelineNeedsReplyPoll,
   shouldStartInboxFetch,
   uniqueThreadChannels,
+  TIMELINE_NEEDS_REPLY_PAGE_SIZE,
+  buildTimelineNeedsReplyUrl,
+  needsReplyByReservationId,
+  nextNeedsReplyMap,
+  shouldApplyNeedsReplyThreadsResult,
+  shouldShowTimelineNeedsReply,
+  shouldShowTimelineNeedsReplyPreview,
+  timelineReservationHref,
 } from "@/lib/messageInbox";
+import type { MessageThread } from "@/lib/types";
 
 describe("message-threads request", () => {
   it("always includes sync=0 and never sync=1", () => {
@@ -333,6 +343,124 @@ describe("preview expand / collapse", () => {
     expect(preview.length).toBe(200);
     expect(isApiPreviewTruncated(preview)).toBe(true);
     expect(isApiPreviewTruncated("Merci pour votre réservation !")).toBe(false);
+  });
+});
+
+function threadStub(overrides: Partial<MessageThread> = {}): MessageThread {
+  return {
+    reservation_id: 12,
+    booker_name: "Ewgeni Fiterer",
+    check_in: "2026-08-10",
+    check_out: "2026-08-19",
+    room_name: "Luxury Room Uzorita",
+    status: "checked_in",
+    arrives_today: false,
+    last_message_at: "2026-08-14T08:00:00Z",
+    last_message_preview: "Hello",
+    last_channel: "whatsapp",
+    last_channels: ["whatsapp"],
+    last_direction: "inbound",
+    needs_reply: true,
+    ...overrides,
+  };
+}
+
+describe("timeline needs-reply overlay", () => {
+  it("builds a needs_reply-only URL with page_size 100", () => {
+    const url = buildTimelineNeedsReplyUrl();
+    expect(url).toContain("needs_reply=1");
+    expect(url).toContain(`page_size=${TIMELINE_NEEDS_REPLY_PAGE_SIZE}`);
+    expect(url).toContain("sync=0");
+  });
+
+  it("maps needs_reply threads with optional preview", () => {
+    const map = needsReplyByReservationId([
+      threadStub({ reservation_id: 12, last_message_preview: "  Bok  " }),
+      threadStub({ reservation_id: 13, needs_reply: false, last_message_preview: "ignored" }),
+    ]);
+    expect(shouldShowTimelineNeedsReply(12, map)).toBe(true);
+    expect(shouldShowTimelineNeedsReplyPreview(map.get(12))).toBe(true);
+    expect(map.get(12)).toEqual({ preview: "Bok" });
+    expect(shouldShowTimelineNeedsReply(13, map)).toBe(false);
+  });
+
+  it("keeps the badge when needs_reply is true and preview is empty", () => {
+    const map = needsReplyByReservationId([
+      threadStub({ reservation_id: 12, last_message_preview: "   " }),
+    ]);
+    expect(map.has(12)).toBe(true);
+    expect(map.get(12)).toEqual({ preview: null });
+    expect(shouldShowTimelineNeedsReply(12, map)).toBe(true);
+    expect(shouldShowTimelineNeedsReplyPreview(map.get(12))).toBe(false);
+  });
+
+  it("links to #messages only when the card needs a reply", () => {
+    expect(timelineReservationHref(12, true)).toBe("/reservations/12#messages");
+    expect(timelineReservationHref(12, false)).toBe("/reservations/12");
+  });
+
+  it("does not apply a slower older threads response", () => {
+    expect(
+      shouldApplyNeedsReplyThreadsResult({
+        requestId: 1,
+        activeRequestId: 2,
+        unmounted: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldApplyNeedsReplyThreadsResult({
+        requestId: 2,
+        activeRequestId: 2,
+        unmounted: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldApplyNeedsReplyThreadsResult({
+        requestId: 2,
+        activeRequestId: 2,
+        unmounted: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("replaces the map on a successful poll so a replied thread loses its badge", () => {
+    const previous = needsReplyByReservationId([threadStub({ reservation_id: 12 })]);
+    const afterReply = needsReplyByReservationId([]);
+    const keptOnFailure = nextNeedsReplyMap(previous, null);
+    const replaced = nextNeedsReplyMap(previous, afterReply);
+    expect(shouldShowTimelineNeedsReply(12, keptOnFailure)).toBe(true);
+    expect(shouldShowTimelineNeedsReply(12, replaced)).toBe(false);
+  });
+
+  it("polls the home timeline only when visible and idle", () => {
+    expect(
+      shouldRunTimelineNeedsReplyPoll({
+        pathname: "/",
+        visibilityState: "visible",
+        requestInFlight: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRunTimelineNeedsReplyPoll({
+        pathname: "/messages",
+        visibilityState: "visible",
+        requestInFlight: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRunTimelineNeedsReplyPoll({
+        pathname: "/",
+        visibilityState: "hidden",
+        requestInFlight: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRunTimelineNeedsReplyPoll({
+        pathname: "/",
+        visibilityState: "visible",
+        requestInFlight: true,
+      }),
+    ).toBe(false);
   });
 });
 

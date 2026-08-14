@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { BookingPdfImportForm } from "@/app/_components/BookingPdfImportForm";
 import { CountryFlag } from "@/app/_components/CountryFlag";
@@ -16,8 +16,25 @@ import {
 } from "@/lib/evisitorTimelineBadge";
 import { useMonthLabel, useReservationStatusLabel } from "@/lib/i18n-ui";
 import { formatStayDateRange, stayNightsCount } from "@/lib/locale-format";
+import {
+  MESSAGE_INBOX_POLL_MS,
+  buildTimelineNeedsReplyUrl,
+  createInboxPollController,
+  needsReplyByReservationId,
+  shouldApplyNeedsReplyThreadsResult,
+  shouldRunTimelineNeedsReplyPoll,
+  shouldShowTimelineNeedsReply,
+  shouldShowTimelineNeedsReplyPreview,
+  timelineReservationHref,
+  type TimelineNeedsReplyEntry,
+} from "@/lib/messageInbox";
 import { formatReservationRoomLine } from "@/lib/reservationRoomLabel";
-import type { AppConfig, BookingPdfImportResult, Reservation } from "@/lib/types";
+import type {
+  AppConfig,
+  BookingPdfImportResult,
+  MessageThreadsListResponse,
+  Reservation,
+} from "@/lib/types";
 import { reservationStatusClass } from "@/lib/reservationUi";
 import { singlePropertySlug } from "@/lib/app-config";
 import { useSyncVersionsPoll } from "@/lib/useSyncVersionsPoll";
@@ -37,11 +54,15 @@ export default function TimelinePage() {
   const t = useTranslations("timeline");
   const tc = useTranslations("common");
   const tr = useTranslations("reservation");
+  const tm = useTranslations("messageInbox");
   const locale = useLocale();
   const statusLabel = useReservationStatusLabel();
   const monthLabel = useMonthLabel();
   const [tenantName, setTenantName] = useState("");
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [needsReplyById, setNeedsReplyById] = useState<Map<number, TimelineNeedsReplyEntry>>(
+    () => new Map(),
+  );
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -52,6 +73,9 @@ export default function TimelinePage() {
   const [evisitorErrorReservation, setEvisitorErrorReservation] = useState<Reservation | null>(
     null,
   );
+  const needsReplyReqRef = useRef(0);
+  const needsReplyInflightRef = useRef(false);
+  const needsReplyUnmountedRef = useRef(false);
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
     const background = Boolean(opts?.background);
@@ -115,9 +139,76 @@ export default function TimelinePage() {
     }
   }, [overviewMode, search, status, t, tc]);
 
+  const loadNeedsReply = useCallback(async (opts?: { background?: boolean }) => {
+    const background = Boolean(opts?.background);
+    if (background && needsReplyInflightRef.current) return;
+    const requestId = ++needsReplyReqRef.current;
+    needsReplyInflightRef.current = true;
+    try {
+      const res = await fetch(buildTimelineNeedsReplyUrl());
+      if (!res.ok) throw new Error("threads");
+      const data = (await res.json()) as MessageThreadsListResponse;
+      if (
+        !shouldApplyNeedsReplyThreadsResult({
+          requestId,
+          activeRequestId: needsReplyReqRef.current,
+          unmounted: needsReplyUnmountedRef.current,
+        })
+      ) {
+        return;
+      }
+      setNeedsReplyById(needsReplyByReservationId(data.threads ?? []));
+    } catch {
+      // Keep the last successful map. Do not surface a timeline error.
+    } finally {
+      if (requestId === needsReplyReqRef.current) {
+        needsReplyInflightRef.current = false;
+      }
+    }
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    needsReplyUnmountedRef.current = false;
+    void loadNeedsReply();
+    return () => {
+      needsReplyUnmountedRef.current = true;
+    };
+  }, [loadNeedsReply]);
+
+  useEffect(() => {
+    const stop = createInboxPollController({
+      intervalMs: MESSAGE_INBOX_POLL_MS,
+      shouldTick: () =>
+        shouldRunTimelineNeedsReplyPoll({
+          pathname: "/",
+          visibilityState: document.visibilityState,
+          requestInFlight: needsReplyInflightRef.current,
+        }),
+      onTick: () => {
+        void loadNeedsReply({ background: true });
+      },
+    });
+    const onVisibility = () => {
+      if (
+        shouldRunTimelineNeedsReplyPoll({
+          pathname: "/",
+          visibilityState: document.visibilityState,
+          requestInFlight: needsReplyInflightRef.current,
+        })
+      ) {
+        void loadNeedsReply({ background: true });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [loadNeedsReply]);
 
   useSyncVersionsPoll({
     onStale: () => {
@@ -174,7 +265,14 @@ export default function TimelinePage() {
               placeholder={t("searchPlaceholder")}
             />
           </div>
-          <button type="button" className="btn" onClick={() => void load()}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              void load();
+              void loadNeedsReply();
+            }}
+          >
             {tc("refresh")}
           </button>
           {properties.length > 1 ? (
@@ -244,10 +342,15 @@ export default function TimelinePage() {
                   r.check_out_date,
                 );
                 const nights = stayNightsCount(r.check_in_date, r.check_out_date);
+                const needsReply = shouldShowTimelineNeedsReply(r.id, needsReplyById);
+                const needsReplyEntry = needsReplyById.get(r.id);
+                const needsReplyPreview = shouldShowTimelineNeedsReplyPreview(needsReplyEntry)
+                  ? needsReplyEntry?.preview
+                  : null;
                 return (
                   <li key={r.id}>
                     <Link
-                      href={`/reservations/${r.id}`}
+                      href={timelineReservationHref(r.id, needsReply)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="card card-hover flex flex-wrap items-center justify-between gap-3 px-4 py-3"
@@ -265,6 +368,9 @@ export default function TimelinePage() {
                           nightsLabel={nights != null ? tc("nightsCount", { count: nights }) : null}
                           guestsLabel={tc("guestsCount", { count: r.guests_count })}
                         />
+                        {needsReplyPreview ? (
+                          <p className="line-clamp-1 min-w-0 text-sm text-muted">{needsReplyPreview}</p>
+                        ) : null}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         {arrivalLabel ? (
@@ -294,6 +400,9 @@ export default function TimelinePage() {
                               {evisitorLabel}
                             </span>
                           )
+                        ) : null}
+                        {needsReply ? (
+                          <span className="badge bg-red-600 text-white">{tm("needsReply")}</span>
                         ) : null}
                         <span className={`badge ${reservationStatusClass(r.status)}`}>
                           {statusLabel(r.status)}
