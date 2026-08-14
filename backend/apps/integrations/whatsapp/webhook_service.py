@@ -8,6 +8,7 @@ from typing import Any
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.communications.canonical_store import record_canonical_source
 from apps.communications.conversation_ingest_status import mark_conversation_ingest
 from apps.communications.models import GuestOutboundDeliveryStatus, GuestOutboundMessage
 from apps.integrations.models import IntegrationConfig, WhatsAppMessage
@@ -172,10 +173,15 @@ def record_inbound_whatsapp_message(
         )
     except IntegrityError:
         mark_conversation_ingest("whatsapp", "webhook")
+        existing = WhatsAppMessage.objects.filter(wamid=parsed.wamid).first()
+        if existing is not None and existing.reservation_id:
+            record_canonical_source(existing)
         return {"status": "duplicate", "wamid": parsed.wamid}
 
     mark_conversation_ingest("whatsapp", "webhook")
     if not created:
+        if row.reservation_id:
+            record_canonical_source(row)
         return {"status": "duplicate", "wamid": parsed.wamid}
 
     routing = route_inbound_message(message=row, integration=integration_row)
@@ -197,11 +203,14 @@ def record_business_app_echo(
     if not parsed.wamid:
         return {"status": "ignored", "reason": "missing_wamid"}
 
-    if WhatsAppMessage.objects.filter(wamid=parsed.wamid).exists():
+    existing = WhatsAppMessage.objects.filter(wamid=parsed.wamid).first()
+    if existing is not None:
         logger.debug(
             "Business app echo duplicate wamid=%s (message-level idempotency)",
             parsed.wamid,
         )
+        if existing.reservation_id:
+            record_canonical_source(existing)
         return {"status": "duplicate", "wamid": parsed.wamid}
 
     reservation, matched_by = resolve_business_app_echo_reservation(
@@ -228,8 +237,10 @@ def record_business_app_echo(
                 },
             )
             if not created:
+                record_canonical_source(row)
                 return {"status": "duplicate", "wamid": parsed.wamid}
 
+            record_canonical_source(row)
             if reservation is not None:
                 touch_reservation_version(
                     reservation.pk,
@@ -237,6 +248,9 @@ def record_business_app_echo(
                     reason="whatsapp_business_app_echo",
                 )
     except IntegrityError:
+        raced = WhatsAppMessage.objects.filter(wamid=parsed.wamid).first()
+        if raced is not None and raced.reservation_id:
+            record_canonical_source(raced)
         return {"status": "duplicate", "wamid": parsed.wamid}
 
     logger.info(

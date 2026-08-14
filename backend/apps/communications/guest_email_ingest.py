@@ -11,8 +11,10 @@ from datetime import datetime, timezone as dt_timezone
 from email.message import Message
 from email.utils import parseaddr, parsedate_to_datetime
 
+from django.db import transaction
 from django.utils import timezone
 
+from apps.communications.canonical_store import record_canonical_source
 from apps.communications.conversation_ingest_status import mark_conversation_ingest
 from apps.communications.models import GuestInboundMessage, GuestMessageChannel
 from apps.reservations.models import Reservation, ReservationVersionScope
@@ -211,11 +213,12 @@ def ingest_parsed_email(
     notify: bool = True,
 ) -> GuestInboundMessage | None:
     if parsed.message_id:
-        exists = GuestInboundMessage.objects.filter(
+        existing = GuestInboundMessage.objects.filter(
             tenant=tenant,
             message_id=parsed.message_id,
-        ).exists()
-        if exists:
+        ).first()
+        if existing is not None:
+            record_canonical_source(existing)
             return None
 
     reservation = match_reservation(tenant, parsed.booking_code)
@@ -226,17 +229,19 @@ def ingest_parsed_email(
         )
         return None
 
-    row = GuestInboundMessage.objects.create(
-        tenant=tenant,
-        reservation=reservation,
-        channel=GuestMessageChannel.EMAIL,
-        body_text=parsed.body_text,
-        from_email=parsed.from_email,
-        raw_from=parsed.raw_from,
-        subject=parsed.subject[:200],
-        message_id=parsed.message_id,
-        received_at=parsed.received_at,
-    )
+    with transaction.atomic():
+        row = GuestInboundMessage.objects.create(
+            tenant=tenant,
+            reservation=reservation,
+            channel=GuestMessageChannel.EMAIL,
+            body_text=parsed.body_text,
+            from_email=parsed.from_email,
+            raw_from=parsed.raw_from,
+            subject=parsed.subject[:200],
+            message_id=parsed.message_id,
+            received_at=parsed.received_at,
+        )
+        record_canonical_source(row)
 
     from apps.communications.guest_language_inbound import on_guest_inbound_message
 

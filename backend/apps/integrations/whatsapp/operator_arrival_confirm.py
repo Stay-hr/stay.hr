@@ -11,6 +11,7 @@ from django.core.cache import cache
 from django.db import connection, transaction
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical
 from apps.communications.message_threads_service import _room_name_for_reservation
 from apps.core.timezone import effective_guest_stated_arrival_at, property_local_now
 from apps.integrations.models import IntegrationConfig, WhatsAppMessage
@@ -311,7 +312,7 @@ def _send_interactive_arrival_prompt(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=reservation.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -375,7 +376,7 @@ def _send_operator_template_reengagement(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=reservation.tenant_id,
             integration=integration_row,
             reservation=reservation,

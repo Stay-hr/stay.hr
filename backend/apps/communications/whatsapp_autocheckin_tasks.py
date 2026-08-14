@@ -7,6 +7,7 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical
 from apps.communications.guest_compose import (
     HINT_AUTOCHECKIN_WHATSAPP_INTRO,
     autocheckin_wa_me_prefill,
@@ -321,7 +322,7 @@ def send_welcome_template_for_reservation(
     body_preview = " | ".join(body_params)
 
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=reservation.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -345,7 +346,7 @@ def send_welcome_template_for_reservation(
         channel=GuestMessageChannel.WHATSAPP,
         sent_at=sent_at,
     )
-    GuestOutboundMessage.objects.create(
+    create_with_canonical(GuestOutboundMessage,
         tenant_id=reservation.tenant_id,
         reservation=reservation,
         draft=draft,

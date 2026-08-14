@@ -14,6 +14,7 @@ from django.db.models import Q
 from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical
 from apps.communications.guest_message_timeline import last_timeline_entry
 from apps.communications.guest_email import (
     _email_context,
@@ -385,7 +386,7 @@ def send_guest_email_with_timeline_record(
             api_application=api_application,
         )
 
-    outbound = GuestOutboundMessage.objects.create(
+    outbound = create_with_canonical(GuestOutboundMessage,
         tenant_id=reservation.tenant_id,
         reservation=reservation,
         draft=draft,
@@ -546,7 +547,7 @@ def send_guest_whatsapp_image(
 
     filename = getattr(uploaded_file, "name", None) or "image.jpg"
 
-    outbound = GuestOutboundMessage.objects.create(
+    outbound = create_with_canonical(GuestOutboundMessage,
         tenant_id=reservation.tenant_id,
         reservation=reservation,
         draft=draft,
@@ -579,7 +580,7 @@ def send_guest_whatsapp_image(
         raise ValueError(str(exc)) from exc
 
     wamid = extract_outbound_wamid(response) or f"local.outbound.image.{outbound.pk}"
-    wa_message = WhatsAppMessage.objects.create(
+    wa_message = create_with_canonical(WhatsAppMessage,
         tenant_id=reservation.tenant_id,
         integration=integration,
         reservation=reservation,
@@ -645,7 +646,7 @@ def send_whatsapp_entrance_image_from_asset(
     mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
     filename = path.name
 
-    outbound = GuestOutboundMessage.objects.create(
+    outbound = create_with_canonical(GuestOutboundMessage,
         tenant_id=reservation.tenant_id,
         reservation=reservation,
         draft=draft,
@@ -678,7 +679,7 @@ def send_whatsapp_entrance_image_from_asset(
         raise ValueError(str(exc)) from exc
 
     wamid = extract_outbound_wamid(response) or f"local.outbound.image.{outbound.pk}"
-    wa_message = WhatsAppMessage.objects.create(
+    wa_message = create_with_canonical(WhatsAppMessage,
         tenant_id=reservation.tenant_id,
         integration=integration,
         reservation=reservation,
@@ -739,7 +740,7 @@ def send_guest_email_image(
     raw_body = (caption or "").strip() or _OUTBOUND_IMAGE_BODY
     body_text, html_part = prepare_guest_email_bodies(raw_body)
 
-    outbound = GuestOutboundMessage.objects.create(
+    outbound = create_with_canonical(GuestOutboundMessage,
         tenant_id=reservation.tenant_id,
         reservation=reservation,
         draft=draft,
@@ -839,7 +840,7 @@ def _send_whatsapp_handoff(
         raise ValueError("no_phone")
 
     wa_me_url = build_wa_me_url(phone_wa, body_text)
-    outbound = GuestOutboundMessage.objects.create(
+    outbound = create_with_canonical(GuestOutboundMessage,
         tenant_id=reservation.tenant_id,
         reservation=reservation,
         draft=draft,

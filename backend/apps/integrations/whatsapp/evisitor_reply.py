@@ -5,6 +5,7 @@ import os
 
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical
 from apps.communications.guest_compose import (
     HINT_EVISITOR_REGISTERED,
     render_evisitor_registered_message,
@@ -82,7 +83,7 @@ def _send_reservation_whatsapp_text(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=reservation.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -106,7 +107,7 @@ def _send_reservation_whatsapp_text(
         channel=GuestMessageChannel.WHATSAPP,
         sent_at=timezone.now(),
     )
-    GuestOutboundMessage.objects.create(
+    create_with_canonical(GuestOutboundMessage,
         tenant_id=reservation.tenant_id,
         reservation=reservation,
         draft=draft,

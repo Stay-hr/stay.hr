@@ -7,9 +7,11 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from django.core.files.base import ContentFile
+from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from apps.communications.canonical_store import link_raw_reservation, record_canonical_source
 from apps.communications.conversation_ingest_status import mark_conversation_ingest
 
 from apps.integrations.channex.booking_service import (
@@ -167,8 +169,7 @@ def relink_unlinked_channex_messages(tenant: Tenant) -> int:
         )
         if reservation is None:
             continue
-        row.reservation = reservation
-        row.save(update_fields=["reservation"])
+        link_raw_reservation(row, reservation)
         if _channex_message_visible_in_timeline(row):
             touch_reservation_version(
                 reservation.pk,
@@ -366,6 +367,8 @@ def upsert_channex_message_from_payload(
     message_id = channex_message_id_from_payload(flat)
     existing = ChannexMessage.objects.filter(channex_message_id=message_id).first()
     if existing is not None:
+        if existing.reservation_id:
+            record_canonical_source(existing)
         return existing, False
 
     booking_id = str(flat.get("booking_id") or "").strip()
@@ -394,10 +397,13 @@ def upsert_channex_message_from_payload(
         "raw_payload": flat,
     }
     inserted_at = _message_created_at(flat)
-    row = ChannexMessage.objects.create(**create_kwargs)
-    if inserted_at is not None:
-        ChannexMessage.objects.filter(pk=row.pk).update(created_at=inserted_at)
-        row.created_at = inserted_at
+    with transaction.atomic():
+        row = ChannexMessage.objects.create(**create_kwargs)
+        if inserted_at is not None:
+            ChannexMessage.objects.filter(pk=row.pk).update(created_at=inserted_at)
+            row.created_at = inserted_at
+        if reservation is not None:
+            record_canonical_source(row)
     if reservation is not None and _channex_message_visible_in_timeline(row):
         touch_reservation_version(
             reservation.pk,

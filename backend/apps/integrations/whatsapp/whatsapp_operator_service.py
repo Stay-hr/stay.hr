@@ -11,6 +11,7 @@ from django.core.files.base import ContentFile
 from django.db import connection, transaction
 from django.utils import timezone
 
+from apps.communications.canonical_store import create_with_canonical
 from apps.communications.guest_compose import (
     HINT_ASK_ARRIVAL_TIME,
     HINT_CHECKIN_COMPLETE_SUPPLEMENT,
@@ -382,7 +383,7 @@ def _send_operator_text(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=integration_row.tenant_id,
             integration=integration_row,
             reservation=reservation,
@@ -419,7 +420,7 @@ def _send_operator_checkin_prompt(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=integration_row.tenant_id,
             integration=integration_row,
             wamid=outbound_wamid,
@@ -459,7 +460,7 @@ def _send_operator_docs_confirm_prompt(
 
     outbound_wamid = extract_outbound_wamid(response)
     if outbound_wamid:
-        WhatsAppMessage.objects.create(
+        create_with_canonical(WhatsAppMessage,
             tenant_id=integration_row.tenant_id,
             integration=integration_row,
             wamid=outbound_wamid,
