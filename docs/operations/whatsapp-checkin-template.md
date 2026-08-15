@@ -20,6 +20,8 @@ Schema i helperi: `backend/apps/properties/guest_info.py`, podaci: `backend/apps
 
 **Ops — web check-in vs WhatsApp welcome:** Ako rezervacija već ima `GuestCheckInSession` sa `status=completed` (web obrazac završen — Channex, email, recepcija ili WA link), beat **ne šalje** Meta welcome template ni intro email tog dana (`reason=web_checkin_completed`). Aktivna / ready sesija ne blokira.
 
+**Ops — late Channex booking (check-in unutar open window):** Na `Reservation` create s `import_source=channex`, ako je property-local `check_in` unutar `guest_checkin_opens_days_before` dana (default 7; uključivo D-7 i D-0), Celery task odmah šalje web check-in link na Booking/Channex chat (`communications.maybe_send_immediate_channex_checkin_link`). Send ide kroz `send_guest_checkin_link_via_channex` s `select_for_update` claimom na sessionu (atomska zaštita od duplikata). D-N reminder i ručni ponovni poziv vraćaju `already_distributed` / `link_already_distributed` ako je link već distribuiran.
+
 ---
 
 ## API (Hospira)
