@@ -122,6 +122,14 @@ class GuestReminderService:
         if all_required_slots_ready(reservation):
             return {**base, "status": "skipped", "reason": "checkin_complete"}
 
+        existing_distributed = get_active_session(reservation)
+        if existing_distributed is not None and existing_distributed.last_distributed_from:
+            return {
+                **base,
+                "status": "skipped",
+                "reason": "link_already_distributed",
+            }
+
         session = get_active_session(reservation)
         if session is None:
             if dry_run:
@@ -206,6 +214,45 @@ class GuestReminderService:
             language_reason=(ctx.reason or "")[:255],
             channel=channel,
         )
+
+        # Channex OTA: use locked send helper so reminder vs immediate cannot double-send.
+        if (
+            channel == GuestMessageChannel.BOOKING
+            and reservation.import_source == "channex"
+        ):
+            from apps.communications.guest_checkin_channex import (
+                send_guest_checkin_link_via_channex,
+            )
+
+            result = send_guest_checkin_link_via_channex(reservation.pk)
+            if result.get("reason") == "already_distributed":
+                return {
+                    **base,
+                    "status": "skipped",
+                    "reason": "link_already_distributed",
+                    "channel": channel,
+                    "draft_id": draft.pk,
+                }
+            if result.get("sent"):
+                logger.info(
+                    "guest checkin reminder sent reservation_id=%s channel=%s days_before=%s",
+                    reservation.pk,
+                    channel,
+                    days_before,
+                )
+                return {
+                    **base,
+                    "status": "sent",
+                    "channel": channel,
+                    "draft_id": draft.pk,
+                }
+            return {
+                **base,
+                "status": "failed",
+                "channel": channel,
+                "error": str(result.get("reason") or "send_failed"),
+                "draft_id": draft.pk,
+            }
 
         subject = None
         if channel == GuestMessageChannel.EMAIL:

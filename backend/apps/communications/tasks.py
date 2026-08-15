@@ -3,6 +3,9 @@ from celery import shared_task
 # Register WhatsApp autocheck-in beat tasks (module is not named tasks.py).
 from apps.communications import whatsapp_autocheckin_tasks  # noqa: F401
 
+# Late-booking Channex check-in link (create enqueue).
+from apps.communications import guest_checkin_channex  # noqa: F401
+
 # ADR 0010 Phase 6 — orchestration beat entry (MESSAGE_ORCHESTRATION_* gated).
 from apps.communications.messaging.tasks import run_message_orchestration  # noqa: F401
 
