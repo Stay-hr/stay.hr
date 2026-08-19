@@ -37,17 +37,58 @@ function formatImportedAt(iso: string, locale: string): string {
   }).format(d);
 }
 
+type PdvsCopy = (key: string, values?: Record<string, string>) => string;
+
+/** Pure outcome copy for upload + dual XML export (testable). */
+export function buildUploadExportFeedback(args: {
+  t: PdvsCopy;
+  duplicate: boolean;
+  invoiceNumber: string;
+  importedAtLabel: string;
+  pdvsOk: boolean;
+  pdvOk: boolean;
+}): { message: string; error: string } {
+  const { t, duplicate, invoiceNumber, importedAtLabel, pdvsOk, pdvOk } = args;
+  const importNote = duplicate
+    ? t("alreadyImported", { at: importedAtLabel })
+    : t("uploadSuccess", { number: invoiceNumber });
+
+  if (pdvsOk && pdvOk) {
+    return {
+      message: `${importNote} ${t("exportBothSuccess")}`,
+      error: "",
+    };
+  }
+  if (pdvsOk && !pdvOk) {
+    return {
+      message: `${importNote} ${t("exportPartialPdvsOnly")}`,
+      error: t("exportPdvError"),
+    };
+  }
+  if (!pdvsOk && pdvOk) {
+    return {
+      message: `${importNote} ${t("exportPartialPdvOnly")}`,
+      error: t("exportError"),
+    };
+  }
+  return {
+    message: importNote,
+    error: t("exportBothFailed"),
+  };
+}
+
 export function PdvsSection() {
   const t = useTranslations("propertyFinancialReport.pdvs");
   const locale = useLocale();
   const fileRef = useRef<HTMLInputElement>(null);
+  const skipNextPeriodLoadRef = useRef(false);
 
   const [period, setPeriod] = useState(defaultPdvsPeriod);
   const [configured, setConfigured] = useState(true);
   const [missing, setMissing] = useState<string[]>([]);
   const [invoices, setInvoices] = useState<PdvsInvoice[]>([]);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingPdv, setExportingPdv] = useState(false);
   const [message, setMessage] = useState("");
@@ -70,38 +111,56 @@ export function PdvsSection() {
   }, [t]);
 
   useEffect(() => {
+    if (skipNextPeriodLoadRef.current) {
+      skipNextPeriodLoadRef.current = false;
+      return;
+    }
     void load(period);
   }, [period, load]);
 
   async function onUpload(file: File | null) {
-    if (!file) return;
-    setUploading(true);
+    if (!file || busy) return;
+    setBusy(true);
     setError("");
     setMessage("");
     try {
       const invoice = await uploadPdvsInvoice(file);
-      if (invoice.tax_period !== period) {
-        setPeriod(invoice.tax_period);
-      }
+      const uploadedPeriod = invoice.tax_period;
+      const duplicate =
+        Boolean(invoice.already_imported) || invoice.created === false;
+
+      // Immediate UX; load(uploadedPeriod) below is authoritative.
       setInvoices((prev) => upsertInvoiceById(prev, invoice));
-      if (invoice.already_imported || invoice.created === false) {
-        setMessage(
-          t("alreadyImported", {
-            at: formatImportedAt(invoice.imported_at, locale),
-          }),
-        );
-      } else {
-        setMessage(t("uploadSuccess", { number: invoice.invoice_number }));
-      }
+      skipNextPeriodLoadRef.current = true;
+      setPeriod(uploadedPeriod);
+      await load(uploadedPeriod);
+
+      const [pdvsResult, pdvResult] = await Promise.allSettled([
+        downloadPdvsXml(uploadedPeriod),
+        downloadPdvXml(uploadedPeriod),
+      ]);
+
+      const feedback = buildUploadExportFeedback({
+        t: t as PdvsCopy,
+        duplicate,
+        invoiceNumber: invoice.invoice_number,
+        importedAtLabel: formatImportedAt(invoice.imported_at, locale),
+        pdvsOk: pdvsResult.status === "fulfilled",
+        pdvOk: pdvResult.status === "fulfilled",
+      });
+      setMessage(feedback.message);
+      setError(feedback.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("uploadError"));
+      setMessage("");
     } finally {
-      setUploading(false);
+      setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
 
   async function onExport() {
+    if (busy) return;
     setExporting(true);
     setError("");
     setMessage("");
@@ -116,6 +175,7 @@ export function PdvsSection() {
   }
 
   async function onExportPdv() {
+    if (busy) return;
     setExportingPdv(true);
     setError("");
     setMessage("");
@@ -130,12 +190,12 @@ export function PdvsSection() {
   }
 
   const periodLabel = formatPeriodLabel(period, locale);
-  const actionsDisabled = !configured || loading;
+  const actionsDisabled = !configured || loading || busy;
 
   return (
     <section className="mt-10 rounded-xl border border-stay-border bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold text-stay-ink">{t("title")}</h2>
+        <h2 className="text-lg font-semibold text-stay-navy">{t("title")}</h2>
         <p className="text-sm text-muted">
           {t("badge", { period: periodLabel, count: invoices.length })}
         </p>
@@ -149,6 +209,7 @@ export function PdvsSection() {
             type="month"
             className="rounded-md border border-stay-border px-3 py-2"
             value={period}
+            disabled={busy}
             onChange={(e) => setPeriod(e.target.value)}
           />
         </label>
@@ -158,19 +219,20 @@ export function PdvsSection() {
             type="file"
             accept="application/pdf,.pdf"
             className="hidden"
+            data-testid="pdvs-file-input"
             onChange={(e) => void onUpload(e.target.files?.[0] ?? null)}
           />
           <button
             type="button"
-            className="rounded-md bg-stay-ink px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-            disabled={actionsDisabled || uploading}
+            className="btn"
+            disabled={actionsDisabled}
             onClick={() => fileRef.current?.click()}
           >
-            {uploading ? t("uploading") : t("upload")}
+            {busy ? t("uploading") : t("upload")}
           </button>
           <button
             type="button"
-            className="rounded-md border border-stay-border px-3 py-2 text-sm font-medium disabled:opacity-50"
+            className="btn-ghost"
             disabled={actionsDisabled || exporting || invoices.length === 0}
             onClick={() => void onExport()}
           >
@@ -178,7 +240,7 @@ export function PdvsSection() {
           </button>
           <button
             type="button"
-            className="rounded-md border border-stay-border px-3 py-2 text-sm font-medium disabled:opacity-50"
+            className="btn-ghost"
             disabled={actionsDisabled || exportingPdv || invoices.length === 0}
             onClick={() => void onExportPdv()}
           >
@@ -197,7 +259,7 @@ export function PdvsSection() {
       ) : null}
 
       {message ? (
-        <p className="mt-3 text-sm text-stay-ink" role="status">
+        <p className="mt-3 text-sm text-stay-navy" role="status">
           {message}
         </p>
       ) : null}

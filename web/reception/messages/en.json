@@ -605,6 +605,10 @@
       "exportError": "PDV-S XML export failed.",
       "exportPdvSuccess": "PDV XML downloaded.",
       "exportPdvError": "PDV XML export failed.",
+      "exportBothSuccess": "PDV-S and PDV XML downloaded.",
+      "exportPartialPdvsOnly": "PDV-S XML downloaded; PDV XML failed.",
+      "exportPartialPdvOnly": "PDV XML downloaded; PDV-S XML failed.",
+      "exportBothFailed": "Invoice imported, but PDV-S and PDV XML export failed. Use the buttons to retry.",
       "loadError": "Failed to load PDV-S data.",
       "importedAt": "Imported {at}"
     }
