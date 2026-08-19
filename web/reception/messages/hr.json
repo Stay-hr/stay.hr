@@ -605,6 +605,10 @@
       "exportError": "Izvoz PDV-S XML-a nije uspio.",
       "exportPdvSuccess": "PDV XML preuzet.",
       "exportPdvError": "Izvoz PDV XML-a nije uspio.",
+      "exportBothSuccess": "PDV-S i PDV XML preuzeti.",
+      "exportPartialPdvsOnly": "PDV-S XML preuzet; PDV XML nije uspio.",
+      "exportPartialPdvOnly": "PDV XML preuzet; PDV-S XML nije uspio.",
+      "exportBothFailed": "Račun je uvezen, ali izvoz PDV-S i PDV XML nije uspio. Koristite gumbe za ponovni izvoz.",
       "loadError": "Učitavanje PDV-S podataka nije uspjelo.",
       "importedAt": "Uvezeno {at}"
     }
