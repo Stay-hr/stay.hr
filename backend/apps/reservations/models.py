@@ -961,3 +961,4 @@ from apps.reservations.booking_payout_models import (  # noqa: E402, F401
     BookingPayoutMatchStatus,
     BookingPayoutWarningSeverity,
 )
+from apps.reservations.booking_intake_models import BookingIntakeDraft  # noqa: E402, F401
