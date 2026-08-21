@@ -48,7 +48,41 @@ class Reservation(TenantScopedModel):
     booker_phone = models.CharField(max_length=64, blank=True)
     booker_country = models.CharField(max_length=8, blank=True)
     booker_address = models.TextField(blank=True)
-    amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    # B2B billing snapshot for this reservation (not a CRM/partner FK).
+    # After the first fiscal Invoice exists, treat as immutable for rebuilds —
+    # Invoice.buyer_* remains the source of truth for the issued document.
+    buyer_company_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="B2B billing snapshot: company legal name for invoices/offers.",
+    )
+    buyer_oib = models.CharField(
+        max_length=11,
+        blank=True,
+        default="",
+        help_text="B2B billing snapshot: company OIB (11 digits).",
+    )
+    buyer_address = models.TextField(
+        blank=True,
+        default="",
+        help_text="B2B billing snapshot: company address.",
+    )
+    invoice_email = models.EmailField(
+        blank=True,
+        default="",
+        help_text="B2B billing snapshot: preferred email for invoice/offer delivery.",
+    )
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=(
+            "Guest-facing gross/all-in stay total. Tourist tax is split out of this "
+            "amount on invoice build; never added on top."
+        ),
+    )
     currency = models.CharField(max_length=3, default="EUR")
     source = models.CharField(max_length=64, blank=True)
     import_source = models.CharField(max_length=32, blank=True)

@@ -33,7 +33,7 @@ from apps.integrations.channex.exceptions import ChannexApiError, ChannexBooking
 from apps.integrations.channex.tasks import flush_channex_ari_outbox_task
 from apps.integrations.channel_manager.resolver import get_channel_manager, require_channex
 from apps.reservations.availability import validate_unit_available_for_booking
-from apps.reservations.models import Reservation, ReservationUnit
+from apps.reservations.models import Reservation
 from apps.tenants.models import ChannelManager
 
 
@@ -506,6 +506,11 @@ class ReceptionChannelAvailabilityView(ReceptionWriteView, APIView):
         return Response({"updated_days": len(rows), "push_results": pushed})
 
 
+class ReceptionGuestCreateSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=100)
+    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+
+
 class ReceptionReservationCreateSerializer(serializers.Serializer):
     property_slug = serializers.SlugField()
     unit_id = serializers.IntegerField()
@@ -513,11 +518,40 @@ class ReceptionReservationCreateSerializer(serializers.Serializer):
     check_out = serializers.DateField()
     booker_name = serializers.CharField(max_length=255)
     booker_phone = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
+    booker_email = serializers.EmailField(required=False, allow_blank=True, default="")
+    booker_address = serializers.CharField(required=False, allow_blank=True, default="")
+    amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
+    currency = serializers.CharField(max_length=3, required=False, default="EUR")
+    buyer_company_name = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, default=""
+    )
+    buyer_oib = serializers.CharField(max_length=11, required=False, allow_blank=True, default="")
+    buyer_address = serializers.CharField(required=False, allow_blank=True, default="")
+    invoice_email = serializers.EmailField(required=False, allow_blank=True, default="")
+    guest = ReceptionGuestCreateSerializer(required=False)
 
     def validate_booker_phone(self, value: str) -> str:
         from apps.reservations.phone_validation import validate_booker_phone
 
         return validate_booker_phone(value)
+
+    def validate_buyer_oib(self, value: str) -> str:
+        oib = (value or "").strip()
+        if not oib:
+            return ""
+        if not oib.isdigit() or len(oib) != 11:
+            raise serializers.ValidationError("buyer_oib must be exactly 11 digits.")
+        return oib
+
+    def validate_amount(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError("amount must be >= 0.")
+        return value
 
     def validate(self, attrs):
         if attrs["check_out"] <= attrs["check_in"]:
@@ -539,6 +573,7 @@ class ReceptionReservationCreateSerializer(serializers.Serializer):
         if unit is None:
             raise serializers.ValidationError({"unit_id": "Unit not found for this property."})
 
+        # Availability is re-checked inside create_reception_reservation (canonical).
         try:
             validate_unit_available_for_booking(
                 tenant,
@@ -567,28 +602,18 @@ class ReceptionReservationCreateView(ReceptionWriteView, APIView):
             context={"tenant": request.tenant},
         )
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        prop = data["property"]
-        unit = data["unit"]
 
-        reservation = Reservation.objects.create(
-            tenant=request.tenant,
-            property=prop,
-            check_in=data["check_in"],
-            check_out=data["check_out"],
-            booker_name=data["booker_name"],
-            booker_phone=data.get("booker_phone") or "",
-            import_source="manual",
-            source="reception",
-            status=Reservation.Status.EXPECTED,
+        from apps.reservations.create_reception_reservation import (
+            create_reception_reservation_from_validated,
         )
-        ReservationUnit.objects.create(
-            tenant=request.tenant,
-            reservation=reservation,
-            unit=unit,
-            sort_order=0,
-            room_name=unit.name or unit.code,
-        )
+
+        try:
+            reservation = create_reception_reservation_from_validated(
+                tenant=request.tenant,
+                validated=serializer.validated_data,
+            )
+        except ValueError as exc:
+            raise ValidationError({"detail": str(exc)}) from exc
 
         from apps.api.reception_serializers import ReservationTimelineSerializer
 

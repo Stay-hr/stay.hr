@@ -55,7 +55,14 @@ def _split_gross_to_net_vat(gross: Decimal, vat_rate: Decimal) -> tuple[Decimal,
     return net, vat
 
 
+def has_b2b_buyer_snapshot(reservation: Reservation) -> bool:
+    return bool((getattr(reservation, "buyer_company_name", None) or "").strip())
+
+
 def resolve_buyer_name(reservation: Reservation) -> str:
+    company = (getattr(reservation, "buyer_company_name", None) or "").strip()
+    if company:
+        return company
     primary = reservation.guests.filter(is_primary=True).first()
     if primary is not None:
         name = f"{primary.first_name} {primary.last_name}".strip() or primary.name.strip()
@@ -68,6 +75,13 @@ def resolve_buyer_name(reservation: Reservation) -> str:
 
 
 def resolve_buyer_identity(reservation: Reservation) -> tuple[str, str]:
+    if has_b2b_buyer_snapshot(reservation):
+        document_number = (getattr(reservation, "buyer_oib", None) or "").strip()
+        address = (getattr(reservation, "buyer_address", None) or "").strip()
+        if not address:
+            address = (reservation.booker_address or "").strip()
+        return document_number, address
+
     primary = reservation.guests.filter(is_primary=True).first()
     document_number = ""
     address = ""
@@ -82,6 +96,12 @@ def resolve_buyer_identity(reservation: Reservation) -> tuple[str, str]:
 
 
 def resolve_buyer_country(reservation: Reservation) -> str:
+    if has_b2b_buyer_snapshot(reservation):
+        booker_country = country_display_name_hr(reservation.booker_country)
+        if booker_country:
+            return booker_country
+        return country_display_name_hr("HR") or "Hrvatska"
+
     primary = reservation.guests.filter(is_primary=True).first()
     if primary is not None:
         nationality = country_display_name_hr(primary.nationality)

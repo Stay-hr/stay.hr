@@ -56,6 +56,8 @@ class ReservationAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
         "external_id",
         "booker_name",
         "booker_email",
+        "buyer_company_name",
+        "buyer_oib",
     )
     raw_id_fields = ("tenant", "property")
     date_hierarchy = "check_in"
