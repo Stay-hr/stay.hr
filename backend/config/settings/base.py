@@ -205,6 +205,7 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@stay.hr")
+STAY_TENANT_SMTP_HOST = env("STAY_TENANT_SMTP_HOST", default="mail.stay.hr")
 
 DOCUMENT_INTAKE_QUALITY_REPORT_ENABLED = env.bool(
     "DOCUMENT_INTAKE_QUALITY_REPORT_ENABLED", default=False
