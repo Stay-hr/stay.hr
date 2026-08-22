@@ -433,5 +433,24 @@
     "room": "Soba",
     "keyLabel": "Ključ",
     "keyGuideStepAlt": "Korak za ključ {step}"
+  },
+  "guestPayment": {
+    "subtitle": "Upute za uplatu boravka",
+    "loading": "Učitavanje…",
+    "loadFailed": "Uplatne upute trenutno nisu dostupne.",
+    "unavailableTitle": "Upute nisu dostupne",
+    "unavailableBody": "Obratite se recepciji za nove upute za uplatu.",
+    "stayTitle": "Vaš boravak",
+    "checkIn": "Dolazak",
+    "checkOut": "Odlazak",
+    "unit": "Soba",
+    "guest": "Gost",
+    "paymentTitle": "Uplata",
+    "includesTouristTax": "Iznos uključuje boravišnu pristojbu.",
+    "beneficiary": "Primatelj",
+    "iban": "IBAN",
+    "paymentReference": "Poziv na broj",
+    "paymentNote": "Opis uplate",
+    "footerHint": "Nakon uplate pošaljite potvrdu recepciji ako je zatraženo."
   }
 }

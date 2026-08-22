@@ -70,6 +70,7 @@ HINT_WHATSAPP_AUTOCHECKIN_MAINTENANCE = "whatsapp autocheckin maintenance"
 HINT_GUEST_WEB_CHECKIN_REMINDER = "guest web checkin reminder"
 HINT_GUEST_PORTAL_LINK = "guest_portal_link"
 HINT_GUEST_PORTAL_LINK_URL = "guest_portal_link url"
+HINT_GUEST_PAYMENT_LINK = "guest_payment_link"
 
 FOOTER = "Managed by stay.hr — https://stay.hr/"
 
@@ -969,6 +970,24 @@ _GUEST_PORTAL_LINK_EMAIL_SUBJECT = {
     "it": "Informazioni di arrivo — {property_name}",
 }
 
+_GUEST_PAYMENT_LINK_CTA = {
+    "hr": "Upute za uplatu boravka:",
+    "en": "Payment instructions for your stay:",
+    "de": "Zahlungsanweisungen für Ihren Aufenthalt:",
+    "es": "Instrucciones de pago para su estancia:",
+    "fr": "Instructions de paiement pour votre séjour :",
+    "it": "Istruzioni di pagamento per il soggiorno:",
+}
+
+_GUEST_PAYMENT_LINK_EMAIL_SUBJECT = {
+    "hr": "Upute za uplatu — {property_name}",
+    "en": "Payment instructions — {property_name}",
+    "de": "Zahlungsanweisungen — {property_name}",
+    "es": "Instrucciones de pago — {property_name}",
+    "fr": "Instructions de paiement — {property_name}",
+    "it": "Istruzioni di pagamento — {property_name}",
+}
+
 
 def guest_web_checkin_reminder_hint(*, days_before: int) -> str:
     return f"{HINT_GUEST_WEB_CHECKIN_REMINDER} d{max(int(days_before), 0)}"
@@ -1101,6 +1120,91 @@ def render_guest_portal_link_email_html(
     return "\n".join(
         [
             f"<p>{plain_cta}</p>",
+            f"<p>{cta}</p>",
+            f"<p>{sign_off}<br>{property_name}</p>",
+            f'<p style="color:#666;font-size:12px;">{footer}</p>',
+        ]
+    )
+
+
+def render_guest_payment_link_message(
+    reservation: Reservation,
+    *,
+    payment_url: str,
+    payment_amount: str,
+) -> str:
+    """CTA + payment URL + amount (plain text for WhatsApp/email)."""
+    context = build_compose_context(reservation)
+    lang = context["language"]
+    body = _text_for_lang(_GUEST_PAYMENT_LINK_CTA, lang)
+    amount_line = {
+        "hr": f"Ukupno za uplatu: {payment_amount} € (uključuje boravišnu pristojbu).",
+        "en": f"Total payment: €{payment_amount} (includes tourist tax).",
+        "de": f"Gesamtbetrag: {payment_amount} € (inkl. Kurtaxe).",
+        "es": f"Importe total: {payment_amount} € (incluye tasa turística).",
+        "fr": f"Montant total : {payment_amount} € (taxe de séjour incluse).",
+        "it": f"Importo totale: {payment_amount} € (tassa di soggiorno inclusa).",
+    }
+    parts = [body, _text_for_lang(amount_line, lang), ""]
+    if (payment_url or "").strip():
+        parts.extend(
+            [
+                append_guest_checkin_lang(payment_url.strip(), lang),
+                "",
+            ]
+        )
+    parts.extend(
+        [
+            _text_for_lang(SIGN_OFF, lang),
+            context["property_name"],
+            "",
+            FOOTER,
+        ]
+    )
+    return "\n".join(parts)
+
+
+def guest_payment_link_email_subject(reservation: Reservation) -> str:
+    context = build_compose_context(reservation)
+    lang = context["language"]
+    template = _text_for_lang(_GUEST_PAYMENT_LINK_EMAIL_SUBJECT, lang)
+    return template.format(property_name=context["property_name"])
+
+
+def render_guest_payment_link_email_html(
+    reservation: Reservation,
+    *,
+    payment_url: str,
+    payment_amount: str,
+) -> str:
+    context = build_compose_context(reservation)
+    lang = context["language"]
+    localized_url = append_guest_checkin_lang(payment_url, lang)
+    property_name = html.escape(context["property_name"] or "")
+    sign_off = html.escape(_text_for_lang(SIGN_OFF, lang))
+    footer = html.escape(FOOTER)
+    plain_cta = html.escape(_text_for_lang(_GUEST_PAYMENT_LINK_CTA, lang))
+    amount_line = html.escape(
+        _text_for_lang(
+            {
+                "hr": f"Ukupno za uplatu: {payment_amount} € (uključuje boravišnu pristojbu).",
+                "en": f"Total payment: €{payment_amount} (includes tourist tax).",
+                "de": f"Gesamtbetrag: {payment_amount} € (inkl. Kurtaxe).",
+                "es": f"Importe total: {payment_amount} € (incluye tasa turística).",
+                "fr": f"Montant total : {payment_amount} € (taxe de séjour incluse).",
+                "it": f"Importo totale: {payment_amount} € (tassa di soggiorno inclusa).",
+            },
+            lang,
+        )
+    )
+    cta = _whatsapp_cta_button_html(
+        href=localized_url or "",
+        label=_text_for_lang(_GUEST_PORTAL_LINK_CTA_LABEL, lang),
+    )
+    return "\n".join(
+        [
+            f"<p>{plain_cta}</p>",
+            f"<p>{amount_line}</p>",
             f"<p>{cta}</p>",
             f"<p>{sign_off}<br>{property_name}</p>",
             f'<p style="color:#666;font-size:12px;">{footer}</p>',

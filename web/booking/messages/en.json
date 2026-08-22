@@ -433,5 +433,24 @@
     "room": "Room",
     "keyLabel": "Key",
     "keyGuideStepAlt": "Key guide step {step}"
+  },
+  "guestPayment": {
+    "subtitle": "Payment instructions for your stay",
+    "loading": "Loading…",
+    "loadFailed": "Payment instructions are not available right now.",
+    "unavailableTitle": "Instructions unavailable",
+    "unavailableBody": "Please contact reception for updated payment instructions.",
+    "stayTitle": "Your stay",
+    "checkIn": "Check-in",
+    "checkOut": "Check-out",
+    "unit": "Room",
+    "guest": "Guest",
+    "paymentTitle": "Payment",
+    "includesTouristTax": "Amount includes tourist tax.",
+    "beneficiary": "Beneficiary",
+    "iban": "IBAN",
+    "paymentReference": "Payment reference",
+    "paymentNote": "Payment description",
+    "footerHint": "After payment, send confirmation to reception if requested."
   }
 }

@@ -26,6 +26,7 @@ from apps.api.guest_checkin_views import (
     GuestCheckInSlotCommitView,
     GuestCheckInSlotView,
 )
+from apps.api.guest_payment_views import GuestPaymentView
 from apps.api.guest_portal_views import (
     GuestPortalEntranceImageView,
     GuestPortalKeyGuideStepImageView,
@@ -113,6 +114,11 @@ urlpatterns = [
         "public/check-in/<uuid:token>/complete/",
         GuestCheckInCompleteView.as_view(),
         name="public-guest-checkin-complete",
+    ),
+    path(
+        "public/payment/<uuid:token>/",
+        GuestPaymentView.as_view(),
+        name="public-guest-payment",
     ),
     path(
         "public/guest-portal/<uuid:token>/",
