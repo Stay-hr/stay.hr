@@ -27,6 +27,7 @@ from apps.api.guest_checkin_views import (
     GuestCheckInSlotView,
 )
 from apps.api.guest_payment_views import GuestPaymentView
+from apps.api.offer_views import PublicOfferPdfView
 from apps.api.guest_portal_views import (
     GuestPortalEntranceImageView,
     GuestPortalKeyGuideStepImageView,
@@ -114,6 +115,11 @@ urlpatterns = [
         "public/check-in/<uuid:token>/complete/",
         GuestCheckInCompleteView.as_view(),
         name="public-guest-checkin-complete",
+    ),
+    path(
+        "public/offers/<uuid:public_access_token>/pdf/",
+        PublicOfferPdfView.as_view(),
+        name="public-offer-pdf",
     ),
     path(
         "public/payment/<uuid:token>/",

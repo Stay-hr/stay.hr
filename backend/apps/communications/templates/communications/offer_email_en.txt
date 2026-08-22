@@ -1,0 +1,12 @@
+Dear {{ buyer_name }},
+
+Please find attached offer {{ offer_number }} for your stay at {{ property_name }}.
+
+Total: {{ total }} {{ currency }}
+Booking reference: {{ booking_code }}
+
+Download the offer PDF:
+{{ offer_url }}
+
+Best regards,
+{{ property_name }}

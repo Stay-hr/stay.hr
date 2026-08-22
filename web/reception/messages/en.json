@@ -311,6 +311,31 @@
       "success": "Sent ({status}).",
       "failed": "Could not send payment instructions.",
       "paymentUrl": "Payment link"
+    },
+    "offer": {
+      "title": "Company offer",
+      "hint": "Generate a PDF offer with B2B buyer, line items, and VAT (immutable snapshot).",
+      "loading": "Loading…",
+      "generate": "Generate offer",
+      "generating": "Generating…",
+      "generateSuccess": "Offer {number} generated.",
+      "generateFailed": "Could not generate offer.",
+      "noAmount": "Reservation has no amount.",
+      "fiscalConfig": "Fiscal settings are incomplete.",
+      "number": "Offer number",
+      "buyer": "Buyer",
+      "total": "Total",
+      "paymentReference": "Payment reference",
+      "downloadPdf": "Download PDF",
+      "publicPdf": "Public PDF link",
+      "sendEmail": "Send to invoice email",
+      "sending": "Sending…",
+      "emailSent": "Offer sent to {email}.",
+      "emailSentBadge": "Email sent",
+      "sendFailed": "Could not send offer.",
+      "noSmtp": "SMTP is not configured.",
+      "noRecipient": "No invoice email address.",
+      "loadFailed": "Could not load offer."
     }
   },
   "guest": {

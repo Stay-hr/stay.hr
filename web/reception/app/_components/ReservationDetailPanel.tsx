@@ -10,6 +10,7 @@ import { GuestList } from "@/app/_components/GuestList";
 import { GuestMessagesPanel } from "@/app/_components/GuestMessagesPanel";
 import { GuestReviewsPanel } from "@/app/_components/GuestReviewsPanel";
 import { ReservationFinancialSection } from "@/app/_components/ReservationFinancialSection";
+import { ReservationOfferSection } from "@/app/_components/ReservationOfferSection";
 import { ReservationPaymentSendSection } from "@/app/_components/ReservationPaymentSendSection";
 import { ReservationInvoiceSection } from "@/app/_components/ReservationInvoiceSection";
 import { ReservationMoveDatesModal } from "@/app/_components/ReservationMoveDatesModal";
@@ -83,6 +84,7 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
   const [moveDatesOpen, setMoveDatesOpen] = useState(false);
   const [checkoutFailedGuestIds, setCheckoutFailedGuestIds] = useState<number[]>([]);
   const [guestInvoices, setGuestInvoices] = useState(false);
+  const [bookingOffers, setBookingOffers] = useState(false);
   const [channelManager, setChannelManager] = useState<string | undefined>();
 
   const load = useCallback(async (options?: { background?: boolean }) => {
@@ -121,6 +123,7 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
       .then((res) => (res.ok ? res.json() : null))
       .then((config: AppConfig | null) => {
         setGuestInvoices(Boolean(config?.feature_flags?.guest_invoices));
+        setBookingOffers(Boolean(config?.feature_flags?.booking_offers));
         setChannelManager(config?.channel_manager);
       })
       .catch(() => {
@@ -354,6 +357,13 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
         reservation={reservation}
         onSent={() => load({ background: true })}
       />
+
+      {bookingOffers ? (
+        <ReservationOfferSection
+          reservation={reservation}
+          onUpdated={() => load({ background: true })}
+        />
+      ) : null}
 
       <GuestMessagesPanel reservationId={reservation.id} />
 

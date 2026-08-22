@@ -28,7 +28,7 @@ def _billing_feature_flags(tenant) -> dict[str, bool]:
     from apps.billing.models import TenantFiscalSettings
 
     settings = TenantFiscalSettings.objects.filter(tenant=tenant).first()
-    return {"guest_invoices": bool(settings and settings.is_vat_registered)}
+    return {"guest_invoices": bool(settings and settings.is_vat_registered), "booking_offers": bool(settings and settings.is_vat_registered)}
 
 
 def _feature_flags_for_channel_manager(channel_manager: str) -> dict[str, bool]:

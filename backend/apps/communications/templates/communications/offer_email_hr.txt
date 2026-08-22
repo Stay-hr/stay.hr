@@ -1,0 +1,12 @@
+Poštovani {{ buyer_name }},
+
+u prilogu je ponuda {{ offer_number }} za boravak u {{ property_name }}.
+
+Ukupno: {{ total }} {{ currency }}
+Broj rezervacije: {{ booking_code }}
+
+PDF ponudu možete preuzeti i ovdje:
+{{ offer_url }}
+
+Srdačan pozdrav,
+{{ property_name }}
