@@ -167,6 +167,7 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
     check_in_blocked_code = serializers.SerializerMethodField()
     confirmation_pdf_url = serializers.SerializerMethodField()
     invoice_summary = serializers.SerializerMethodField()
+    offer_summary = serializers.SerializerMethodField()
     expected_arrival_at = serializers.SerializerMethodField()
     booking_payout_received = serializers.SerializerMethodField()
     property_slug = serializers.CharField(source="property.slug", read_only=True)
@@ -234,6 +235,7 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
             "guest_stated_arrival_at",
             "expected_arrival_at",
             "invoice_summary",
+            "offer_summary",
             "booking_payout_received_at",
             "booking_payout_id",
             "booking_payout_net",
@@ -332,6 +334,30 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
             "email_sent_at": invoice.email_sent_at.isoformat() if invoice.email_sent_at else None,
             "total": str(invoice.total),
             "currency": invoice.currency,
+        }
+
+    def get_offer_summary(self, obj):
+        from apps.billing.models import TenantFiscalSettings
+
+        tenant = self._tenant_for_check_in(obj)
+        settings = TenantFiscalSettings.objects.filter(tenant=tenant).first()
+        if settings is None or not settings.is_vat_registered:
+            return None
+        offer = getattr(obj, "booking_offer", None)
+        if offer is None:
+            return None
+        snapshot = offer.snapshot or {}
+        return {
+            "id": offer.pk,
+            "offer_number": offer.offer_number,
+            "issued_at": offer.issued_at.isoformat(),
+            "valid_until": offer.valid_until.isoformat() if offer.valid_until else None,
+            "email_sent_at": offer.email_sent_at.isoformat() if offer.email_sent_at else None,
+            "total": snapshot.get("total"),
+            "currency": snapshot.get("currency"),
+            "buyer_name": (snapshot.get("buyer") or {}).get("name"),
+            "payment_reference": snapshot.get("payment_reference"),
+            "public_access_token": str(offer.public_access_token),
         }
 
 

@@ -20,6 +20,11 @@ def invoice_pdf_upload_to(instance, filename: str) -> str:
     return f"invoices/{tenant_slug}/{instance.pk or 'draft'}/{filename}"
 
 
+def booking_offer_pdf_upload_to(instance, filename: str) -> str:
+    tenant_slug = instance.tenant.slug if instance.tenant_id else "unknown"
+    return f"offers/{tenant_slug}/{instance.pk or 'draft'}/{filename}"
+
+
 def foreign_service_invoice_upload_to(instance, filename: str) -> str:
     tenant_slug = instance.tenant.slug if instance.tenant_id else "unknown"
     return f"foreign_service_invoices/{tenant_slug}/{filename}"
@@ -322,6 +327,38 @@ class InvoiceLine(models.Model):
 
     def __str__(self) -> str:
         return self.description
+
+
+class BookingOffer(TenantScopedModel):
+    """Immutable B2B/booking offer snapshot + PDF (not a fiscal invoice)."""
+
+    reservation = models.OneToOneField(
+        "reservations.Reservation",
+        on_delete=models.CASCADE,
+        related_name="booking_offer",
+    )
+    offer_number = models.CharField(max_length=64)
+    issued_at = models.DateTimeField()
+    valid_until = models.DateField(null=True, blank=True)
+    snapshot = models.JSONField(
+        help_text="Frozen seller/buyer/lines/totals at generation time.",
+    )
+    pdf_file = models.FileField(
+        upload_to=booking_offer_pdf_upload_to,
+        blank=True,
+        null=True,
+    )
+    public_access_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    email_recipient = models.EmailField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-issued_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.offer_number} ({self.reservation_id})"
 
 
 class FiscalizationAttempt(models.Model):

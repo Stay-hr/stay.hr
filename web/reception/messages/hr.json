@@ -311,6 +311,31 @@
       "success": "Poslano ({status}).",
       "failed": "Slanje uplatnih uputa nije uspjelo.",
       "paymentUrl": "Link za uplatu"
+    },
+    "offer": {
+      "title": "Ponuda na firmu",
+      "hint": "Generira PDF ponudu s B2B kupcem, stavkama i PDV-om (immutable snapshot).",
+      "loading": "Učitavanje…",
+      "generate": "Generiraj ponudu",
+      "generating": "Generiram…",
+      "generateSuccess": "Ponuda {number} je generirana.",
+      "generateFailed": "Generiranje ponude nije uspjelo.",
+      "noAmount": "Rezervacija nema iznos.",
+      "fiscalConfig": "Fiskalne postavke nisu potpune.",
+      "number": "Broj ponude",
+      "buyer": "Kupac",
+      "total": "Ukupno",
+      "paymentReference": "Poziv na broj",
+      "downloadPdf": "Preuzmi PDF",
+      "publicPdf": "Javni PDF link",
+      "sendEmail": "Pošalji na invoice email",
+      "sending": "Šaljem…",
+      "emailSent": "Ponuda poslana na {email}.",
+      "emailSentBadge": "Email poslan",
+      "sendFailed": "Slanje ponude nije uspjelo.",
+      "noSmtp": "SMTP nije konfiguriran.",
+      "noRecipient": "Nema invoice email adrese.",
+      "loadFailed": "Učitavanje ponude nije uspjelo."
     }
   },
   "guest": {

@@ -27,6 +27,11 @@ from apps.api.billing_views import (
     ReservationInvoiceSendEmailView,
     ReservationInvoiceView,
 )
+from apps.api.offer_views import (
+    ReservationOfferPdfView,
+    ReservationOfferSendEmailView,
+    ReservationOfferView,
+)
 from apps.api.reception_guest_messages_views import (
     ReceptionGuestMessageComposeView,
     ReceptionGuestMessageChannelsView,
@@ -313,6 +318,21 @@ urlpatterns = [
         "reservations/<int:pk>/payment-instructions/send/",
         ReservationPaymentInstructionsSendView.as_view(),
         name="reception-reservation-payment-instructions-send",
+    ),
+    path(
+        "reservations/<int:pk>/offer/",
+        ReservationOfferView.as_view(),
+        name="reception-reservation-offer",
+    ),
+    path(
+        "reservations/<int:pk>/offer/pdf/",
+        ReservationOfferPdfView.as_view(),
+        name="reception-reservation-offer-pdf",
+    ),
+    path(
+        "reservations/<int:pk>/offer/send-email/",
+        ReservationOfferSendEmailView.as_view(),
+        name="reception-reservation-offer-send-email",
     ),
     path(
         "reservations/<int:pk>/",

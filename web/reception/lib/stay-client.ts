@@ -28,3 +28,19 @@ export function reservationInvoiceSendEmailPath(reservationId: number): string {
 export function reservationPaymentInstructionsSendPath(reservationId: number): string {
   return `/api/stay/reception/reservations/${reservationId}/payment-instructions/send/`;
 }
+
+export function reservationOfferPath(reservationId: number): string {
+  return `/api/stay/reception/reservations/${reservationId}/offer/`;
+}
+
+export function reservationOfferPdfPath(reservationId: number): string {
+  return `/api/stay/reception/reservations/${reservationId}/offer/pdf/`;
+}
+
+export function reservationOfferSendEmailPath(reservationId: number): string {
+  return `/api/stay/reception/reservations/${reservationId}/offer/send-email/`;
+}
+
+export function publicOfferPdfPath(publicAccessToken: string): string {
+  return `/api/stay/public/offers/${publicAccessToken}/pdf/`;
+}

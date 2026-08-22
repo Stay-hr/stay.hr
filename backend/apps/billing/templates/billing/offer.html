@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <title>Ponuda {{ offer_number }}</title>
+  <style>
+    @font-face {
+      font-family: DejaVuSans;
+      src: url("{{ font_regular }}");
+    }
+    @font-face {
+      font-family: DejaVuSans;
+      src: url("{{ font_bold }}");
+      font-weight: bold;
+    }
+    @page { size: A4; margin: 1.5cm; }
+    body { margin: 0; }
+    .offer-document { font-family: DejaVuSans, sans-serif; font-size: 11pt; color: #111; }
+    .offer-document h1 { font-size: 18pt; margin: 0 0 8px; font-weight: bold; }
+    .offer-document strong { font-weight: bold; }
+    .offer-document .muted { color: #555; }
+    .offer-document table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    .offer-document th,
+    .offer-document td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
+    .offer-document th { background: #f3f3f3; font-weight: bold; }
+    .offer-document .right { text-align: right; }
+    .offer-document .totals { margin-top: 12px; font-weight: bold; }
+    .offer-document .footer { margin-top: 24px; font-size: 10pt; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="offer-document">
+    <h1>Ponuda {{ offer_number }}</h1>
+    <p class="muted">Datum izdavanja: {{ issued_at_display }}</p>
+    {% if valid_until_display %}
+    <p class="muted">Vrijedi do: {{ valid_until_display }}</p>
+    {% endif %}
+    {% if stay.property_name %}
+    <p class="muted">{{ stay.property_name }}</p>
+    {% endif %}
+    {% if stay.check_in and stay.check_out %}
+    <p class="muted">Boravak: {{ stay.check_in }} – {{ stay.check_out }}{% if stay.unit_label %}, {{ stay.unit_label }}{% endif %}</p>
+    {% endif %}
+
+    <p><strong>Izdavatelj:</strong><br>
+      {{ seller.name }}<br>
+      {{ seller.address|linebreaksbr }}
+      {% if seller.oib %}<br>OIB: {{ seller.oib }}{% endif %}
+      {% if seller.iban %}<br>IBAN: {{ seller.iban }}{% endif %}
+    </p>
+
+    <p><strong>Kupac:</strong><br>
+      {{ buyer.name }}
+      {% if buyer.document_number %}<br>OIB: {{ buyer.document_number }}{% endif %}
+      {% if buyer.address %}<br>Adresa: {{ buyer.address|linebreaksbr }}{% endif %}
+      {% if buyer.country %}<br>Država: {{ buyer.country }}{% endif %}
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Stavka</th>
+          <th class="right">Količina</th>
+          <th class="right">Cijena (€)</th>
+          <th class="right">PDV %</th>
+          <th class="right">PDV iznos (€)</th>
+          <th class="right">Ukupno (€)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in formatted_lines %}
+        <tr>
+          <td>{{ line.description }}</td>
+          <td class="right">{{ line.quantity }}</td>
+          <td class="right">{{ line.unit_price }}</td>
+          <td class="right">{{ line.vat_rate }}</td>
+          <td class="right">{{ line.vat_amount }}</td>
+          <td class="right">{{ line.line_total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <p class="totals">
+      Ukupno bez PDV-a: {{ subtotal }} {{ currency }}<br>
+      PDV: {{ vat_amount }} {{ currency }}<br>
+      <strong>Ukupno za uplatu: {{ total }} {{ currency }}</strong>
+    </p>
+
+    {% if payment_reference %}
+    <p><strong>Poziv na broj:</strong> {{ payment_reference }}</p>
+    {% endif %}
+    {% if payment_note %}
+    <p>{{ payment_note }}</p>
+    {% endif %}
+
+    <p class="footer muted">
+      Ovo je ponuda, nije fiskalni račun. {{ tourist_tax_clause }}
+    </p>
+  </div>
+</body>
+</html>

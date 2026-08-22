@@ -117,6 +117,19 @@ export type EvisitorCheckinResult = {
   correlation_id?: string;
 };
 
+export type OfferSummary = {
+  id: number;
+  offer_number: string;
+  issued_at: string;
+  valid_until: string | null;
+  email_sent_at: string | null;
+  total?: string;
+  currency?: string;
+  buyer_name?: string;
+  payment_reference?: string;
+  public_access_token?: string;
+};
+
 export type InvoiceSummary = {
   id: number;
   invoice_number: string;
@@ -251,6 +264,7 @@ export type ReservationDetail = Reservation & {
   booker_email?: string;
   booker_phone: string;
   invoice_summary?: InvoiceSummary | null;
+  offer_summary?: OfferSummary | null;
   booking_code?: string;
   notes: string;
   source: string;
