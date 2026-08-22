@@ -91,7 +91,7 @@ class TenantReceptionSettings(models.Model):
     guest_smtp_password_encrypted = models.TextField(
         blank=True,
         default="",
-        help_text="Encrypted SMTP password for guest_contact_email (mail.{domain}:587).",
+        help_text="Encrypted SMTP password for guest_contact_email (mail.stay.hr:587).",
     )
     guest_imap_last_uid = models.PositiveIntegerField(
         default=0,

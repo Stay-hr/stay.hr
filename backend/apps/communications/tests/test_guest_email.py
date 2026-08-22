@@ -50,8 +50,8 @@ class GuestEmailStayContextTests(TestCase):
 
 @override_settings(STAY_INTEGRATION_FERNET_KEY=TEST_FERNET_KEY)
 class SmtpHostForEmailTests(TestCase):
-    def test_derives_mail_subdomain(self):
-        self.assertEqual(smtp_host_for_email("room_reservations@uzorita.hr"), "mail.uzorita.hr")
+    def test_uses_central_stay_smtp_host(self):
+        self.assertEqual(smtp_host_for_email("room_reservations@uzorita.hr"), "mail.stay.hr")
 
     def test_empty_for_invalid(self):
         self.assertEqual(smtp_host_for_email(""), "")
@@ -127,7 +127,7 @@ class GuestEmailSmtpConnectionTests(TestCase):
 
         self.assertTrue(result["sent"])
         mock_get_connection.assert_called_once_with(
-            host="mail.uzorita.hr",
+            host="mail.stay.hr",
             port=587,
             username="room_reservations@uzorita.hr",
             password="Uzorita.2026",
