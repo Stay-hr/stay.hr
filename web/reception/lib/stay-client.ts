@@ -24,3 +24,7 @@ export function reservationInvoicePdfPath(reservationId: number): string {
 export function reservationInvoiceSendEmailPath(reservationId: number): string {
   return `/api/stay/reception/reservations/${reservationId}/invoice/send-email/`;
 }
+
+export function reservationPaymentInstructionsSendPath(reservationId: number): string {
+  return `/api/stay/reception/reservations/${reservationId}/payment-instructions/send/`;
+}

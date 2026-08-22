@@ -299,7 +299,19 @@
     "financialNet": "Net to owner",
     "financialPaymentStatus": "Payment status",
     "financialPaymentProvider": "Payment method",
-    "financialEmpty": "No financial data for this reservation."
+    "financialEmpty": "No financial data for this reservation.",
+    "paymentSend": {
+      "title": "Payment instructions",
+      "hint": "Send the guest a link with IBAN and payment reference (same token on resend).",
+      "channel": "Channel",
+      "channelWhatsapp": "WhatsApp",
+      "channelEmail": "Email",
+      "submit": "Send payment instructions",
+      "sending": "Sending…",
+      "success": "Sent ({status}).",
+      "failed": "Could not send payment instructions.",
+      "paymentUrl": "Payment link"
+    }
   },
   "guest": {
     "primary": "primary",

@@ -10,6 +10,7 @@ import { GuestList } from "@/app/_components/GuestList";
 import { GuestMessagesPanel } from "@/app/_components/GuestMessagesPanel";
 import { GuestReviewsPanel } from "@/app/_components/GuestReviewsPanel";
 import { ReservationFinancialSection } from "@/app/_components/ReservationFinancialSection";
+import { ReservationPaymentSendSection } from "@/app/_components/ReservationPaymentSendSection";
 import { ReservationInvoiceSection } from "@/app/_components/ReservationInvoiceSection";
 import { ReservationMoveDatesModal } from "@/app/_components/ReservationMoveDatesModal";
 import { useImportSourceLabel, useReservationStatusLabel } from "@/lib/i18n-ui";
@@ -348,6 +349,11 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
       ) : null}
 
       <ReservationFinancialSection reservation={reservation} />
+
+      <ReservationPaymentSendSection
+        reservation={reservation}
+        onSent={() => load({ background: true })}
+      />
 
       <GuestMessagesPanel reservationId={reservation.id} />
 

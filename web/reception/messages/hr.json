@@ -299,7 +299,19 @@
     "financialNet": "Neto vlasniku",
     "financialPaymentStatus": "Status plaćanja",
     "financialPaymentProvider": "Način plaćanja",
-    "financialEmpty": "Nema financijskih podataka za ovu rezervaciju."
+    "financialEmpty": "Nema financijskih podataka za ovu rezervaciju.",
+    "paymentSend": {
+      "title": "Upute za uplatu",
+      "hint": "Pošaljite gostu link s IBAN-om i pozivom na broj (isti token pri ponovnom slanju).",
+      "channel": "Kanal",
+      "channelWhatsapp": "WhatsApp",
+      "channelEmail": "Email",
+      "submit": "Pošalji upute za uplatu",
+      "sending": "Šaljem…",
+      "success": "Poslano ({status}).",
+      "failed": "Slanje uplatnih uputa nije uspjelo.",
+      "paymentUrl": "Link za uplatu"
+    }
   },
   "guest": {
     "primary": "primarni",

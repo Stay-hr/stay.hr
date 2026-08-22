@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from apps.communications.guest_payment_distribute import (
+    VALID_PAYMENT_CHANNELS,
+    send_guest_payment_link,
+)
 from apps.communications.guest_portal_distribute import (
     VALID_PORTAL_CHANNELS,
     default_channel_from_completed_checkin,
@@ -17,12 +21,17 @@ from apps.properties.guest_settings_events import (
 )
 from apps.properties.models import Property
 from apps.properties.property_settings_service import build_settings_capabilities
-from apps.reservations.models import GuestPortalAccessCreatedFrom, Reservation
+from apps.reservations.models import (
+    GuestPaymentAccessCreatedFrom,
+    GuestPortalAccessCreatedFrom,
+    Reservation,
+)
 
 SHARE_KIND_PORTAL = "portal"
+SHARE_KIND_PAYMENT = "payment"
 SHARE_TARGET_RESERVATION = "reservation"
 
-SUPPORTED_KINDS = frozenset({SHARE_KIND_PORTAL})
+SUPPORTED_KINDS = frozenset({SHARE_KIND_PORTAL, SHARE_KIND_PAYMENT})
 SUPPORTED_TARGETS = frozenset({SHARE_TARGET_RESERVATION})
 # Later: guide | invoice | payment | review; guest | thread
 
@@ -45,6 +54,7 @@ class ShareResult:
     channel: str
     status: str
     portal_url: str | None = None
+    payment_url: str | None = None
     access_id: int | None = None
     draft_id: int | None = None
     url_draft_id: int | None = None
@@ -62,6 +72,8 @@ class ShareResult:
         }
         if self.portal_url is not None:
             payload["portal_url"] = self.portal_url
+        if self.payment_url is not None:
+            payload["payment_url"] = self.payment_url
         if self.access_id is not None:
             payload["access_id"] = self.access_id
         if self.draft_id is not None:
@@ -91,14 +103,16 @@ def _parse_positive_int(value: Any, *, field: str) -> int:
     return parsed
 
 
-def _normalize_channel(raw: Any | None) -> str | None:
+def _normalize_channel(raw: Any | None, *, kind: str) -> str | None:
     if raw is None or raw == "":
         return None
     channel = str(raw).strip().lower()
-    if channel not in VALID_PORTAL_CHANNELS:
+    allowed = VALID_PAYMENT_CHANNELS if kind == SHARE_KIND_PAYMENT else VALID_PORTAL_CHANNELS
+    if channel not in allowed:
+        label = "whatsapp or email" if kind == SHARE_KIND_PAYMENT else "booking, whatsapp, or email"
         raise ShareServiceError(
             "unsupported_channel",
-            f"Unsupported channel '{raw}'. Use booking, whatsapp, or email.",
+            f"Unsupported channel '{raw}'. Use {label}.",
         )
     return channel
 
@@ -134,7 +148,7 @@ class ShareService:
         if kind not in SUPPORTED_KINDS:
             raise ShareServiceError(
                 "unsupported_kind",
-                f"Unsupported kind '{payload.get('kind')}'. v1 supports: portal.",
+                f"Unsupported kind '{payload.get('kind')}'. v1 supports: portal, payment.",
             )
         if target not in SUPPORTED_TARGETS:
             raise ShareServiceError(
@@ -168,8 +182,13 @@ class ShareService:
                 http_status=404,
             )
 
-        channel = _normalize_channel(payload.get("channel"))
+        channel = _normalize_channel(payload.get("channel"), kind=kind)
         if channel is None:
+            if kind == SHARE_KIND_PAYMENT:
+                raise ShareServiceError(
+                    "channel_required",
+                    "channel is required for payment share (whatsapp or email).",
+                )
             channel = default_channel_from_completed_checkin(reservation)
         if channel is None:
             raise ShareServiceError(
@@ -179,6 +198,14 @@ class ShareService:
 
         if kind == SHARE_KIND_PORTAL and target == SHARE_TARGET_RESERVATION:
             return cls._share_portal(
+                reservation,
+                channel=channel,
+                actor_id=actor_id,
+                updated_by=updated_by or {},
+                dry_run=dry_run,
+            )
+        if kind == SHARE_KIND_PAYMENT and target == SHARE_TARGET_RESERVATION:
+            return cls._share_payment(
                 reservation,
                 channel=channel,
                 actor_id=actor_id,
@@ -266,6 +293,78 @@ class ShareService:
             raise ShareServiceError(
                 "share_failed",
                 error or "Failed to share guest portal.",
+                http_status=502,
+            )
+
+        return result
+
+    @classmethod
+    def _share_payment(
+        cls,
+        reservation: Reservation,
+        *,
+        channel: str,
+        actor_id: str | None,
+        updated_by: dict[str, Any],
+        dry_run: bool,
+    ) -> ShareResult:
+        send_result = send_guest_payment_link(
+            reservation,
+            channel=channel,
+            payment_created_from=GuestPaymentAccessCreatedFrom.RECEPTION_MANUAL,
+            dry_run=dry_run,
+            created_from="reception_share",
+        )
+
+        status = str(send_result.get("status") or "failed")
+        reason = send_result.get("reason")
+        error = send_result.get("error")
+
+        if status == "skipped":
+            if reason == "no_email":
+                raise ShareServiceError(
+                    "no_email",
+                    "Reservation has no guest email for the email channel.",
+                )
+            if reason == "unknown_channel":
+                raise ShareServiceError(
+                    "unsupported_channel",
+                    f"Unsupported channel '{channel}'.",
+                )
+            if reason == "no_amount":
+                raise ShareServiceError(
+                    "no_amount",
+                    "Reservation amount is required for payment instructions.",
+                )
+            if reason == "empty_body":
+                raise ShareServiceError(
+                    "empty_body",
+                    "Payment message body is empty.",
+                )
+            if "not available" in str(reason or "").lower():
+                raise ShareServiceError(
+                    "reservation_unavailable",
+                    str(reason),
+                )
+
+        result = ShareResult(
+            kind=SHARE_KIND_PAYMENT,
+            target=SHARE_TARGET_RESERVATION,
+            reservation_id=reservation.pk,
+            channel=channel,
+            status=status,
+            payment_url=send_result.get("payment_url"),
+            access_id=send_result.get("access_id"),
+            draft_id=send_result.get("draft_id"),
+            reason=reason,
+            error=error,
+            send=send_result,
+        )
+
+        if status == "failed":
+            raise ShareServiceError(
+                "share_failed",
+                error or "Failed to share payment instructions.",
                 http_status=502,
             )
 
