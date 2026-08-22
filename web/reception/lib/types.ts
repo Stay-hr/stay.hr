@@ -263,6 +263,7 @@ export type ReservationDetail = Reservation & {
   booker_name: string;
   booker_email?: string;
   booker_phone: string;
+  invoice_email?: string;
   invoice_summary?: InvoiceSummary | null;
   offer_summary?: OfferSummary | null;
   booking_code?: string;
