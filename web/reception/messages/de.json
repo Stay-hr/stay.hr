@@ -18,7 +18,8 @@
     "calendar": "Kalender",
     "messages": "Nachrichten",
     "settings": "Einstellungen",
-    "logout": "Abmelden"
+    "logout": "Abmelden",
+    "bookingIntake": "Booking intake"
   },
   "language": {
     "label": "Sprache"
@@ -448,5 +449,41 @@
     "translatedLabel": "Automatische Übersetzung (OpenAI)",
     "translateFailed": "Übersetzung fehlgeschlagen.",
     "retry": "Erneut versuchen"
+  },
+  "bookingIntake": {
+    "title": "Booking intake",
+    "subtitle": "Paste WhatsApp/email text → review proposal → confirm reservation. LLM only suggests; you confirm.",
+    "notAvailable": "Booking intake is not enabled for this tenant.",
+    "loadConfigFailed": "Failed to load configuration",
+    "parseFailed": "Parse failed",
+    "confirmFailed": "Failed to confirm reservation",
+    "parseFirst": "Parse the message first.",
+    "rawText": "Message / text",
+    "rawTextPlaceholder": "Paste WhatsApp message with dates, room, company…",
+    "parse": "Parse (AI)",
+    "draftId": "Draft #{id}",
+    "missing": "Missing",
+    "property": "Property",
+    "propertyPlaceholder": "Select property…",
+    "unit": "Unit",
+    "unitPlaceholder": "Select unit…",
+    "checkIn": "Check-in",
+    "checkOut": "Check-out",
+    "amount": "Amount (all-in, EUR)",
+    "amountHint": "Total to charge including tourist tax.",
+    "bookerName": "Booker / name",
+    "bookerPhone": "Phone",
+    "bookerEmail": "Email",
+    "bookerAddress": "Booker address",
+    "companySection": "Company (B2B snapshot)",
+    "buyerCompanyName": "Company name",
+    "buyerOib": "Tax ID (OIB)",
+    "buyerAddress": "Company address",
+    "invoiceEmail": "Invoice email",
+    "guestSection": "Guest",
+    "guestFirstName": "First name",
+    "guestLastName": "Last name",
+    "confirm": "Confirm reservation",
+    "phoneInvalid": "Phone must start with + and contain digits only."
   }
 }

@@ -17,6 +17,10 @@ from apps.api.reception_channex_views import (
     ReceptionReservationChannexMessagesView,
     ReceptionReservationCreateView,
 )
+from apps.api.reception_booking_intake_views import (
+    BookingIntakeConfirmView,
+    BookingIntakeParseView,
+)
 from apps.api.billing_views import (
     InvoicePdfView,
     ReservationInvoicePdfView,
@@ -263,6 +267,16 @@ urlpatterns = [
         "reservations/create/",
         ReceptionReservationCreateView.as_view(),
         name="reception-reservation-create",
+    ),
+    path(
+        "booking-intake/parse/",
+        BookingIntakeParseView.as_view(),
+        name="reception-booking-intake-parse",
+    ),
+    path(
+        "booking-intake/confirm/",
+        BookingIntakeConfirmView.as_view(),
+        name="reception-booking-intake-confirm",
     ),
     path(
         "reservations/import-pdf/",

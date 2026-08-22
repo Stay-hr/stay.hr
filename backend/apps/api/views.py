@@ -42,6 +42,10 @@ def _feature_flags_for_channel_manager(channel_manager: str) -> dict[str, bool]:
             ChannelManager.CHANNEX,
             ChannelManager.NONE,
         },
+        "reception_booking_intake": channel_manager in {
+            ChannelManager.CHANNEX,
+            ChannelManager.NONE,
+        },
     }
     return flags
 

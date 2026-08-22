@@ -23,7 +23,8 @@
     "reports": "Izvještaji",
     "settings": "Postavke",
     "whatsapp": "WhatsApp",
-    "logout": "Odjava"
+    "logout": "Odjava",
+    "bookingIntake": "Booking intake"
   },
   "language": {
     "label": "Jezik"
@@ -820,5 +821,41 @@
         "title": "Korisnici"
       }
     }
+  },
+  "bookingIntake": {
+    "title": "Booking intake",
+    "subtitle": "Zalijepi WhatsApp/email tekst → pregledaj prijedlog → potvrdi rezervaciju. LLM samo predlaže; vi potvrđujete.",
+    "notAvailable": "Booking intake nije omogućen za ovog tenant-a.",
+    "loadConfigFailed": "Učitavanje konfiguracije nije uspjelo",
+    "parseFailed": "Parsiranje nije uspjelo",
+    "confirmFailed": "Potvrda rezervacije nije uspjela",
+    "parseFirst": "Prvo pokrenite parsiranje.",
+    "rawText": "Poruka / tekst",
+    "rawTextPlaceholder": "Zalijepi WhatsApp poruku s datumima, sobom, firmom…",
+    "parse": "Parsiraj (AI)",
+    "draftId": "Nacrt #{id}",
+    "missing": "Nedostaje",
+    "property": "Objekt",
+    "propertyPlaceholder": "Odaberite objekt…",
+    "unit": "Jedinica",
+    "unitPlaceholder": "Odaberite jedinicu…",
+    "checkIn": "Dolazak",
+    "checkOut": "Odlazak",
+    "amount": "Iznos (all-in, EUR)",
+    "amountHint": "Ukupno za naplatu uključujući boravišnu pristojbu.",
+    "bookerName": "Booker / naziv",
+    "bookerPhone": "Telefon",
+    "bookerEmail": "Email",
+    "bookerAddress": "Adresa bookera",
+    "companySection": "Tvrtka (B2B snapshot)",
+    "buyerCompanyName": "Naziv tvrtke",
+    "buyerOib": "OIB",
+    "buyerAddress": "Adresa tvrtke",
+    "invoiceEmail": "Email za račun",
+    "guestSection": "Gost",
+    "guestFirstName": "Ime",
+    "guestLastName": "Prezime",
+    "confirm": "Potvrdi rezervaciju",
+    "phoneInvalid": "Telefon mora počinjati s + i sadržavati samo brojke."
   }
 }

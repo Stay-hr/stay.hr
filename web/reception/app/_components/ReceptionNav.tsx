@@ -104,6 +104,11 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
               {t("newReservation")}
             </Link>
           ) : null}
+          {featureFlags?.reception_booking_intake ? (
+            <Link href="/booking-intake" className={linkClass("/booking-intake")}>
+              {t("bookingIntake")}
+            </Link>
+          ) : null}
           {channelManager === "channex" ? (
             <Link href="/reviews" className={linkClass("/reviews")}>
               {t("reviews")}
