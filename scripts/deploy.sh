@@ -28,6 +28,44 @@ done
 
 log() { printf '==> %s\n' "$*"; }
 
+# Full commit of this checkout, captured once. Production deploy refuses
+# empty/unknown so a Django image cannot ship without a real bake.
+resolve_deploy_sha() {
+  local root="${1:-.}"
+  git -C "$root" rev-parse HEAD 2>/dev/null || true
+}
+
+require_production_deploy_sha() {
+  local sha="${1:-}"
+  local normalized="${sha,,}"
+  if [[ -z "$sha" || "$normalized" == "unknown" ]]; then
+    echo "error: DEPLOY_SHA is empty or unknown; refusing production deploy." >&2
+    echo "Django images must bake the checkout commit via --build-arg STAY_GIT_SHA." >&2
+    return 1
+  fi
+  if [[ ! "$normalized" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "error: DEPLOY_SHA is not a full git SHA: ${sha}" >&2
+    return 1
+  fi
+  return 0
+}
+
+# env_file overrides image ENV. A runtime STAY_GIT_SHA in .env can go stale.
+env_overrides_stay_git_sha() {
+  local env_file="${1:-.env}"
+  [[ -f "$env_file" ]] || return 1
+  grep -Eq '^[[:space:]]*STAY_GIT_SHA=' "$env_file"
+}
+
+DEPLOY_SHA="$(resolve_deploy_sha "$REPO_ROOT")"
+require_production_deploy_sha "$DEPLOY_SHA"
+if env_overrides_stay_git_sha "$REPO_ROOT/.env"; then
+  echo "error: STAY_GIT_SHA is set in .env; remove it so the baked image value is used." >&2
+  exit 1
+fi
+log "Deploy SHA $DEPLOY_SHA"
+export STAY_GIT_SHA="$DEPLOY_SHA"
+
 service_image_id() {
   local service="$1"
   # docker compose reads stdin; never inherit the find file list.
@@ -143,8 +181,13 @@ fi
 
 if $needs_backend_rebuild; then
   log "Backend rebuild required ($backend_reason)"
-  docker compose build django celery-worker celery-beat
+  docker compose build --build-arg STAY_GIT_SHA="$DEPLOY_SHA" django celery-worker celery-beat
   docker compose up -d django celery-worker celery-beat
+  baked="$(docker compose exec -T django printenv STAY_GIT_SHA || true)"
+  if [[ "$baked" != "$DEPLOY_SHA" ]]; then
+    echo "error: django STAY_GIT_SHA=${baked:-empty} != DEPLOY_SHA=${DEPLOY_SHA}" >&2
+    exit 1
+  fi
 fi
 
 if $needs_frontend_rebuild; then
