@@ -315,6 +315,8 @@ def _maybe_send_autocheckin_documents_reply(
 def _maybe_notify_guest_message_inbound(row: WhatsAppMessage) -> None:
     if row.reservation_id is None:
         return
+    if (row.message_type or "").strip().lower() == "reaction":
+        return
 
     from apps.core.tasks import notify_guest_message_inbound
 

@@ -280,3 +280,31 @@ class WhatsAppAutocheckinInboundTests(TestCase):
         self.assertEqual(result["reason"], "unsupported")
         mock_send.assert_not_called()
         mock_interactive.assert_not_called()
+
+    @patch("apps.core.tasks.notify_guest_message_inbound.delay")
+    @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_interactive_button_message")
+    @patch("apps.integrations.whatsapp.whatsapp_guest_autocheckin.send_text_message")
+    def test_reaction_inbound_skips_fcm(self, mock_send, mock_interactive, mock_notify):
+        inbound = WhatsAppMessage.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            wamid="wamid.in.reaction",
+            wa_id="385911111111",
+            phone_number_id="1068791909660300",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type="reaction",
+            body="",
+            raw_payload={
+                "type": "reaction",
+                "reaction": {"emoji": "👍", "message_id": "wamid.out"},
+            },
+        )
+
+        result = process_inbound_message(inbound.pk)
+
+        self.assertEqual(result["status"], "auto_reply_skipped")
+        self.assertEqual(result["reason"], "reaction")
+        mock_send.assert_not_called()
+        mock_interactive.assert_not_called()
+        mock_notify.assert_not_called()

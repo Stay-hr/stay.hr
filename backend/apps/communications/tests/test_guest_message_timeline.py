@@ -79,6 +79,64 @@ class WhatsAppDisplayBodyTests(TestCase):
 
         self.assertEqual(whatsapp_display_body(Row()), "Bok")
 
+    def test_reaction_uses_payload_emoji(self):
+        class Row:
+            body = ""
+            message_type = "reaction"
+            raw_payload = {
+                "type": "reaction",
+                "reaction": {"emoji": "👍", "message_id": "wamid.x"},
+            }
+
+        self.assertEqual(whatsapp_display_body(Row()), "👍")
+
+    def test_reaction_without_emoji_uses_neutral_label(self):
+        class Row:
+            body = ""
+            message_type = "reaction"
+            raw_payload = {"type": "reaction", "reaction": {}}
+
+        self.assertEqual(whatsapp_display_body(Row()), "Reakcija")
+        self.assertNotEqual(whatsapp_display_body(Row()), "Poruka (WhatsApp)")
+        self.assertNotEqual(whatsapp_display_body(Row()), "👍")
+
+    def test_serialize_whatsapp_reaction_body_is_emoji(self):
+        from apps.communications.guest_message_timeline import serialize_whatsapp
+
+        tenant = Tenant.objects.create(slug="reaction-test", name="Reaction Test")
+        prop = Property.objects.create(tenant=tenant, name="P", slug="p-rx")
+        reservation = Reservation.objects.create(
+            tenant=tenant,
+            property=prop,
+            booker_name="Guest",
+            check_in=timezone.localdate(),
+            check_out=timezone.localdate() + timedelta(days=1),
+            status=Reservation.Status.EXPECTED,
+        )
+        integration = IntegrationConfig.objects.create(
+            tenant=tenant,
+            provider=IntegrationConfig.Provider.WHATSAPP,
+            routing_key="reaction-key",
+            is_active=True,
+        )
+        wa = WhatsAppMessage.objects.create(
+            tenant_id=tenant.pk,
+            integration=integration,
+            reservation=reservation,
+            wamid="wamid.reaction.test",
+            wa_id="385991234567",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type="reaction",
+            body="",
+            raw_payload={
+                "type": "reaction",
+                "reaction": {"emoji": "❤️", "message_id": "wamid.out"},
+            },
+        )
+        payload = serialize_whatsapp(wa)
+        self.assertEqual(payload["message_type"], "reaction")
+        self.assertEqual(payload["body_text"], "❤️")
+
 
 class TimelineDedupTests(TestCase):
     def setUp(self):

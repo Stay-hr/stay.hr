@@ -31,6 +31,19 @@ _MEDIA_PREVIEW = {
     "document": "📎 Datoteka poslana",
 }
 
+_REACTION_FALLBACK = "Reakcija"
+
+
+def _whatsapp_reaction_emoji(msg: WhatsAppMessage) -> str:
+    payload = getattr(msg, "raw_payload", None) or {}
+    if not isinstance(payload, dict):
+        return ""
+    reaction = payload.get("reaction")
+    if not isinstance(reaction, dict):
+        return ""
+    return str(reaction.get("emoji") or "").strip()
+
+
 _OUTBOUND_IMAGE_PREVIEW = "📷 Slika poslana"
 
 MERGE_WINDOW_OUTBOUND_SECONDS = 180
@@ -79,6 +92,9 @@ def media_kind_for_message_type(message_type: str) -> str | None:
 
 
 def whatsapp_display_body(msg: WhatsAppMessage) -> str:
+    message_type = (getattr(msg, "message_type", None) or "").strip().lower()
+    if message_type == "reaction":
+        return _whatsapp_reaction_emoji(msg) or _REACTION_FALLBACK
     body = (msg.body or "").strip()
     if body:
         return body
