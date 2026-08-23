@@ -9,6 +9,7 @@ import type {
   GuestCheckInSessionResponse,
   GuestCheckInSlot,
 } from "@/lib/types";
+import { CountryCombobox } from "@/app/_components/CountryCombobox";
 
 type Props = {
   token: string;
@@ -720,14 +721,13 @@ export function GuestCheckInWizard({ token }: Props) {
               <label className="label" htmlFor="nationality">
                 {t("nationality")}
               </label>
-              <input
+              <CountryCombobox
                 id="nationality"
-                className={`input mt-1 ${confidenceClass(fieldConfidence.nationality)}`}
-                maxLength={2}
-                placeholder="HR"
+                className={confidenceClass(fieldConfidence.nationality)}
                 value={form.nationality}
-                onChange={(e) => updateField("nationality", e.target.value.toUpperCase())}
+                onChange={(iso2) => updateField("nationality", iso2)}
                 required
+                placeholder={t("nationalityPlaceholder")}
               />
               {confidenceHint("nationality") ? (
                 <p className="mt-1 text-xs text-amber-700">{confidenceHint("nationality")}</p>

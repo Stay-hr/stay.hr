@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from apps.core.countries import is_known_iso2
 from apps.reservations.models import Guest
 
 
@@ -44,7 +45,11 @@ def _has_gender(sex: str | None) -> bool:
 
 
 def _has_nationality(guest: Guest) -> bool:
-    return _has_text(guest.nationality) or _has_text(guest.document_country_iso2)
+    if _has_text(guest.nationality) and is_known_iso2(guest.nationality):
+        return True
+    if _has_text(guest.document_country_iso2) and is_known_iso2(guest.document_country_iso2):
+        return True
+    return False
 
 
 def _has_document_type(guest: Guest) -> bool:

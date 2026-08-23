@@ -227,10 +227,21 @@ def _apply_guest_fields(guest: Guest, fields: dict) -> None:
     if not isinstance(fields, dict):
         raise GuestCheckInOrchestratorError("invalid_payload", http_status=400)
 
+    from apps.core.countries import is_known_iso2
+
     update_fields: list[str] = []
     for key, value in fields.items():
         if key not in _GUEST_PATCHABLE_FIELDS:
             continue
+        if key == "nationality":
+            raw = (value or "").strip().upper() if isinstance(value, str) else ""
+            if raw and not is_known_iso2(raw):
+                raise GuestCheckInOrchestratorError(
+                    "invalid_nationality",
+                    "Odaberite državljanstvo iz popisa.",
+                    http_status=400,
+                )
+            value = raw
         setattr(guest, key, value)
         update_fields.append(key)
 

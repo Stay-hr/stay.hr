@@ -105,7 +105,8 @@ services:
 
   web-booking:
     build:
-      context: ./web/booking
+      context: .
+      dockerfile: web/booking/Dockerfile
     image: stay-hr-web-booking:latest
     container_name: stay_web_booking
     restart: unless-stopped
