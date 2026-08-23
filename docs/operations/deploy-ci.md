@@ -83,6 +83,8 @@ Workflow [`.github/workflows/deploy-production.yml`](../../.github/workflows/dep
 
 `deploy.sh` rebuilds Django/Celery and/or Next images when backend/frontend sources (or migrations) changed since the last image build; otherwise restarts services. Rebuild detection snapshots the `find` file list before calling `docker compose images`, which reads stdin and would otherwise swallow that list and skip the rebuild.
 
+Django/Celery images bake `STAY_GIT_SHA` at **build** time. `deploy.sh` captures `DEPLOY_SHA` once from the checkout (`git rev-parse HEAD`) before any rebuild, passes `--build-arg STAY_GIT_SHA="$DEPLOY_SHA"`, and **exits** if that value is empty or `unknown`. Do not put `STAY_GIT_SHA` in `.env`: `env_file` would override the image and can go stale. Local `docker compose build django` without the arg keeps the Dockerfile default (`unknown`).
+
 ## Required secrets
 
 Repository → **Settings → Secrets and variables → Actions**:
@@ -160,3 +162,4 @@ After merge to `main`:
 1. Actions → **Deploy production** should be green
 2. `https://app.stay.hr` / `https://api.stay.hr` respond
 3. On server: `cd /opt/stacks/stay.hr && git rev-parse HEAD` matches `origin/main`
+4. After a Django image rebuild, `GET /api/v1/reception/system/status/` (`reception:read`) → `build.git_sha` equals the **full** SHA from step 3. Restart-only deploys keep the SHA from the last Django image bake.

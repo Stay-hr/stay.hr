@@ -1,12 +1,9 @@
 FROM python:3.12-slim-bookworm AS base
 
-ARG STAY_GIT_SHA=unknown
-
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    STAY_GIT_SHA=${STAY_GIT_SHA}
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
@@ -33,6 +30,11 @@ RUN groupadd --gid 1000 stay \
 WORKDIR /app/backend
 
 USER stay
+
+# Baked at image build (scripts/deploy.sh --build-arg). Default unknown is
+# the local fallback; production deploy must pass a real commit and refuses unknown.
+ARG STAY_GIT_SHA=unknown
+ENV STAY_GIT_SHA=${STAY_GIT_SHA}
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["/app/scripts/run-gunicorn.sh"]

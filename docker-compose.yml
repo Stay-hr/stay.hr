@@ -1,6 +1,11 @@
+x-django-build: &django-build
+  context: .
+  args:
+    STAY_GIT_SHA: ${STAY_GIT_SHA:-unknown}
+
 services:
   django:
-    build: .
+    build: *django-build
     image: stay-hr-django:latest
     container_name: stay_django
     restart: unless-stopped
@@ -60,7 +65,7 @@ services:
   # Usage: docker compose --profile test-run run --rm django-run python manage.py …
   django-run:
     profiles: ["test-run"]
-    build: .
+    build: *django-build
     image: stay-hr-django:latest
     env_file:
       - .env
@@ -73,7 +78,7 @@ services:
       hetzner_net: {}
 
   celery-worker:
-    build: .
+    build: *django-build
     image: stay-hr-django:latest
     container_name: stay_celery_worker
     restart: unless-stopped
@@ -89,7 +94,7 @@ services:
     command: ["celery", "-A", "config", "worker", "-l", "info"]
 
   celery-beat:
-    build: .
+    build: *django-build
     image: stay-hr-django:latest
     container_name: stay_celery_beat
     restart: unless-stopped
