@@ -73,7 +73,8 @@
     "firstName": "Vorname",
     "lastName": "Nachname",
     "dateOfBirth": "Geburtsdatum",
-    "nationality": "Staatsangehörigkeit (ISO)",
+    "nationality": "Staatsangehörigkeit",
+    "nationalityPlaceholder": "Land suchen…",
     "sex": "Geschlecht",
     "sexFemale": "Weiblich",
     "sexMale": "Männlich",
@@ -112,7 +113,7 @@
     "validationSummary": "Fehlt: {fields}",
     "validationHint": "Füllen Sie die markierten Felder aus, bevor Sie fortfahren.",
     "fieldRequired": "Pflichtfeld",
-    "fieldErrorNationality": "Geben Sie einen 2-stelligen Ländercode ein (z. B. DE)",
+    "fieldErrorNationality": "Wählen Sie ein Land aus der Liste",
     "fieldErrorAddress": "Stadt und Straße eingeben (z. B. Zagreb + Ilica 15)",
     "fieldLabels": {
       "first_name": "Vorname",

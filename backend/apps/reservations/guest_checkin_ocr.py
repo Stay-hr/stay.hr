@@ -125,14 +125,10 @@ def person_to_guest_preview(person: dict) -> dict[str, Any]:
     else:
         sex = str(person.get("sex") or "").strip().lower()
 
-    nat = str(person.get("nationality") or "").strip().upper()
-    if len(nat) == 3:
-        from apps.reservations.nationality_display import normalize_country_iso2
+    from apps.reservations.nationality_display import normalize_country_iso2
 
-        iso2 = normalize_country_iso2(nat)
-        nationality = iso2 or nat[:2]
-    else:
-        nationality = nat[:2]
+    nat = str(person.get("nationality") or "").strip().upper()
+    nationality = normalize_country_iso2(nat)
 
     address_raw = str(person.get("address") or "").strip()
     address = address_raw

@@ -24,6 +24,7 @@ COPY scripts/run-gunicorn.sh /app/scripts/run-gunicorn.sh
 RUN chmod +x /app/scripts/run-gunicorn.sh
 
 COPY backend/ ./backend/
+COPY data/iso3166-countries.json ./data/iso3166-countries.json
 
 RUN groupadd --gid 1000 stay \
     && useradd --uid 1000 --gid stay --create-home --shell /usr/sbin/nologin stay \
