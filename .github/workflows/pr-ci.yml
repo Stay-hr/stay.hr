@@ -1,0 +1,231 @@
+name: PR CI
+
+# Merge gate for every pull request. Required check display name: "PR CI / backend"
+# (stable — content may evolve without changing branch protection).
+#
+# Capability selection (dorny/paths-filter):
+#   - Always: check + migrate + health
+#   - Path → CI-safe suite labels (expand as Actions parity improves)
+#   - core/config/requirements → expanded smoke (same safe labels)
+# Full apps.integrations.tests / full apps.reservations.tests remain local
+# (./scripts/run-tests-postgis.sh) until ImportError/env isolation debts are cleared.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: pr-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changed capabilities
+    runs-on: ubuntu-latest
+    outputs:
+      reservations: ${{ steps.filter.outputs.reservations }}
+      billing: ${{ steps.filter.outputs.billing }}
+      integrations: ${{ steps.filter.outputs.integrations }}
+      api: ${{ steps.filter.outputs.api }}
+      tenants: ${{ steps.filter.outputs.tenants }}
+      properties: ${{ steps.filter.outputs.properties }}
+      communications: ${{ steps.filter.outputs.communications }}
+      full_smoke: ${{ steps.filter.outputs.full_smoke }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            reservations:
+              - 'backend/apps/reservations/**'
+            billing:
+              - 'backend/apps/billing/**'
+            integrations:
+              - 'backend/apps/integrations/**'
+            api:
+              - 'backend/apps/api/**'
+            tenants:
+              - 'backend/apps/tenants/**'
+            properties:
+              - 'backend/apps/properties/**'
+            communications:
+              - 'backend/apps/communications/**'
+            full_smoke:
+              - 'backend/apps/core/**'
+              - 'backend/config/**'
+              - 'requirements.txt'
+
+  backend:
+    name: PR CI / backend
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: stay
+          POSTGRES_PASSWORD: stay
+          POSTGRES_DB: stay_platform_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U stay -d stay_platform_test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test_postgis
+      DJANGO_SECRET_KEY: ci-secret-key-not-for-production
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: stay_platform_test_db
+      DB_USER: stay
+      DB_PASSWORD: stay
+      TEST_DB_NAME: stay_platform_test_db
+      # Belt-and-suspenders with test_postgis ALLOWED_HOSTS (DisallowedHost → 400).
+      DJANGO_ALLOWED_HOSTS: "testserver,localhost,127.0.0.1,app.stay.hr,admin.stay.hr,api.stay.hr,stay-django,.stay.hr"
+      FCM_PUSH_ENABLED: "false"
+      # Match test_postgis; lifecycle suites expect WA automation paths.
+      GUEST_CHECKIN_WEB_ONLY: "false"
+      WHATSAPP_AUTOCHECKIN_MAINTENANCE: "false"
+      # Meta Graph token required for send_credentials_ok().
+      WHATSAPP_ACCESS_TOKEN: ci-test-whatsapp-access-token
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        working-directory: .
+        run: |
+          set -euo pipefail
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ensure media dir writable
+        run: |
+          set -euo pipefail
+          mkdir -p media
+
+      - name: Enable PostGIS extension
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import psycopg
+          with psycopg.connect(
+              host="localhost",
+              port=5432,
+              dbname="stay_platform_test_db",
+              user="stay",
+              password="stay",
+              autocommit=True,
+          ) as conn:
+              conn.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
+          print("postgis ok")
+          PY
+
+      - name: Django check
+        run: |
+          set -euo pipefail
+          python manage.py check
+
+      - name: Apply migrations
+        run: |
+          set -euo pipefail
+          python manage.py migrate --noinput
+
+      - name: Migrate check
+        run: |
+          set -euo pipefail
+          python manage.py migrate --check
+
+      - name: Select capability test suites
+        id: suites
+        working-directory: .
+        run: |
+          set -euo pipefail
+          suites=()
+
+          # CI-safe labels only (expand when packages are green on Actions).
+          add_reservations() {
+            suites+=(
+              apps.reservations.tests.test_address_normalizer
+              apps.reservations.tests.test_mrz_parse
+              apps.reservations.tests.test_phone_validation
+              apps.reservations.tests.test_nationality_display
+            )
+          }
+          add_billing() {
+            suites+=(
+              apps.billing.tests.test_eporezna_pdv
+              apps.billing.tests.test_eporezna_pdvs
+              apps.api.tests.test_reception_eporezna
+            )
+          }
+
+          full_smoke="${{ needs.changes.outputs.full_smoke }}"
+          if [[ "${full_smoke}" == "true" ]]; then
+            echo "full_smoke=true — expanded CI-safe suite"
+            add_reservations
+            add_billing
+          else
+            [[ "${{ needs.changes.outputs.reservations }}" == "true" ]] && add_reservations
+            [[ "${{ needs.changes.outputs.billing }}" == "true" ]] && add_billing
+            if [[ "${{ needs.changes.outputs.api }}" == "true" ]]; then
+              echo "api paths changed — full apps.api.tests still local until Actions parity"
+            fi
+            if [[ "${{ needs.changes.outputs.integrations }}" == "true" ]]; then
+              echo "integrations paths changed — apps.integrations.tests still local/nightly"
+            fi
+            if [[ "${{ needs.changes.outputs.tenants }}" == "true" ]]; then
+              echo "tenants paths changed — apps.tenants.tests still local until Actions parity"
+            fi
+            if [[ "${{ needs.changes.outputs.properties }}" == "true" ]]; then
+              echo "properties paths changed — apps.properties.tests still local until Actions parity"
+            fi
+            if [[ "${{ needs.changes.outputs.communications }}" == "true" ]]; then
+              echo "communications paths changed — apps.communications.tests still local until Actions parity"
+            fi
+          fi
+
+          declare -A seen=()
+          unique=()
+          for s in "${suites[@]+"${suites[@]}"}"; do
+            [[ -n "${seen[$s]:-}" ]] && continue
+            seen[$s]=1
+            unique+=("$s")
+          done
+
+          if [[ ${#unique[@]} -eq 0 ]]; then
+            echo "suites=" >> "$GITHUB_OUTPUT"
+            echo "No capability suites selected — health only."
+          else
+            echo "suites=${unique[*]}" >> "$GITHUB_OUTPUT"
+            echo "Selected suites: ${unique[*]}"
+          fi
+
+      - name: Health + capability tests
+        run: |
+          set -euo pipefail
+          args=(
+            apps.api.tests.test_reception_api.ReceptionAPITests.test_health_unauthenticated
+          )
+          # shellcheck disable=SC2206
+          extra=( ${{ steps.suites.outputs.suites }} )
+          if [[ ${#extra[@]} -gt 0 && -n "${extra[0]:-}" ]]; then
+            args+=("${extra[@]}")
+          fi
+          python manage.py test "${args[@]}" -v 2 --keepdb
