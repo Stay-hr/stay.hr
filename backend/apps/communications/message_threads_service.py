@@ -10,7 +10,7 @@ from django.utils.dateparse import parse_datetime
 
 from apps.communications.canonical_read import tenant_reads_canonical
 from apps.communications.canonical_timeline import canonical_timelines_by_reservation
-from apps.communications.guest_message_timeline import last_timeline_entry
+from apps.communications.guest_message_timeline import timeline_for_reservation
 from apps.communications.models import (
     GuestInboundMessage,
     GuestMessageThreadState,
@@ -64,6 +64,17 @@ def _parse_timeline_datetime(raw: str | None) -> datetime | None:
     return parsed
 
 
+def _is_reaction_item(item: dict) -> bool:
+    return (item.get("message_type") or "").strip().lower() == "reaction"
+
+
+def _last_actionable_item(timeline: list[dict]) -> dict | None:
+    for item in reversed(timeline):
+        if not _is_reaction_item(item):
+            return item
+    return None
+
+
 def _needs_reply(last: dict, reply_dismissed_at: datetime | None) -> bool:
     if last.get("direction") != "inbound":
         return False
@@ -78,11 +89,21 @@ def _needs_reply(last: dict, reply_dismissed_at: datetime | None) -> bool:
     return last_at > dismissed
 
 
+def _needs_reply_for_timeline(
+    timeline: list[dict], reply_dismissed_at: datetime | None
+) -> bool:
+    actionable = _last_actionable_item(timeline)
+    if actionable is None:
+        return False
+    return _needs_reply(actionable, reply_dismissed_at)
+
+
 def _serialize_thread(
     reservation: Reservation,
     last: dict,
     *,
     reply_dismissed_at: datetime | None = None,
+    needs_reply: bool | None = None,
 ) -> dict[str, Any]:
     preview = (last.get("body_text") or "").strip()
     if len(preview) > 200:
@@ -93,6 +114,8 @@ def _serialize_thread(
         if channel:
             last_channels = [channel]
     today = tenant_local_now(reservation.tenant).date()
+    if needs_reply is None:
+        needs_reply = _needs_reply(last, reply_dismissed_at)
     return {
         "reservation_id": reservation.pk,
         "booker_name": reservation.booker_name or "",
@@ -106,7 +129,7 @@ def _serialize_thread(
         "last_channel": last_channels[0] if last_channels else (last.get("channel") or ""),
         "last_channels": last_channels,
         "last_direction": last.get("direction") or "",
-        "needs_reply": _needs_reply(last, reply_dismissed_at),
+        "needs_reply": needs_reply,
     }
 
 
@@ -141,30 +164,27 @@ def list_message_threads_for_tenant(
             reservation_id__in=reservation_pks,
         )
     }
-    last_by_reservation: dict[int, dict[str, Any] | None] = {}
+    timelines_by_reservation: dict[int, list[dict[str, Any]]] = {}
     if read_canonical:
-        timelines = canonical_timelines_by_reservation(reservations)
-        last_by_reservation = {
-            reservation.pk: (timeline[-1] if timeline else None)
-            for reservation, timeline in (
-                (reservation, timelines.get(reservation.pk, []))
-                for reservation in reservations
-            )
-        }
+        timelines_by_reservation = canonical_timelines_by_reservation(reservations)
 
     threads: list[dict[str, Any]] = []
     needs_reply_count = 0
     for reservation in reservations:
         if read_canonical:
-            last = last_by_reservation.get(reservation.pk)
+            timeline = timelines_by_reservation.get(reservation.pk) or []
         else:
-            last = last_timeline_entry(reservation, read_canonical=False)
-        if last is None:
+            timeline = timeline_for_reservation(reservation, read_canonical=False)
+        if not timeline:
             continue
+        last = timeline[-1]
         row = _serialize_thread(
             reservation,
             last,
             reply_dismissed_at=dismissed_map.get(reservation.pk),
+            needs_reply=_needs_reply_for_timeline(
+                timeline, dismissed_map.get(reservation.pk)
+            ),
         )
         if row["needs_reply"]:
             needs_reply_count += 1

@@ -63,6 +63,43 @@ class ReceptionMessageThreadsAPITests(TestCase):
         )
         self.client = APIClient()
         self.auth = {"HTTP_AUTHORIZATION": f"Bearer {self.raw_token}"}
+        self.whatsapp_integration = IntegrationConfig.objects.create(
+            tenant=self.tenant,
+            provider=IntegrationConfig.Provider.WHATSAPP,
+            routing_key="1068791909660300",
+            is_active=True,
+        )
+
+    def _whatsapp_message(self, *, wamid, direction, message_type, body="", raw_payload=None, at=None):
+        row = WhatsAppMessage.objects.create(
+            tenant_id=self.tenant.pk,
+            integration=self.whatsapp_integration,
+            reservation=self.reservation,
+            wamid=wamid,
+            wa_id="385911122233",
+            phone_number_id="1068791909660300",
+            direction=direction,
+            message_type=message_type,
+            body=body,
+            raw_payload=raw_payload or {},
+        )
+        if at is not None:
+            WhatsAppMessage.objects.filter(pk=row.pk).update(created_at=at)
+            row.refresh_from_db()
+        return row
+
+    def _reaction(self, *, wamid, emoji="👍", at=None):
+        return self._whatsapp_message(
+            wamid=wamid,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type="reaction",
+            body="",
+            raw_payload={
+                "type": "reaction",
+                "reaction": {"emoji": emoji, "message_id": "wamid.target"},
+            },
+            at=at,
+        )
 
     def test_list_threads_empty(self):
         response = self.client.get(
@@ -133,15 +170,9 @@ class ReceptionMessageThreadsAPITests(TestCase):
             body=body,
         )
         ChannexMessage.objects.filter(pk=channex.pk).update(created_at=now)
-        integration = IntegrationConfig.objects.create(
-            tenant=self.tenant,
-            provider=IntegrationConfig.Provider.WHATSAPP,
-            routing_key="1068791909660300",
-            is_active=True,
-        )
         wa = WhatsAppMessage.objects.create(
             tenant_id=self.tenant.pk,
-            integration=integration,
+            integration=self.whatsapp_integration,
             reservation=self.reservation,
             wamid="wamid.merged.out",
             wa_id="385911122233",
@@ -275,3 +306,96 @@ class ReceptionMessageThreadsAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         mock_poll.assert_not_called()
         mock_channex.assert_not_called()
+
+    def test_outbound_then_reaction_does_not_need_reply(self):
+        now = timezone.now()
+        self._whatsapp_message(
+            wamid="wamid.out.ok",
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            message_type="text",
+            body="C'est parfait pour nous.",
+            at=now,
+        )
+        self._reaction(wamid="wamid.in.react.ok", at=now + timedelta(seconds=30))
+
+        response = self.client.get(
+            "/api/v1/reception/message-threads/?sync=0",
+            **self.auth,
+        )
+        data = response.json()
+        thread = data["threads"][0]
+        self.assertFalse(thread["needs_reply"])
+        self.assertEqual(thread["last_message_preview"], "👍")
+        self.assertEqual(data["needs_reply_count"], 0)
+
+        filtered = self.client.get(
+            "/api/v1/reception/message-threads/?sync=0&needs_reply=1",
+            **self.auth,
+        )
+        self.assertEqual(filtered.json()["total"], 0)
+
+    def test_inbound_text_then_reaction_still_needs_reply(self):
+        now = timezone.now()
+        self._whatsapp_message(
+            wamid="wamid.in.text",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type="text",
+            body="On arrive vers 16h ?",
+            at=now,
+        )
+        self._reaction(wamid="wamid.in.react.after-text", at=now + timedelta(seconds=20))
+
+        response = self.client.get(
+            "/api/v1/reception/message-threads/?sync=0",
+            **self.auth,
+        )
+        data = response.json()
+        thread = data["threads"][0]
+        self.assertTrue(thread["needs_reply"])
+        self.assertEqual(thread["last_message_preview"], "👍")
+        self.assertEqual(data["needs_reply_count"], 1)
+
+    def test_only_inbound_reaction_does_not_need_reply(self):
+        self._reaction(wamid="wamid.in.react.only")
+
+        response = self.client.get(
+            "/api/v1/reception/message-threads/?sync=0",
+            **self.auth,
+        )
+        data = response.json()
+        thread = data["threads"][0]
+        self.assertFalse(thread["needs_reply"])
+        self.assertEqual(thread["last_message_preview"], "👍")
+        self.assertEqual(data["needs_reply_count"], 0)
+
+    def test_trailing_reactions_after_outbound_do_not_need_reply(self):
+        now = timezone.now()
+        self._whatsapp_message(
+            wamid="wamid.in.question",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type="text",
+            body="On arrive vers 16h ?",
+            at=now,
+        )
+        self._reaction(wamid="wamid.in.react.1", at=now + timedelta(seconds=10))
+        outbound = GuestOutboundMessage.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            channel=GuestMessageChannel.WHATSAPP,
+            body_text="C'est parfait pour nous.",
+            status=GuestOutboundMessageStatus.SENT,
+        )
+        GuestOutboundMessage.objects.filter(pk=outbound.pk).update(
+            created_at=now + timedelta(seconds=20)
+        )
+        self._reaction(wamid="wamid.in.react.2", emoji="❤️", at=now + timedelta(seconds=30))
+
+        response = self.client.get(
+            "/api/v1/reception/message-threads/?sync=0",
+            **self.auth,
+        )
+        data = response.json()
+        thread = data["threads"][0]
+        self.assertFalse(thread["needs_reply"])
+        self.assertEqual(thread["last_message_preview"], "❤️")
+        self.assertEqual(data["needs_reply_count"], 0)
