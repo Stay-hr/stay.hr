@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from apps.core.countries import iso2_to_iso3 as local_iso2_to_iso3
+from apps.core.countries import is_known_iso3
 from apps.integrations.evisitor.client import EvisitorClient
 from apps.integrations.evisitor.config import EvisitorRuntimeConfig
 from apps.integrations.evisitor.exceptions import EvisitorApiError, EvisitorConfigError
@@ -19,42 +21,8 @@ _DOCUMENT_TYPE_MAP = {
     "identity card": "027",
 }
 
-_ISO2_FALLBACKS = {
-    "HR": "HRV",
-    "DE": "DEU",
-    "IT": "ITA",
-    "AT": "AUT",
-    "SI": "SVN",
-    "BE": "BEL",
-    "FR": "FRA",
-    "NL": "NLD",
-    "GB": "GBR",
-    "US": "USA",
-    "CH": "CHE",
-    "PL": "POL",
-    "CZ": "CZE",
-    "SK": "SVK",
-    "HU": "HUN",
-    "RS": "SRB",
-    "BA": "BIH",
-    "ME": "MNE",
-    "MK": "MKD",
-    "AL": "ALB",
-    "GR": "GRC",
-    "ES": "ESP",
-    "PT": "PRT",
-    "SE": "SWE",
-    "NO": "NOR",
-    "DK": "DNK",
-    "FI": "FIN",
-    "IE": "IRL",
-    "LU": "LUX",
-    "IN": "IND",
-    "CO": "COL",
-    "LT": "LTU",
-    "LV": "LVA",
-    "EE": "EST",
-}
+# Provider-specific ISO3 codes outside ISO 3166 (e.g. Kosovo in MRZ).
+_EVISITOR_SPECIFIC_ISO3 = frozenset({"XXK"})
 
 _country_cache: dict[tuple[str, int | None], dict[str, str]] = {}
 
@@ -98,14 +66,23 @@ def iso2_to_iso3(
 ) -> str:
     code = (iso2 or "").strip().upper()
     if len(code) == 3:
-        return code
+        if is_known_iso3(code):
+            return code
+        if code in _EVISITOR_SPECIFIC_ISO3:
+            return code
+        return ""
     if len(code) != 2:
         return ""
+
+    mapped = local_iso2_to_iso3(code)
+    if mapped:
+        return mapped
+
     if config is not None:
-        mapped = _iso2_to_iso3_map(config, property_id).get(code)
-        if mapped:
-            return mapped
-    return _ISO2_FALLBACKS.get(code, "")
+        provider_mapped = _iso2_to_iso3_map(config, property_id).get(code)
+        if provider_mapped:
+            return provider_mapped
+    return ""
 
 
 def map_document_type_code(document_type: str, document_code: str = "") -> str:

@@ -339,7 +339,8 @@
     "firstName": "Ime",
     "lastName": "Prezime",
     "dateOfBirth": "Datum rođenja",
-    "nationality": "Državljanstvo (ISO)",
+    "nationality": "Državljanstvo",
+    "nationalityPlaceholder": "Pretražite državu…",
     "sex": "Spol",
     "sexFemale": "Ženski",
     "sexMale": "Muški",
@@ -378,7 +379,7 @@
     "validationSummary": "Nedostaju podaci: {fields}",
     "validationHint": "Ispunite označena polja prije nastavka.",
     "fieldRequired": "Obavezno polje",
-    "fieldErrorNationality": "Unesite ISO kod države (npr. HR)",
+    "fieldErrorNationality": "Odaberite državu iz popisa",
     "fieldErrorAddress": "Unesite grad i ulicu (npr. Zagreb + Ilica 15)",
     "fieldLabels": {
       "first_name": "ime",
