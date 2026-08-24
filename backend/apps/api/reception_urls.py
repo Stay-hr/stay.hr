@@ -113,6 +113,7 @@ from apps.api.reception_views import (
     ReservationDetailView,
     ReservationGuestDetailView,
     ReservationGuestListCreateView,
+    ReceptionIncomingReservationsCountView,
     ReservationTimelineListView,
 )
 
@@ -268,6 +269,11 @@ urlpatterns = [
         "reservations/",
         ReservationTimelineListView.as_view(),
         name="reception-reservations-list",
+    ),
+    path(
+        "reservations/incoming-count/",
+        ReceptionIncomingReservationsCountView.as_view(),
+        name="reception-reservations-incoming-count",
     ),
     path(
         "reservations/create/",

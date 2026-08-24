@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework.test import APIClient
 
 from apps.properties.models import Property, Unit
@@ -545,6 +546,216 @@ class ReceptionAPITests(TestCase):
             {row["id"] for row in received_resp.json()},
             {booked.id, manual.id},
         )
+
+    def _incoming_count(self, **params):
+        return self.client.get(
+            "/api/v1/reception/reservations/incoming-count/",
+            params,
+            **self.auth,
+        )
+
+    def _age_default_reservation_out_of_badge_window(self):
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            booked_at=None,
+            created_at=timezone.now() - timedelta(days=40),
+        )
+
+    def test_incoming_count_seed_uses_30_day_window(self):
+        now = timezone.now()
+        self._age_default_reservation_out_of_badge_window()
+        Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-incoming-old",
+            booking_code="BK-IO",
+            check_in=date(2026, 10, 1),
+            check_out=date(2026, 10, 3),
+            status=Reservation.Status.EXPECTED,
+            booked_at=now - timedelta(days=40),
+        )
+        recent = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-incoming-recent",
+            booking_code="BK-IR",
+            check_in=date(2026, 10, 4),
+            check_out=date(2026, 10, 6),
+            status=Reservation.Status.EXPECTED,
+            booked_at=now - timedelta(days=1),
+        )
+
+        resp = self._incoming_count()
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["count"], 0)
+        self.assertEqual(
+            parse_datetime(payload["latest_received_at"]),
+            recent.booked_at,
+        )
+
+    def test_incoming_count_since_before_and_after(self):
+        now = timezone.now()
+        self._age_default_reservation_out_of_badge_window()
+        booked_at = now - timedelta(hours=2)
+        Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-incoming-since",
+            booking_code="BK-IS",
+            check_in=date(2026, 10, 7),
+            check_out=date(2026, 10, 9),
+            status=Reservation.Status.EXPECTED,
+            booked_at=booked_at,
+        )
+
+        before = self._incoming_count(since=(booked_at - timedelta(seconds=1)).isoformat())
+        self.assertEqual(before.status_code, 200)
+        self.assertEqual(before.json()["count"], 1)
+
+        after = self._incoming_count(since=(booked_at + timedelta(seconds=1)).isoformat())
+        self.assertEqual(after.status_code, 200)
+        self.assertEqual(after.json()["count"], 0)
+
+    def test_incoming_count_equal_since_is_not_new(self):
+        now = timezone.now()
+        self._age_default_reservation_out_of_badge_window()
+        booked_at = now - timedelta(hours=3)
+        Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-incoming-eq",
+            booking_code="BK-IE",
+            check_in=date(2026, 10, 10),
+            check_out=date(2026, 10, 12),
+            status=Reservation.Status.EXPECTED,
+            booked_at=booked_at,
+        )
+
+        resp = self._incoming_count(since=booked_at.isoformat())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["count"], 0)
+
+    def test_incoming_count_includes_manual_without_booked_at(self):
+        now = timezone.now()
+        self._age_default_reservation_out_of_badge_window()
+        created_at = now - timedelta(hours=4)
+        manual = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-incoming-manual",
+            booking_code="BK-IM",
+            check_in=date(2026, 10, 13),
+            check_out=date(2026, 10, 15),
+            status=Reservation.Status.EXPECTED,
+            import_source="manual",
+            source="reception",
+        )
+        Reservation.objects.filter(pk=manual.pk).update(created_at=created_at)
+
+        resp = self._incoming_count(since=(created_at - timedelta(seconds=1)).isoformat())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["count"], 1)
+        self.assertEqual(
+            parse_datetime(resp.json()["latest_received_at"]),
+            created_at,
+        )
+
+    def test_incoming_count_includes_canceled(self):
+        now = timezone.now()
+        self._age_default_reservation_out_of_badge_window()
+        booked_at = now - timedelta(hours=5)
+        Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-incoming-canceled",
+            booking_code="BK-IC",
+            check_in=date(2026, 10, 16),
+            check_out=date(2026, 10, 18),
+            status=Reservation.Status.CANCELED,
+            booked_at=booked_at,
+            canceled_at=now - timedelta(hours=1),
+        )
+
+        resp = self._incoming_count(since=(booked_at - timedelta(seconds=1)).isoformat())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["count"], 1)
+
+    def test_incoming_count_clamps_old_since_to_30_day_window(self):
+        now = timezone.now()
+        self._age_default_reservation_out_of_badge_window()
+        Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-incoming-outside",
+            booking_code="BK-IX",
+            check_in=date(2026, 8, 1),
+            check_out=date(2026, 8, 3),
+            status=Reservation.Status.EXPECTED,
+            booked_at=now - timedelta(days=40),
+        )
+        Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-incoming-inside",
+            booking_code="BK-IY",
+            check_in=date(2026, 10, 19),
+            check_out=date(2026, 10, 21),
+            status=Reservation.Status.EXPECTED,
+            booked_at=now - timedelta(days=2),
+        )
+
+        resp = self._incoming_count(since=(now - timedelta(days=60)).isoformat())
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(
+            parse_datetime(payload["latest_received_at"]),
+            now - timedelta(days=2),
+        )
+
+    def test_incoming_count_requires_reception_read(self):
+        _, write_token = ApiApplication.create_with_token(
+            tenant=self.tenant,
+            name="Write only",
+            scopes=["reception:write"],
+        )
+        resp = self.client.get(
+            "/api/v1/reception/reservations/incoming-count/",
+            HTTP_AUTHORIZATION=f"Bearer {write_token}",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+        unauth = self.client.get("/api/v1/reception/reservations/incoming-count/")
+        self.assertEqual(unauth.status_code, 403)
+
+    def test_incoming_count_is_tenant_scoped(self):
+        now = timezone.now()
+        self._age_default_reservation_out_of_badge_window()
+        other = Tenant.objects.create(name="Other", slug="other-incoming")
+        other_property = Property.objects.create(
+            tenant=other,
+            name="Other",
+            slug="other-incoming",
+        )
+        Reservation.objects.create(
+            tenant=other,
+            property=other_property,
+            external_id="ext-other-incoming",
+            booking_code="BK-OT",
+            check_in=date(2026, 10, 22),
+            check_out=date(2026, 10, 24),
+            status=Reservation.Status.EXPECTED,
+            booked_at=now - timedelta(hours=1),
+        )
+
+        resp = self._incoming_count()
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.json()["latest_received_at"])
+        self.assertEqual(resp.json()["count"], 0)
+
+        after = self._incoming_count(since=(now - timedelta(days=1)).isoformat())
+        self.assertEqual(after.status_code, 200)
+        self.assertEqual(after.json()["count"], 0)
 
     def test_timeline_booked_today_with_include_canceled(self):
         zagreb = ZoneInfo("Europe/Zagreb")

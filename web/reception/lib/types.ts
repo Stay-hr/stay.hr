@@ -61,6 +61,11 @@ export type Reservation = {
   channel?: ReservationChannel;
 };
 
+export type IncomingReservationsCountResponse = {
+  count: number;
+  latest_received_at: string | null;
+};
+
 export type Room = {
   id: number;
   code: string;
