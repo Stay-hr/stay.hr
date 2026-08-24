@@ -16,6 +16,7 @@ from datetime import timezone as dt_timezone
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db.models import Case, Count, DateTimeField, F, Prefetch, Q, When
+from django.db.models.functions import Coalesce
 from django.http import FileResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -510,6 +511,10 @@ class ReservationTimelineListView(ReceptionReadView, generics.ListAPIView):
         if check_in_to:
             queryset = queryset.filter(check_in__lte=check_in_to)
 
+        received_from = self._parse_date("received_from")
+        received_to = self._parse_date("received_to")
+        has_received_range = bool(received_from and received_to)
+
         booked_from = self._parse_date("booked_from")
         booked_to = self._parse_date("booked_to")
         canceled_from = self._parse_date("canceled_from")
@@ -520,7 +525,20 @@ class ReservationTimelineListView(ReceptionReadView, generics.ListAPIView):
             has_booked_range and has_canceled_range
         )
 
-        if has_booked_range and combined_mode:
+        if has_received_range:
+            start, end = property_day_range(received_from, received_to)
+            queryset = (
+                queryset.annotate(
+                    received_at=Coalesce(
+                        "booked_at",
+                        "created_at",
+                        output_field=DateTimeField(),
+                    )
+                )
+                .filter(received_at__gte=start, received_at__lt=end)
+                .order_by("-received_at", "-id")
+            )
+        elif has_booked_range and combined_mode:
             booked_start, booked_end = property_day_range(booked_from, booked_to)
             booked_q = Q(
                 booked_at__isnull=False,

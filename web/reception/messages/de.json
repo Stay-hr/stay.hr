@@ -15,6 +15,7 @@
   "nav": {
     "reception": "Rezeption",
     "timeline": "Timeline",
+    "incoming": "Eingegangen",
     "calendar": "Kalender",
     "messages": "Nachrichten",
     "settings": "Einstellungen",
@@ -50,6 +51,21 @@
     "noReservations": "Keine Reservierungen für die gewählten Filter.",
     "arrivalOn": "Anreise {date}",
     "evisitorErrorAria": "eVisitor-Fehler — Details öffnen"
+  },
+  "incoming": {
+    "title": "Eingegangene Reservierungen",
+    "period": "Zeitraum",
+    "periodToday": "Heute",
+    "period7days": "7 Tage",
+    "period30days": "30 Tage",
+    "channel": "Kanal",
+    "channelAll": "Alle Kanäle",
+    "search": "Suche",
+    "searchPlaceholder": "Name, Zimmer, ID…",
+    "loadFailed": "Laden fehlgeschlagen",
+    "noReservations": "Keine eingegangenen Reservierungen für die gewählten Filter.",
+    "receivedOn": "eingegangen {date}",
+    "receivedUnknown": "Ohne Eingangszeit"
   },
   "calendar": {
     "title": "Zimmerkalender",
