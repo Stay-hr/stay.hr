@@ -28,6 +28,7 @@ from apps.reservations.models import (
     ReservationUnit,
 )
 from apps.reservations.availability import validate_unit_available_for_booking
+from apps.reservations.channels import reservation_channel
 from apps.reservations.reservation_units import joined_room_names
 
 
@@ -170,6 +171,8 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
     offer_summary = serializers.SerializerMethodField()
     expected_arrival_at = serializers.SerializerMethodField()
     booking_payout_received = serializers.SerializerMethodField()
+    received_at = serializers.SerializerMethodField()
+    channel = serializers.SerializerMethodField()
     property_slug = serializers.CharField(source="property.slug", read_only=True)
     property_name = serializers.CharField(source="property.name", read_only=True)
 
@@ -215,9 +218,11 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
             "payment_status_key",
             "nights_count",
             "booked_at",
+            "received_at",
             "canceled_at",
             "source",
             "import_source",
+            "channel",
             "pdf_imported_at",
             "xls_imported_at",
             "confirmation_pdf_url",
@@ -249,6 +254,12 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
 
     def get_booking_payout_received(self, obj) -> bool:
         return obj.booking_payout_received_at is not None
+
+    def get_received_at(self, obj):
+        return obj.booked_at or obj.created_at
+
+    def get_channel(self, obj) -> dict[str, str | None]:
+        return reservation_channel(obj)
 
     def get_expected_arrival_at(self, obj):
         from apps.core.timezone import effective_guest_stated_arrival_at

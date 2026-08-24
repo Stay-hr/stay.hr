@@ -99,6 +99,9 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
           <Link href={onTimeline ? "/calendar/rooms" : "/"} className="btn-ghost">
             {onTimeline ? t("calendar") : t("timeline")}
           </Link>
+          <Link href="/reservations/incoming" className={linkClass("/reservations/incoming")}>
+            {t("incoming")}
+          </Link>
           {featureFlags?.reception_create_reservation ? (
             <Link href="/reservations/new" className={linkClass("/reservations/new")}>
               {t("newReservation")}

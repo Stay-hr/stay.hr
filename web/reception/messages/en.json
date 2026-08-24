@@ -16,6 +16,7 @@
   "nav": {
     "reception": "Reception",
     "timeline": "Timeline",
+    "incoming": "Incoming",
     "calendar": "Calendar",
     "newReservation": "New booking",
     "reviews": "Reviews",
@@ -57,6 +58,21 @@
     "noReservations": "No reservations for the selected filters.",
     "arrivalOn": "arrival {date}",
     "evisitorErrorAria": "eVisitor error — open details"
+  },
+  "incoming": {
+    "title": "Incoming reservations",
+    "period": "Period",
+    "periodToday": "Today",
+    "period7days": "7 days",
+    "period30days": "30 days",
+    "channel": "Channel",
+    "channelAll": "All channels",
+    "search": "Search",
+    "searchPlaceholder": "Name, room, ID…",
+    "loadFailed": "Failed to load",
+    "noReservations": "No incoming reservations for the selected filters.",
+    "receivedOn": "received {date}",
+    "receivedUnknown": "No received time"
   },
   "calendar": {
     "title": "Room calendar",

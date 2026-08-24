@@ -16,6 +16,7 @@
   "nav": {
     "reception": "Recepcija",
     "timeline": "Timeline",
+    "incoming": "Pristigle",
     "calendar": "Kalendar",
     "newReservation": "Nova rezervacija",
     "reviews": "Recenzije",
@@ -57,6 +58,21 @@
     "noReservations": "Nema rezervacija za odabrane filtere.",
     "arrivalOn": "dolazak {date}",
     "evisitorErrorAria": "eVisitor greška — otvori detalje"
+  },
+  "incoming": {
+    "title": "Pristigle rezervacije",
+    "period": "Period",
+    "periodToday": "Danas",
+    "period7days": "7 dana",
+    "period30days": "30 dana",
+    "channel": "Kanal",
+    "channelAll": "Svi kanali",
+    "search": "Pretraga",
+    "searchPlaceholder": "Ime, soba, ID…",
+    "loadFailed": "Učitavanje nije uspjelo",
+    "noReservations": "Nema pristiglih rezervacija za odabrane filtere.",
+    "receivedOn": "pristigle {date}",
+    "receivedUnknown": "Bez vremena pristizanja"
   },
   "calendar": {
     "title": "Kalendar po sobama",

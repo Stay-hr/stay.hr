@@ -15,6 +15,7 @@
   "nav": {
     "reception": "Reception",
     "timeline": "Timeline",
+    "incoming": "Ricevute",
     "calendar": "Calendario",
     "messages": "Messaggi",
     "settings": "Impostazioni",
@@ -50,6 +51,21 @@
     "noReservations": "Nessuna prenotazione per i filtri selezionati.",
     "arrivalOn": "arrivo {date}",
     "evisitorErrorAria": "Errore eVisitor — apri dettagli"
+  },
+  "incoming": {
+    "title": "Prenotazioni ricevute",
+    "period": "Periodo",
+    "periodToday": "Oggi",
+    "period7days": "7 giorni",
+    "period30days": "30 giorni",
+    "channel": "Canale",
+    "channelAll": "Tutti i canali",
+    "search": "Cerca",
+    "searchPlaceholder": "Nome, camera, ID…",
+    "loadFailed": "Caricamento non riuscito",
+    "noReservations": "Nessuna prenotazione ricevuta per i filtri selezionati.",
+    "receivedOn": "ricevute {date}",
+    "receivedUnknown": "Senza orario di ricezione"
   },
   "calendar": {
     "title": "Calendario per camere",

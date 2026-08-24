@@ -376,6 +376,176 @@ class ReceptionAPITests(TestCase):
         ids = {row["id"] for row in resp.json()}
         self.assertEqual(ids, {booked_today.id})
 
+    def test_timeline_received_includes_manual_without_booked_at(self):
+        zagreb = ZoneInfo("Europe/Zagreb")
+        created_at = timezone.make_aware(datetime(2026, 6, 4, 15, 0), timezone=zagreb)
+        manual = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-manual-received",
+            booking_code="BK-M",
+            check_in=date(2026, 9, 1),
+            check_out=date(2026, 9, 3),
+            status=Reservation.Status.EXPECTED,
+            booker_name="Manual Guest",
+            import_source="manual",
+            source="reception",
+        )
+        Reservation.objects.filter(pk=manual.pk).update(created_at=created_at)
+
+        resp = self.client.get(
+            "/api/v1/reception/reservations/",
+            {"received_from": "2026-06-04", "received_to": "2026-06-05"},
+            **self.auth,
+        )
+        self.assertEqual(resp.status_code, 200)
+        rows = resp.json()
+        ids = {row["id"] for row in rows}
+        self.assertEqual(ids, {manual.id})
+        row = rows[0]
+        self.assertEqual(
+            row["channel"],
+            {"key": "reception", "label": "Reception", "transport": "direct"},
+        )
+        self.assertIsNotNone(row["received_at"])
+
+    def test_timeline_received_orders_by_received_at_desc(self):
+        zagreb = ZoneInfo("Europe/Zagreb")
+        later_booked_at = timezone.make_aware(
+            datetime(2026, 6, 4, 18, 0),
+            timezone=zagreb,
+        )
+        earlier_created_at = timezone.make_aware(
+            datetime(2026, 6, 4, 10, 0),
+            timezone=zagreb,
+        )
+        later = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-received-later",
+            booking_code="BK-RL",
+            check_in=date(2026, 9, 10),
+            check_out=date(2026, 9, 12),
+            status=Reservation.Status.EXPECTED,
+            import_source="channex",
+            source="Booking.com",
+            booked_at=later_booked_at,
+        )
+        earlier = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-received-earlier",
+            booking_code="BK-RE",
+            check_in=date(2026, 9, 8),
+            check_out=date(2026, 9, 9),
+            status=Reservation.Status.EXPECTED,
+            import_source="manual",
+            source="reception",
+        )
+        Reservation.objects.filter(pk=earlier.pk).update(created_at=earlier_created_at)
+
+        resp = self.client.get(
+            "/api/v1/reception/reservations/",
+            {"received_from": "2026-06-04", "received_to": "2026-06-05"},
+            **self.auth,
+        )
+        self.assertEqual(resp.status_code, 200)
+        ids = [row["id"] for row in resp.json()]
+        self.assertEqual(ids, [later.id, earlier.id])
+        self.assertEqual(resp.json()[0]["channel"]["key"], "booking_com")
+        self.assertEqual(resp.json()[0]["channel"]["transport"], "channex")
+
+    def test_timeline_received_includes_canceled(self):
+        zagreb = ZoneInfo("Europe/Zagreb")
+        booked_at = timezone.make_aware(datetime(2026, 6, 4, 11, 0), timezone=zagreb)
+        canceled = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-received-canceled",
+            booking_code="BK-RC",
+            check_in=date(2026, 10, 1),
+            check_out=date(2026, 10, 3),
+            status=Reservation.Status.CANCELED,
+            import_source="channex",
+            source="Airbnb",
+            booked_at=booked_at,
+            canceled_at=timezone.make_aware(datetime(2026, 6, 4, 16, 0), timezone=zagreb),
+        )
+
+        resp = self.client.get(
+            "/api/v1/reception/reservations/",
+            {"received_from": "2026-06-04", "received_to": "2026-06-05"},
+            **self.auth,
+        )
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.json()}
+        self.assertEqual(ids, {canceled.id})
+
+    def test_timeline_received_does_not_change_booked_or_period_filters(self):
+        zagreb = ZoneInfo("Europe/Zagreb")
+        booked_at = timezone.make_aware(datetime(2026, 6, 4, 10, 0), timezone=zagreb)
+        booked = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-received-vs-booked",
+            booking_code="BK-RVB",
+            check_in=date(2026, 11, 1),
+            check_out=date(2026, 11, 3),
+            status=Reservation.Status.EXPECTED,
+            booked_at=booked_at,
+            import_source="channex",
+            source="Booking.com",
+        )
+        manual = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            external_id="ext-received-vs-manual",
+            booking_code="BK-RVM",
+            check_in=date(2026, 11, 4),
+            check_out=date(2026, 11, 6),
+            status=Reservation.Status.EXPECTED,
+            import_source="manual",
+            source="reception",
+        )
+        Reservation.objects.filter(pk=manual.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 6, 4, 12, 0), timezone=zagreb)
+        )
+
+        booked_resp = self.client.get(
+            "/api/v1/reception/reservations/",
+            {"booked_from": "2026-06-04", "booked_to": "2026-06-05"},
+            **self.auth,
+        )
+        self.assertEqual(booked_resp.status_code, 200)
+        self.assertEqual({row["id"] for row in booked_resp.json()}, {booked.id})
+
+        period_resp = self.client.get(
+            "/api/v1/reception/reservations/",
+            {"period_from": "2026-05-10", "period_to": "2026-05-15"},
+            **self.auth,
+        )
+        self.assertEqual(period_resp.status_code, 200)
+        period_ids = {row["id"] for row in period_resp.json()}
+        self.assertIn(self.reservation.id, period_ids)
+        self.assertNotIn(booked.id, period_ids)
+        self.assertNotIn(manual.id, period_ids)
+
+        received_resp = self.client.get(
+            "/api/v1/reception/reservations/",
+            {
+                "received_from": "2026-06-04",
+                "received_to": "2026-06-05",
+                "period_from": "2026-05-10",
+                "period_to": "2026-05-15",
+            },
+            **self.auth,
+        )
+        self.assertEqual(received_resp.status_code, 200)
+        self.assertEqual(
+            {row["id"] for row in received_resp.json()},
+            {booked.id, manual.id},
+        )
+
     def test_timeline_booked_today_with_include_canceled(self):
         zagreb = ZoneInfo("Europe/Zagreb")
         today = date(2026, 6, 4)

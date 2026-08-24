@@ -1,4 +1,4 @@
-import type { ReservationStatus } from "@/lib/types";
+import type { ReservationChannelKey, ReservationStatus } from "@/lib/types";
 
 export const statusClass: Record<string, string> = {
   expected: "badge-expected",
@@ -45,6 +45,25 @@ export function importSourceKey(
   if (normalized === "channex") return "channex";
   if ((source || "").trim().toLowerCase() === "api") return "web";
   return "manual";
+}
+
+export function channelBadgeClass(key: ReservationChannelKey | string): string {
+  if (key === "booking_com") {
+    return "badge bg-sky-50 text-sky-800 ring-1 ring-sky-200";
+  }
+  if (key === "airbnb") {
+    return "badge bg-rose-50 text-rose-800 ring-1 ring-rose-200";
+  }
+  if (key === "expedia") {
+    return "badge bg-yellow-50 text-yellow-900 ring-1 ring-yellow-200";
+  }
+  if (key === "web") {
+    return "badge bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200";
+  }
+  if (key === "reception") {
+    return "badge bg-slate-100 text-slate-800 ring-1 ring-slate-200";
+  }
+  return "badge bg-violet-50 text-violet-800 ring-1 ring-violet-200";
 }
 
 export type { ReservationStatus };

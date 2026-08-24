@@ -44,6 +44,11 @@ export function flagClass(iso2?: string | null): string | null {
   return cc;
 }
 
+/** Property-local calendar day (YYYY-MM-DD) for received/booked timestamps. */
+export function propertyDayIso(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: PROPERTY_TIME_ZONE }).format(new Date(iso));
+}
+
 /** Property-local HH:mm for arrival times (backend is source of truth). */
 export function formatArrivalTime(iso: string): string {
   return new Intl.DateTimeFormat("en-GB", {

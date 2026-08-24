@@ -9,6 +9,22 @@ export type TenantOption = {
 
 export type ReservationStatus = "expected" | "checked_in" | "checked_out" | "canceled" | "no_show" | "pending" | "refused";
 
+export type ReservationChannelKey =
+  | "booking_com"
+  | "airbnb"
+  | "expedia"
+  | "web"
+  | "reception"
+  | "other";
+
+export type ReservationChannelTransport = "channex" | "direct" | "import" | null;
+
+export type ReservationChannel = {
+  key: ReservationChannelKey;
+  label: string;
+  transport: ReservationChannelTransport;
+};
+
 export type ReservationUnit = {
   id: number;
   sort_order: number;
@@ -38,6 +54,11 @@ export type Reservation = {
   evisitor_summary?: EvisitorSummary;
   evisitor_progress?: EvisitorProgress;
   guests?: GuestLite[];
+  source?: string;
+  import_source?: string;
+  booked_at?: string | null;
+  received_at?: string | null;
+  channel?: ReservationChannel;
 };
 
 export type Room = {
