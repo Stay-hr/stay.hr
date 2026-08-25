@@ -6,8 +6,28 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ReceptionNav } from "@/app/_components/ReceptionNav";
 import { ReviewContentText } from "@/app/_components/ReviewContentText";
+import { extractApiError } from "@/lib/api-error";
 import type { ChannexReview } from "@/lib/types";
 import { reviewStatusBadges } from "@/lib/review-status-badges";
+
+function blockedReplyMessage(
+  review: ChannexReview,
+  t: (key: string, values?: Record<string, string>) => string,
+  formatDate: (iso: string | null) => string,
+): string {
+  switch (review.reply_blocked_reason) {
+    case "rating_only":
+      return t("replyBlockedRatingOnly");
+    case "expired":
+      return t("replyBlockedExpired", { date: formatDate(review.expired_at) });
+    case "replied":
+      return t("replyBlockedReplied");
+    case "airbnb_hidden":
+      return t("replyBlockedAirbnbHidden");
+    default:
+      return t("replyBlockedReplied");
+  }
+}
 
 const REVIEW_LANGS = ["hr", "en", "de", "es", "fr", "it"] as const;
 
@@ -84,8 +104,7 @@ export default function ReservationReviewDetailPage() {
         }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error((body as { detail?: string }).detail || t("composeFailed"));
+        throw new Error(await extractApiError(res, t("composeFailed")));
       }
       const data = (await res.json()) as { body_text: string };
       setReplyText(data.body_text);
@@ -110,12 +129,7 @@ export default function ReservationReviewDetailPage() {
         body: JSON.stringify({ reply: text }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as {
-          detail?: string;
-          reply?: string[];
-        };
-        const replyError = Array.isArray(body.reply) ? body.reply[0] : undefined;
-        throw new Error(replyError || body.detail || t("replyFailed"));
+        throw new Error(await extractApiError(res, t("replyFailed")));
       }
       const successKey =
         review.ota === "BookingCom" ? "replySuccessBooking" : "replySuccess";
@@ -265,7 +279,11 @@ export default function ReservationReviewDetailPage() {
                   </>
                 )}
               </div>
-            ) : null}
+            ) : (
+              <p className="text-sm text-muted">
+                {blockedReplyMessage(review, t, formatReviewTime)}
+              </p>
+            )}
 
             {actionMessage ? <p className="text-sm text-muted">{actionMessage}</p> : null}
           </div>

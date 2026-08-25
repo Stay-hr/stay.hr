@@ -5,6 +5,8 @@ type Badge = {
   className: string;
 };
 
+const MUTED_BADGE = "rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700";
+
 export function reviewStatusBadges(review: ChannexReview): Badge[] {
   const badges: Badge[] = [];
 
@@ -22,6 +24,16 @@ export function reviewStatusBadges(review: ChannexReview): Badge[] {
     badges.push({
       key: "needsReply",
       className: "rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900",
+    });
+  } else if (review.reply_blocked_reason === "rating_only") {
+    badges.push({
+      key: "notRespondable",
+      className: MUTED_BADGE,
+    });
+  } else if (review.reply_blocked_reason === "expired") {
+    badges.push({
+      key: "replyExpiredBadge",
+      className: MUTED_BADGE,
     });
   }
 
