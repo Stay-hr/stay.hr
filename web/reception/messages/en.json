@@ -535,7 +535,13 @@
     "generateAction": "Generate",
     "showOriginal": "Show original",
     "showTranslation": "Show translation",
-    "translatedLabel": "Auto-translated (OpenAI)"
+    "translatedLabel": "Auto-translated (OpenAI)",
+    "notRespondable": "Not respondable",
+    "replyExpiredBadge": "Reply window closed",
+    "replyBlockedRatingOnly": "Booking.com does not allow replies to rating-only reviews with no guest comment.",
+    "replyBlockedExpired": "The reply window expired on {date}.",
+    "replyBlockedReplied": "A reply to this review has already been published.",
+    "replyBlockedAirbnbHidden": "This Airbnb review is hidden until you rate the guest."
   },
   "whatsapp": {
     "nav": {

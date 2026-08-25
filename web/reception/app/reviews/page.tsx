@@ -130,7 +130,7 @@ export default function ReviewsPage() {
                 disabled={!review.reservation_id}
                 onClick={() => {
                   if (review.reservation_id) {
-                    router.push(`/reservations/${review.reservation_id}`);
+                    router.push(`/reservations/${review.reservation_id}/reviews/${review.id}`);
                   }
                 }}
                 className={`w-full rounded-lg border p-3 text-left transition ${

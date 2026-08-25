@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from rest_framework import serializers, status
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import APIException, NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -10,7 +10,11 @@ from apps.api.permissions import DenyAdminScopes, HasReceptionAccess
 from apps.api.reception_channex_views import _guard_channex_tenant
 from apps.api.views import TenantAPIView
 from apps.integrations.channex.ari_service import get_active_channex_integration
-from apps.integrations.channex.exceptions import ChannexApiError, ChannexBookingIngestError
+from apps.integrations.channex.exceptions import (
+    ChannexApiError,
+    ChannexBookingIngestError,
+    ChannexWriteDisabled,
+)
 from apps.integrations.channex.review_service import (
     DEFAULT_PAGE_SIZE,
     compose_review_reply,
@@ -23,6 +27,12 @@ from apps.integrations.channex.review_service import (
     submit_airbnb_guest_review,
 )
 from apps.reservations.models import Reservation
+
+
+class ChannexWriteUnavailable(APIException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = "Channex writes are disabled on this host."
+    default_code = "channex_write_disabled"
 
 
 def _serialize_review(request, row, *, translate_default: bool) -> dict:
@@ -176,7 +186,9 @@ class ReceptionReviewReplyView(TenantAPIView, APIView):
         except ChannexBookingIngestError as exc:
             raise ValidationError({"reply": [str(exc)]}) from exc
         except ChannexApiError as exc:
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError({"reply": [str(exc)]}) from exc
+        except ChannexWriteDisabled as exc:
+            raise ChannexWriteUnavailable(detail=str(exc)) from exc
 
         return Response(_serialize_review(request, row, translate_default=True))
 
@@ -213,7 +225,9 @@ class ReceptionReviewGuestReviewView(TenantAPIView, APIView):
         except ChannexBookingIngestError as exc:
             raise ValidationError(str(exc)) from exc
         except ChannexApiError as exc:
-            raise ValidationError(str(exc)) from exc
+            raise ValidationError({"reply": [str(exc)]}) from exc
+        except ChannexWriteDisabled as exc:
+            raise ChannexWriteUnavailable(detail=str(exc)) from exc
 
         return Response(_serialize_review(request, row, translate_default=True))
 

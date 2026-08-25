@@ -535,7 +535,13 @@
     "generateAction": "Generiraj",
     "showOriginal": "Prikaži original",
     "showTranslation": "Prikaži prijevod",
-    "translatedLabel": "Automatski prijevod (OpenAI)"
+    "translatedLabel": "Automatski prijevod (OpenAI)",
+    "notRespondable": "Nije moguće odgovoriti",
+    "replyExpiredBadge": "Rok istekao",
+    "replyBlockedRatingOnly": "Booking.com ne dopušta odgovor na recenzije koje imaju samo ocjenu — bez komentara gosta.",
+    "replyBlockedExpired": "Rok za odgovor je istekao ({date}).",
+    "replyBlockedReplied": "Odgovor na ovu recenziju je već objavljen.",
+    "replyBlockedAirbnbHidden": "Airbnb skrivenu recenziju nije moguće odgovoriti dok ne ocijenite gosta."
   },
   "whatsapp": {
     "nav": {

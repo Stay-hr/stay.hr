@@ -463,3 +463,145 @@ class ReceptionReviewsTests(TestCase):
         self.assertTrue(data["reply_pending_moderation"])
         self.assertFalse(data["reply_published"])
         self.assertTrue(data["can_reply"])
+        self.assertIsNone(data.get("reply_blocked_reason"))
+
+    def test_review_detail_exposes_reply_blocked_reason(self):
+        self._login()
+        response = self.client.get(
+            f"/api/v1/reception/reviews/{self.review.pk}/?sync=0",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["can_reply"])
+        self.assertIsNone(data["reply_blocked_reason"])
+
+    def test_rating_only_stays_in_default_list_and_leaves_unreplied_queue(self):
+        rating_only = ChannexReview.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            channex_review_id="review-uuid-rating-only",
+            channex_booking_id=self.booking_id,
+            ota="BookingCom",
+            content="",
+            overall_score=Decimal("10.0"),
+            is_replied=False,
+            received_at=timezone.now(),
+            expired_at=timezone.now() + timedelta(days=30),
+        )
+        expired = ChannexReview.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            channex_review_id="review-uuid-expired",
+            ota="BookingCom",
+            content="Late review",
+            overall_score=Decimal("8.0"),
+            is_replied=False,
+            received_at=timezone.now() - timedelta(days=100),
+            expired_at=timezone.now() - timedelta(hours=2),
+        )
+        hidden = ChannexReview.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            channex_review_id="review-uuid-airbnb-hidden",
+            ota="AirBNB",
+            content="Hidden until host rates guest",
+            is_hidden=True,
+            is_replied=False,
+            received_at=timezone.now(),
+        )
+        self._login()
+
+        default_list = self.client.get(
+            "/api/v1/reception/reviews/?sync=0",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(default_list.status_code, 200)
+        default_ids = {item["id"] for item in default_list.json()["reviews"]}
+        self.assertIn(self.review.pk, default_ids)
+        self.assertIn(rating_only.pk, default_ids)
+        rating_payload = next(
+            item for item in default_list.json()["reviews"] if item["id"] == rating_only.pk
+        )
+        self.assertFalse(rating_payload["can_reply"])
+        self.assertEqual(rating_payload["reply_blocked_reason"], "rating_only")
+        self.assertEqual(rating_payload["overall_score"], 10.0)
+
+        unreplied = self.client.get(
+            "/api/v1/reception/reviews/?unreplied=1&sync=0",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(unreplied.status_code, 200)
+        unreplied_ids = {item["id"] for item in unreplied.json()["reviews"]}
+        self.assertEqual(unreplied_ids, {self.review.pk})
+        self.assertNotIn(rating_only.pk, unreplied_ids)
+        self.assertNotIn(expired.pk, unreplied_ids)
+        self.assertNotIn(hidden.pk, unreplied_ids)
+
+    @patch("apps.integrations.channex.review_service.sync_reviews_from_channex")
+    def test_empty_action_queue_does_not_force_sync_when_reviews_exist(self, mock_sync):
+        from apps.integrations.channex.review_service import mark_reviews_synced
+
+        self.review.content = ""
+        self.review.save(update_fields=["content", "updated_at"])
+        mark_reviews_synced(self.tenant.pk)
+        self._login()
+        response = self.client.get(
+            "/api/v1/reception/reviews/?unreplied=1&sync=auto",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total"], 0)
+        mock_sync.assert_not_called()
+
+    def test_reply_rejects_rating_only(self):
+        self.review.content = ""
+        self.review.save(update_fields=["content", "updated_at"])
+        self._login()
+        response = self.client.post(
+            f"/api/v1/reception/reviews/{self.review.pk}/reply/",
+            {"reply": "Thank you for staying with us."},
+            format="json",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertIn("reply", body)
+        self.assertIn("rating-only", body["reply"][0])
+
+    @patch("apps.api.reception_reviews_views.reply_to_review")
+    def test_reply_channex_api_error_uses_reply_key(self, mock_reply):
+        from apps.integrations.channex.exceptions import ChannexApiError
+
+        mock_reply.side_effect = ChannexApiError(
+            "Channex POST /reviews/x/reply failed (422): cannot reply without comments"
+        )
+        self._login()
+        response = self.client.post(
+            f"/api/v1/reception/reviews/{self.review.pk}/reply/",
+            {"reply": "Thank you for staying with us."},
+            format="json",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertIn("reply", body)
+        self.assertIn("cannot reply without comments", body["reply"][0])
+
+    @patch("apps.api.reception_reviews_views.reply_to_review")
+    def test_reply_write_disabled_returns_503(self, mock_reply):
+        from apps.integrations.channex.exceptions import ChannexWriteDisabled
+
+        mock_reply.side_effect = ChannexWriteDisabled()
+        self._login()
+        response = self.client.post(
+            f"/api/v1/reception/reviews/{self.review.pk}/reply/",
+            {"reply": "Thank you for staying with us."},
+            format="json",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("detail", response.json())
