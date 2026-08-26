@@ -68,7 +68,24 @@ Review text fields in list/detail responses:
 - `reply_published` — Booking.com (or OTA) confirmed publication (`reply_sent_at` set)
 - `reply_pending_moderation` — Booking.com reply submitted but not yet published
 - `suggested_reply_language` — detected language for compose (match guest review when possible)
-- `can_reply` — `true` while no published reply and deadline not expired (allows resubmit after moderation rejection)
+- `can_reply` — `true` only when the review is currently actionable (see Reply eligibility)
+- `reply_blocked_reason` — computed closed enum when `can_reply` is false: `replied`, `expired`, `rating_only`, `airbnb_hidden`
+
+## Reply eligibility
+
+`unreplied` on `GET /api/v1/reception/reviews/?unreplied=1` means **no reply submitted yet AND currently actionable**. That is stricter than `can_reply`: a Booking.com reply already sent (`is_replied` / reply text, `reply_sent_at` still null) stays resubmittable on the detail page until publication, but it leaves the “Samo neodgovorene” queue. Rating-only and expired reviews stay in the default inbox (`unreplied` omitted or `0`) as evidence; they leave the action queue only.
+
+| `reply_blocked_reason` | Meaning | Reply form |
+|------------------------|---------|------------|
+| `replied` | Published reply already exists (`reply_sent_at` set) | Hidden; existing reply stays dominant |
+| `expired` | Booking.com / OTA reply window closed (`expired_at <= now`) | Hidden; deadline shown |
+| `rating_only` | Booking.com review has no guest-written text (`content` empty). Booking.com does not accept replies to score-only reviews. | Hidden |
+| `airbnb_hidden` | Airbnb review is hidden until the host rates the guest | Hidden |
+| `null` | Actionable | Shown |
+
+`content` is the canonical guest-text field (ingest already folds Channex `content` / `raw_content`). If guest text arrives on a later webhook/sync, `rating_only` lifts automatically.
+
+Read-only hosts (`CHANNEX_OUTBOUND_ENABLED=false`) return **503** with `detail` on reply / guest-review POST instead of an uncaught 500. Channex / OTA failures return **400** `{ "reply": ["…"] }`.
 
 ## Booking.com reply moderation
 
@@ -120,7 +137,8 @@ Tap (background) ili foreground SnackBar **Otvori** (s `review_id` u payloadu) �
 | 4 | GET reviews on Channex reservation | |
 | 5 | POST reply → visible in Channex UI | |
 | 6 | Airbnb POST guest-review (hidden review) | |
-| 7 | Expired `expired_at` → API rejects reply | |
+| 7 | Expired `expired_at` → API rejects reply; detail shows expiry explanation | |
+| 10 | Booking.com rating-only review stays in default list, leaves `?unreplied=1` | |
 | 8 | Web + Flutter show same data | |
 | 9 | Push tap → review detail (or inbox fallback) | |
 
@@ -134,6 +152,8 @@ Tap (background) ili foreground SnackBar **Otvori** (s `review_id` u payloadu) �
 | Inbox `sync=auto` missed a new review | Fixed: `sync=auto` now re-pulls if last sync is older than 6 h (not only when inbox is empty) |
 | No reservation link | Booking not yet in stay.hr; review stays in property inbox |
 | Airbnb reply disabled | Hidden review — submit **guest-review** first |
+| Reply form missing on a text review | Check `reply_blocked_reason` (`expired` / `replied`) |
+| “Slanje odgovora nije uspjelo” with no detail | Should now surface Channex / policy text from `{reply: [...]}` or `detail` |
 | Reply shown as dict string in app | Run `sync_channex_reviews --tenant-slug=…` (includes reply repair) |
 
 ## Deploy

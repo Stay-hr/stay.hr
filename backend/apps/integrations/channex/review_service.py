@@ -6,7 +6,8 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from django.db.models import Q, QuerySet
+from django.db.models import Q, QuerySet, TextField, Value
+from django.db.models.functions import Coalesce, Trim
 from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -32,6 +33,18 @@ logger = logging.getLogger(__name__)
 
 AIRBNB_OTA = "AirBNB"
 BOOKING_COM_OTA = "BookingCom"
+REPLY_BLOCK_REPLIED = "replied"
+REPLY_BLOCK_EXPIRED = "expired"
+REPLY_BLOCK_RATING_ONLY = "rating_only"
+REPLY_BLOCK_AIRBNB_HIDDEN = "airbnb_hidden"
+REPLY_BLOCK_MESSAGES = {
+    REPLY_BLOCK_REPLIED: "This review already has a published reply.",
+    REPLY_BLOCK_EXPIRED: "The reply window for this review has expired.",
+    REPLY_BLOCK_RATING_ONLY: "Booking.com does not allow replies to rating-only reviews.",
+    REPLY_BLOCK_AIRBNB_HIDDEN: (
+        "Airbnb hidden reviews cannot be replied to until you rate the guest."
+    ),
+}
 DEFAULT_PAGE_SIZE = 25
 REVIEWS_SYNC_CACHE_PREFIX = "channex-reviews-sync"
 REVIEWS_SYNC_INTERVAL_SECONDS = 6 * 3600
@@ -275,6 +288,9 @@ def upsert_channex_review_from_payload(
 
     had_content = bool((existing.content or "").strip())
     new_content = field_values["content"]
+    if had_content and not (new_content or "").strip():
+        field_values["content"] = existing.content
+        new_content = existing.content
     content_just_arrived = bool(new_content) and not had_content
     content_changed = new_content != (existing.content or "")
 
@@ -492,11 +508,6 @@ def list_reviews_for_property(
     tenant = integration_row.tenant
     relink_unlinked_channex_reviews(tenant)
     qs = _reviews_queryset(tenant)
-    if unreplied_only:
-        qs = qs.filter(is_replied=False)
-    ota_filter = (ota or "").strip()
-    if ota_filter:
-        qs = qs.filter(ota__iexact=ota_filter)
 
     if _should_pull_reviews_from_channex(
         tenant_id=tenant.pk,
@@ -507,10 +518,12 @@ def list_reviews_for_property(
     ):
         _pull_reviews_from_channex(integration_row, client=client)
         qs = _reviews_queryset(tenant)
-        if unreplied_only:
-            qs = qs.filter(is_replied=False)
-        if ota_filter:
-            qs = qs.filter(ota__iexact=ota_filter)
+
+    if unreplied_only:
+        qs = filter_unreplied_inbox(qs)
+    ota_filter = (ota or "").strip()
+    if ota_filter:
+        qs = qs.filter(ota__iexact=ota_filter)
 
     total = qs.count()
     offset = max(page - 1, 0) * page_size
@@ -580,14 +593,71 @@ def reply_pending_moderation(row: ChannexReview) -> bool:
     return bool(_normalize_reply_text(row.reply))
 
 
-def review_reply_allowed(row: ChannexReview) -> bool:
+def review_reply_block_reason(row: ChannexReview) -> str | None:
+    """Closed enum of why a review cannot be replied to, or None if actionable."""
     if reply_published(row):
-        return False
+        return REPLY_BLOCK_REPLIED
     if row.expired_at and row.expired_at <= timezone.now():
-        return False
+        return REPLY_BLOCK_EXPIRED
     if row.ota == AIRBNB_OTA and row.is_hidden:
-        return False
-    return True
+        return REPLY_BLOCK_AIRBNB_HIDDEN
+    if row.ota == BOOKING_COM_OTA and not (row.content or "").strip():
+        return REPLY_BLOCK_RATING_ONLY
+    return None
+
+
+def review_reply_allowed(row: ChannexReview) -> bool:
+    return review_reply_block_reason(row) is None
+
+
+def review_reply_block_message(row: ChannexReview) -> str | None:
+    reason = review_reply_block_reason(row)
+    if reason is None:
+        return None
+    return REPLY_BLOCK_MESSAGES[reason]
+
+
+def filter_reply_actionable(qs: QuerySet[ChannexReview]) -> QuerySet[ChannexReview]:
+    """Queryset mirror of ``review_reply_block_reason(row) is None`` (``can_reply``)."""
+    now = timezone.now()
+    return (
+        qs.annotate(
+            _reply_actionable_content=Coalesce(
+                Trim("content"),
+                Value("", output_field=TextField()),
+                output_field=TextField(),
+            ),
+        )
+        .exclude(reply_sent_at__isnull=False)
+        .exclude(expired_at__isnull=False, expired_at__lte=now)
+        .exclude(ota=AIRBNB_OTA, is_hidden=True)
+        .exclude(ota=BOOKING_COM_OTA, _reply_actionable_content="")
+    )
+
+
+def review_has_submitted_reply(row: ChannexReview) -> bool:
+    return bool(row.is_replied) or bool(_normalize_reply_text(row.reply)) or reply_published(row)
+
+
+def filter_unreplied_inbox(qs: QuerySet[ChannexReview]) -> QuerySet[ChannexReview]:
+    """Inbox ``?unreplied=1``: needs a first reply.
+
+    A Booking.com reply already submitted (``is_replied`` / reply text) is
+    still ``can_reply`` until publication so staff can resubmit after
+    moderation. It is not unanswered, so it leaves this queue.
+    """
+    return (
+        filter_reply_actionable(qs)
+        .exclude(is_replied=True)
+        .annotate(
+            _submitted_reply=Coalesce(
+                Trim("reply"),
+                Value("", output_field=TextField()),
+                output_field=TextField(),
+            ),
+        )
+        .filter(_submitted_reply="")
+    )
 
 
 def detect_review_language(content: str) -> str:
@@ -635,8 +705,9 @@ def reply_to_review(
     text = (reply_text or "").strip()
     if not text:
         raise ChannexBookingIngestError("Reply text is required.")
-    if not review_reply_allowed(row):
-        raise ChannexBookingIngestError("This review cannot be replied to.")
+    blocked = review_reply_block_message(row)
+    if blocked:
+        raise ChannexBookingIngestError(blocked)
 
     errors = validate_review_reply(
         text,
@@ -779,8 +850,9 @@ def compose_review_reply(
     language: str | None = None,
 ) -> tuple[str, bool, str]:
     """Return (body_text, llm_used, language) for a public OTA review reply draft."""
-    if not review_reply_allowed(row):
-        raise ChannexBookingIngestError("This review cannot be replied to.")
+    blocked = review_reply_block_message(row)
+    if blocked:
+        raise ChannexBookingIngestError(blocked)
 
     original = (row.content or "").strip()
     if language:
@@ -911,5 +983,6 @@ def serialize_channex_review(
         "received_at": row.received_at.isoformat() if row.received_at else None,
         "reply_sent_at": row.reply_sent_at.isoformat() if row.reply_sent_at else None,
         "can_reply": review_reply_allowed(row),
+        "reply_blocked_reason": review_reply_block_reason(row),
         "can_submit_guest_review": review_guest_review_allowed(row),
     }

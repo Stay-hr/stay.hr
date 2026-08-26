@@ -5,14 +5,24 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.utils import timezone
 
+from apps.integrations.channex.exceptions import ChannexBookingIngestError
 from apps.integrations.channex.review_reply_policy import booking_compliant_fallback
 from apps.integrations.channex.review_service import (
+    REPLY_BLOCK_AIRBNB_HIDDEN,
+    REPLY_BLOCK_EXPIRED,
+    REPLY_BLOCK_RATING_ONLY,
+    REPLY_BLOCK_REPLIED,
     compose_review_reply,
     detect_review_language,
+    filter_reply_actionable,
+    filter_unreplied_inbox,
     reply_pending_moderation,
     reply_published,
+    reply_to_review,
     review_reply_allowed,
+    review_reply_block_reason,
     serialize_channex_review,
+    upsert_channex_review_from_payload,
 )
 from apps.integrations.models import ChannexReview, IntegrationConfig
 from apps.properties.models import Property
@@ -48,11 +58,13 @@ class ChannexReviewReplyTests(TestCase):
 
     def test_review_reply_allowed_when_reply_submitted_not_published(self):
         row = self._review(
+            content="The apartment was fine.",
             reply="Draft reply waiting for Booking moderation",
             is_replied=True,
             reply_sent_at=None,
         )
         self.assertTrue(review_reply_allowed(row))
+        self.assertIsNone(review_reply_block_reason(row))
 
     def test_review_reply_not_allowed_when_published(self):
         row = self._review(
@@ -79,6 +91,131 @@ class ChannexReviewReplyTests(TestCase):
         self.assertTrue(data["reply_pending_moderation"])
         self.assertFalse(data["reply_published"])
         self.assertTrue(data["can_reply"])
+        self.assertIsNone(data["reply_blocked_reason"])
+
+    def test_block_reasons_are_distinct(self):
+        replied = self._review(
+            channex_review_id="r-replied",
+            content="Nice stay",
+            reply="Thanks",
+            is_replied=True,
+            reply_sent_at=timezone.now(),
+        )
+        expired = self._review(
+            channex_review_id="r-expired",
+            content="Nice stay",
+            expired_at=timezone.now() - timedelta(hours=1),
+        )
+        rating_only = self._review(
+            channex_review_id="r-rating",
+            content="",
+            overall_score=Decimal("10.0"),
+        )
+        whitespace_only = self._review(
+            channex_review_id="r-whitespace",
+            content="   ",
+            overall_score=Decimal("8.0"),
+        )
+        airbnb_hidden = self._review(
+            channex_review_id="r-airbnb",
+            ota="AirBNB",
+            content="Hidden until host rates guest",
+            is_hidden=True,
+        )
+        rating_only_but_replied = self._review(
+            channex_review_id="r-rating-replied",
+            content="",
+            overall_score=Decimal("9.0"),
+            reply="Thanks",
+            is_replied=True,
+            reply_sent_at=timezone.now(),
+        )
+
+        self.assertEqual(review_reply_block_reason(replied), REPLY_BLOCK_REPLIED)
+        self.assertEqual(review_reply_block_reason(expired), REPLY_BLOCK_EXPIRED)
+        self.assertEqual(review_reply_block_reason(rating_only), REPLY_BLOCK_RATING_ONLY)
+        self.assertEqual(review_reply_block_reason(whitespace_only), REPLY_BLOCK_RATING_ONLY)
+        self.assertEqual(review_reply_block_reason(airbnb_hidden), REPLY_BLOCK_AIRBNB_HIDDEN)
+        self.assertEqual(review_reply_block_reason(rating_only_but_replied), REPLY_BLOCK_REPLIED)
+        self.assertFalse(review_reply_allowed(rating_only))
+        self.assertFalse(review_reply_allowed(expired))
+
+    def test_reply_to_review_rejects_rating_only(self):
+        row = self._review(content="", overall_score=Decimal("10.0"))
+        with self.assertRaises(ChannexBookingIngestError) as ctx:
+            reply_to_review(self.integration, row, "Thank you for your review.")
+        self.assertIn("rating-only", str(ctx.exception))
+
+    def test_filter_reply_actionable_matches_block_reason(self):
+        actionable = self._review(channex_review_id="r-ok", content="Great apartment")
+        rows = [
+            actionable,
+            self._review(
+                channex_review_id="r-replied",
+                content="Nice stay",
+                reply="Thanks",
+                is_replied=True,
+                reply_sent_at=timezone.now(),
+            ),
+            self._review(
+                channex_review_id="r-expired",
+                content="Nice stay",
+                expired_at=timezone.now() - timedelta(hours=1),
+            ),
+            self._review(
+                channex_review_id="r-rating",
+                content="",
+                overall_score=Decimal("10.0"),
+            ),
+            self._review(
+                channex_review_id="r-airbnb",
+                ota="AirBNB",
+                content="Hidden until host rates guest",
+                is_hidden=True,
+            ),
+        ]
+        qs = ChannexReview.objects.filter(pk__in=[row.pk for row in rows])
+        expected = {row.pk for row in rows if review_reply_block_reason(row) is None}
+        actual = set(filter_reply_actionable(qs).values_list("pk", flat=True))
+        self.assertEqual(actual, expected)
+        self.assertEqual(expected, {actionable.pk})
+
+    def test_unreplied_inbox_excludes_pending_moderation(self):
+        first_reply = self._review(channex_review_id="r-first", content="Great apartment")
+        pending = self._review(
+            channex_review_id="r-pending",
+            content="Nice stay",
+            reply="Thank you for staying with us.",
+            is_replied=True,
+            reply_sent_at=None,
+        )
+        qs = ChannexReview.objects.filter(pk__in=[first_reply.pk, pending.pk])
+        self.assertEqual(
+            set(filter_reply_actionable(qs).values_list("pk", flat=True)),
+            {first_reply.pk, pending.pk},
+        )
+        self.assertEqual(
+            set(filter_unreplied_inbox(qs).values_list("pk", flat=True)),
+            {first_reply.pk},
+        )
+        self.assertTrue(review_reply_allowed(pending))
+
+    def test_upsert_preserves_guest_content_when_reply_payload_omits_it(self):
+        row = self._review(content="Great apartment, quiet street.")
+        updated, created, content_just_arrived = upsert_channex_review_from_payload(
+            tenant=self.tenant,
+            integration=self.integration,
+            payload={
+                "id": row.channex_review_id,
+                "ota": "BookingCom",
+                "reply": {"reply": "Thank you for staying with us."},
+                "is_replied": True,
+            },
+        )
+        self.assertFalse(created)
+        self.assertFalse(content_just_arrived)
+        self.assertEqual(updated.content, "Great apartment, quiet street.")
+        self.assertTrue(review_reply_allowed(updated))
 
 
 class ChannexReviewComposePolicyTests(TestCase):

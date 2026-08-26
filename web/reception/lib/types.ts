@@ -268,6 +268,7 @@ export type ChannexReview = {
   received_at: string | null;
   reply_sent_at: string | null;
   can_reply: boolean;
+  reply_blocked_reason?: "replied" | "expired" | "rating_only" | "airbnb_hidden" | null;
   can_submit_guest_review: boolean;
 };
 
