@@ -513,6 +513,19 @@ class ReceptionReviewsTests(TestCase):
             is_replied=False,
             received_at=timezone.now(),
         )
+        pending = ChannexReview.objects.create(
+            tenant=self.tenant,
+            integration=self.integration,
+            reservation=self.reservation,
+            channex_review_id="review-uuid-pending",
+            ota="BookingCom",
+            content="Nice stay",
+            reply="Thank you for staying with us.",
+            overall_score=Decimal("8.0"),
+            is_replied=True,
+            received_at=timezone.now(),
+            expired_at=timezone.now() + timedelta(days=30),
+        )
         self._login()
 
         default_list = self.client.get(
@@ -523,6 +536,7 @@ class ReceptionReviewsTests(TestCase):
         default_ids = {item["id"] for item in default_list.json()["reviews"]}
         self.assertIn(self.review.pk, default_ids)
         self.assertIn(rating_only.pk, default_ids)
+        self.assertIn(pending.pk, default_ids)
         rating_payload = next(
             item for item in default_list.json()["reviews"] if item["id"] == rating_only.pk
         )
@@ -540,6 +554,14 @@ class ReceptionReviewsTests(TestCase):
         self.assertNotIn(rating_only.pk, unreplied_ids)
         self.assertNotIn(expired.pk, unreplied_ids)
         self.assertNotIn(hidden.pk, unreplied_ids)
+        self.assertNotIn(pending.pk, unreplied_ids)
+        pending_detail = self.client.get(
+            f"/api/v1/reception/reviews/{pending.pk}/?sync=0",
+            HTTP_HOST="app.stay.hr",
+        )
+        self.assertEqual(pending_detail.status_code, 200)
+        self.assertTrue(pending_detail.json()["can_reply"])
+        self.assertTrue(pending_detail.json()["reply_pending_moderation"])
 
     @patch("apps.integrations.channex.review_service.sync_reviews_from_channex")
     def test_empty_action_queue_does_not_force_sync_when_reviews_exist(self, mock_sync):
