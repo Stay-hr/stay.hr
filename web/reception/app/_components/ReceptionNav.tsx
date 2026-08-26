@@ -11,10 +11,19 @@ import {
   type PropertySettingsRoot,
 } from "@/lib/propertySettings";
 import {
+  INCOMING_BADGE_POLL_MS,
+  applyIncomingSeenFromResponse,
+  buildIncomingCountUrl,
+  formatIncomingBadgeCount,
+  readIncomingSeenAt,
+  shouldRunIncomingBadgePoll,
+} from "@/lib/incomingSeen";
+import {
   buildNeedsReplyBadgeUrl,
+  createInboxPollController,
   formatNeedsReplyBadgeCount,
 } from "@/lib/messageInbox";
-import type { AppConfig, MessageThreadsListResponse } from "@/lib/types";
+import type { AppConfig, IncomingReservationsCountResponse, MessageThreadsListResponse } from "@/lib/types";
 
 type Props = {
   tenantName?: string;
@@ -29,6 +38,7 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
   const [channelManager, setChannelManager] = useState<string | undefined>();
   const [settingsEnabled, setSettingsEnabled] = useState(false);
   const [needsReplyBadge, setNeedsReplyBadge] = useState<string | null>(null);
+  const [incomingBadge, setIncomingBadge] = useState<string | null>(null);
 
   useEffect(() => {
     if (featureFlagsProp) {
@@ -61,6 +71,53 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
       .catch(() => undefined);
     return () => {
       cancelled = true;
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const onIncomingPage = pathname === "/reservations/incoming";
+    if (onIncomingPage) {
+      setIncomingBadge(null);
+    }
+
+    async function loadIncomingBadge() {
+      const markSeen = pathname === "/reservations/incoming";
+      const since = markSeen ? null : readIncomingSeenAt();
+      try {
+        const res = await fetch(buildIncomingCountUrl(since));
+        const data = res.ok
+          ? ((await res.json()) as IncomingReservationsCountResponse)
+          : null;
+        if (cancelled) return;
+        if (markSeen || !since) {
+          applyIncomingSeenFromResponse(data);
+          setIncomingBadge(null);
+          return;
+        }
+        if (!data) return;
+        setIncomingBadge(formatIncomingBadgeCount(data.count));
+      } catch {
+        // Failed refresh must not move seenAt; badge stays as-is off this route.
+      }
+    }
+
+    void loadIncomingBadge();
+    const stop = createInboxPollController({
+      intervalMs: INCOMING_BADGE_POLL_MS,
+      shouldTick: () =>
+        shouldRunIncomingBadgePoll({
+          pathname,
+          visibilityState: document.visibilityState,
+        }),
+      onTick: () => {
+        void loadIncomingBadge();
+      },
+    });
+
+    return () => {
+      cancelled = true;
+      stop();
     };
   }, [pathname]);
 
@@ -100,7 +157,14 @@ export function ReceptionNav({ tenantName, featureFlags: featureFlagsProp }: Pro
             {onTimeline ? t("calendar") : t("timeline")}
           </Link>
           <Link href="/reservations/incoming" className={linkClass("/reservations/incoming")}>
-            {t("incoming")}
+            <span className="inline-flex items-center gap-1.5">
+              {t("incoming")}
+              {incomingBadge ? (
+                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[10px] font-semibold leading-4 text-white">
+                  {incomingBadge}
+                </span>
+              ) : null}
+            </span>
           </Link>
           {featureFlags?.reception_create_reservation ? (
             <Link href="/reservations/new" className={linkClass("/reservations/new")}>

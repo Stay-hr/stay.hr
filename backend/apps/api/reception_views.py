@@ -10,16 +10,16 @@ import queue
 import time
 import uuid
 from datetime import date as date_type
-from datetime import datetime
+from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 
 from django.conf import settings
 from django.core.files.base import ContentFile
-from django.db.models import Case, Count, DateTimeField, F, Prefetch, Q, When
+from django.db.models import Case, Count, DateTimeField, F, Max, Prefetch, Q, When
 from django.db.models.functions import Coalesce
 from django.http import FileResponse, StreamingHttpResponse
 from django.utils import timezone
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import generics, serializers, status
 from rest_framework.exceptions import NotFound
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -619,6 +619,49 @@ class ReservationTimelineListView(ReceptionReadView, generics.ListAPIView):
         if not raw_value:
             return None
         return parse_date(raw_value)
+
+
+INCOMING_BADGE_WINDOW = timedelta(days=30)
+
+
+class ReceptionIncomingReservationsCountView(ReceptionReadView):
+    """Unseen incoming-reservation count for the reception nav badge.
+
+    ``latest_received_at`` and ``count`` always come from the same 30-day window.
+    """
+
+    def get(self, request):
+        cutoff = timezone.now() - INCOMING_BADGE_WINDOW
+        queryset = Reservation.objects.for_tenant(request.tenant).annotate(
+            received_at=Coalesce(
+                "booked_at",
+                "created_at",
+                output_field=DateTimeField(),
+            )
+        )
+        badge_queryset = queryset.filter(received_at__gte=cutoff)
+        latest = badge_queryset.aggregate(latest=Max("received_at"))["latest"]
+        since = self._parse_since(request)
+        if since is not None and since < cutoff:
+            since = cutoff
+        count = badge_queryset.filter(received_at__gt=since).count() if since else 0
+        return Response(
+            {
+                "count": count,
+                "latest_received_at": latest.isoformat() if latest else None,
+            }
+        )
+
+    def _parse_since(self, request):
+        raw = (request.query_params.get("since") or "").strip()
+        if not raw:
+            return None
+        parsed = parse_datetime(raw.replace("Z", "+00:00"))
+        if parsed is None:
+            return None
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed)
+        return parsed
 
 
 class ReservationDetailView(TenantAPIView, generics.RetrieveUpdateAPIView):
