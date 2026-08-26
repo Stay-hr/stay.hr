@@ -456,7 +456,9 @@
     "statusFailed": "Non riuscito",
     "channelBooking": "Channex",
     "channelEmail": "Mail",
-    "channelWhatsapp": "WhatsApp"
+    "channelWhatsapp": "WhatsApp",
+    "dismissReply": "Non serve rispondere",
+    "dismissReplyFailed": "Impossibile segnare come senza risposta."
   },
   "guestMessages": {
     "translateAction": "Traduci",

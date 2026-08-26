@@ -1608,6 +1608,7 @@ def create_draft_from_body_text(
     body_text: str,
     *,
     api_application: ApiApplication | None = None,
+    hint: str = "resend",
 ) -> tuple[GuestMessageDraft, dict]:
     """Create a draft from exact text (resend / relay) without LLM."""
     text = (body_text or "").strip()
@@ -1625,7 +1626,7 @@ def create_draft_from_body_text(
         tenant_id=reservation.tenant_id,
         reservation=reservation,
         intent=GuestMessageIntent.CUSTOM,
-        hint="resend",
+        hint=(hint or "").strip() or "resend",
         llm_body_text=text,
         final_body_text="",
         **_draft_language_fields(ctx),

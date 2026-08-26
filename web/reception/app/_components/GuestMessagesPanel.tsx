@@ -2,17 +2,28 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { extractApiError } from "@/lib/api-error";
 import {
   ensureCorrelationId,
   logGuestMessageEvent,
   sanitizeBody,
   syncCorrelationIdFromResponse,
 } from "@/lib/guestMessageDebug";
+import {
+  availableGuestMessageChannels,
+  guestMessageChannelHint,
+  guestMessageChannelLabelKey,
+  preferredGuestMessageChannel,
+} from "@/lib/guestMessageChannels";
 import type {
   GuestMessageChannels,
+  GuestMessageComposeIntent,
   GuestMessageComposeResponse,
+  GuestMessageComposeResult,
   GuestMessageTimelineItem,
 } from "@/lib/types";
+import { AiReplyWizardModal } from "@/app/_components/AiReplyWizardModal";
+import { GuestMessageComposer } from "@/app/_components/GuestMessageComposer";
 import { MessageBodyWithTranslate } from "@/app/_components/MessageBodyWithTranslate";
 import { MessageTranslateCacheProvider } from "@/app/_components/MessageTranslateCacheProvider";
 import { MESSAGES_SECTION_ID, scrollToMessagesHash } from "@/lib/messageInbox";
@@ -21,10 +32,6 @@ import { useReservationVersionWatch } from "@/lib/useReservationVersionWatch";
 type Props = {
   reservationId: number;
 };
-
-type ComposeIntent = "checkin" | "reply" | "custom";
-
-const CHANNEL_ORDER = ["email", "whatsapp", "booking"] as const;
 
 function formatMessageTime(iso: string): string {
   const date = new Date(iso);
@@ -37,51 +44,12 @@ function formatMessageTime(iso: string): string {
   });
 }
 
-function channelLabelKey(channel: string): string {
-  if (channel === "booking") return "channelBooking";
-  if (channel === "whatsapp") return "channelWhatsapp";
-  return "channelEmail";
-}
-
 function timelineChannelLabels(
   item: GuestMessageTimelineItem,
   t: (key: string) => string,
 ): string {
   const channels = item.channels?.length ? item.channels : [item.channel];
-  return channels.map((channel) => t(channelLabelKey(channel))).join(" · ");
-}
-
-function channelHint(
-  channel: string,
-  channels: GuestMessageChannels,
-  t: (key: string, values?: Record<string, string>) => string,
-  composeIntent?: ComposeIntent,
-): string | null {
-  if (channel === "booking" && channels.booking?.available) {
-    return t("channelBookingHint");
-  }
-  if (channel === "email" && channels.email?.available && channels.email.to) {
-    return t("channelEmailHint", { email: channels.email.to });
-  }
-  if (channel === "whatsapp" && channels.whatsapp?.available) {
-    const wa = channels.whatsapp;
-    if (wa.api_send && !wa.session_open) {
-      const templateOk =
-        composeIntent === "checkin" && Boolean(wa.template_available);
-      if (!templateOk) {
-        return t("channelWhatsappSessionClosedHint");
-      }
-      return t("channelWhatsappApiHint");
-    }
-    if (wa.api_send) {
-      return t("channelWhatsappApiHint");
-    }
-    const phone = wa.phone_raw || wa.phone_wa || "";
-    if (phone) {
-      return t("channelWhatsappHint", { phone });
-    }
-  }
-  return null;
+  return channels.map((channel) => t(guestMessageChannelLabelKey(channel))).join(" · ");
 }
 
 export function GuestMessagesPanel({ reservationId }: Props) {
@@ -90,8 +58,9 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   const [timeline, setTimeline] = useState<GuestMessageTimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [composeIntent, setComposeIntent] = useState<ComposeIntent>("checkin");
-  const [composeHint, setComposeHint] = useState("");
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [aiWizardOpen, setAiWizardOpen] = useState(false);
+  const [composeIntent, setComposeIntent] = useState<GuestMessageComposeIntent>("reply");
   const [draftId, setDraftId] = useState<number | null>(null);
   const [bodyText, setBodyText] = useState("");
   const [channels, setChannels] = useState<GuestMessageChannels>({});
@@ -102,9 +71,8 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   const channelLoggedRef = useRef("");
 
   const baseUrl = `/api/stay/reception/reservations/${reservationId}/messages`;
-
   const availableChannels = useMemo(
-    () => CHANNEL_ORDER.filter((key) => channels[key]?.available),
+    () => availableGuestMessageChannels(channels),
     [channels],
   );
 
@@ -134,9 +102,26 @@ export function GuestMessagesPanel({ reservationId }: Props) {
     [baseUrl, t, tc],
   );
 
+  const loadChannels = useCallback(async () => {
+    try {
+      const res = await fetch(`${baseUrl}/channels/`);
+      if (!res.ok) return;
+      const data = (await res.json()) as GuestMessageChannels;
+      setChannels(data);
+    } catch {
+      // Channel radios stay empty until compose or a later refresh.
+    }
+  }, [baseUrl]);
+
   useEffect(() => {
     void loadTimeline({ background: false });
-  }, [reservationId, loadTimeline]);
+    void loadChannels();
+    setComposerOpen(false);
+    setAiWizardOpen(false);
+    setDraftId(null);
+    setBodyText("");
+    setComposeIntent("reply");
+  }, [reservationId, loadTimeline, loadChannels]);
 
   useEffect(() => {
     scrollToMessagesHash();
@@ -160,26 +145,10 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   });
 
   useEffect(() => {
-    if (availableChannels.length === 0) {
-      setSelectedChannel("");
-      return;
-    }
-    if (
-      selectedChannel &&
-      availableChannels.includes(selectedChannel as (typeof CHANNEL_ORDER)[number])
-    ) {
-      return;
-    }
-    const preferred = channels.default_channel;
-    if (
-      preferred &&
-      availableChannels.includes(preferred as (typeof CHANNEL_ORDER)[number])
-    ) {
-      setSelectedChannel(preferred);
-      return;
-    }
-    setSelectedChannel(availableChannels[0]);
-  }, [availableChannels, channels.default_channel, selectedChannel]);
+    setSelectedChannel((current) =>
+      preferredGuestMessageChannel(channels, availableChannels, current),
+    );
+  }, [availableChannels, channels]);
 
   useEffect(() => {
     if (!correlationId || !selectedChannel || draftId === null) return;
@@ -189,67 +158,50 @@ export function GuestMessagesPanel({ reservationId }: Props) {
       correlationId,
       selectedChannel,
       defaultChannel: channels.default_channel ?? "",
-      channelHint: channelHint(selectedChannel, channels, t, composeIntent),
+      channelHint: guestMessageChannelHint(selectedChannel, channels, t, composeIntent),
     });
   }, [correlationId, selectedChannel, channels, draftId, t, composeIntent]);
 
-  async function handleCompose() {
-    const cid = ensureCorrelationId(null);
-    setCorrelationId(cid);
-    channelLoggedRef.current = "";
-    const composeStarted = performance.now();
+  function openManualComposer() {
+    setError("");
+    setActionMessage("");
+    setAiWizardOpen(false);
+    setDraftId(null);
+    setBodyText("");
+    setComposeIntent("reply");
+    setComposerOpen(true);
+  }
+
+  function handleAiComplete(result: GuestMessageComposeResult, intent: GuestMessageComposeIntent) {
+    setDraftId(result.draftId);
+    setBodyText(result.bodyText);
+    setChannels(result.channels);
+    setSelectedChannel("");
+    setComposeIntent(intent);
+    setAiWizardOpen(false);
+    setComposerOpen(true);
+    setActionMessage(t("composeReady"));
+    setError("");
+  }
+
+  function closeComposer() {
+    if (busy) return;
+    setComposerOpen(false);
+    setDraftId(null);
+    setBodyText("");
+    setActionMessage("");
+  }
+
+  async function handleDismissReply() {
     setBusy(true);
     setError("");
     setActionMessage("");
-    logGuestMessageEvent("compose.start", {
-      correlationId: cid,
-      reservationId,
-      composeIntent,
-    });
     try {
-      const payload: Record<string, string> = { intent: composeIntent };
-      if (composeIntent === "reply" && composeHint.trim()) {
-        payload.hint = composeHint.trim();
-      }
-      if (composeIntent === "custom" && composeHint.trim()) {
-        payload.hint = composeHint.trim();
-      }
-      const res = await fetch(`${baseUrl}/compose/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Correlation-Id": cid,
-        },
-        body: JSON.stringify(payload),
-      });
-      const echoedId = syncCorrelationIdFromResponse(res, cid);
-      setCorrelationId(echoedId);
-      const composeMs = Math.round(performance.now() - composeStarted);
+      const res = await fetch(`${baseUrl}/dismiss-reply/`, { method: "POST" });
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { detail?: string } | null;
-        logGuestMessageEvent("compose.error", {
-          correlationId: echoedId,
-          reservationId,
-          composeIntent,
-          compose_ms: composeMs,
-          httpStatus: res.status,
-          error: data?.detail || t("composeFailed"),
-        });
-        throw new Error(data?.detail || t("composeFailed"));
+        throw new Error(await extractApiError(res, t("dismissReplyFailed")));
       }
-      const data = (await res.json()) as GuestMessageComposeResponse;
-      logGuestMessageEvent("compose.success", {
-        correlationId: echoedId,
-        reservationId,
-        composeIntent,
-        compose_ms: composeMs,
-        draftId: data.draft_id,
-        channels: data.channels,
-      });
-      setDraftId(data.draft_id);
-      setBodyText(data.body_text);
-      setChannels(data.channels);
-      setActionMessage(t("composeReady"));
+      setActionMessage(t("dismissReplyDone"));
     } catch (err) {
       setError(err instanceof Error ? err.message : tc("error"));
     } finally {
@@ -258,10 +210,6 @@ export function GuestMessagesPanel({ reservationId }: Props) {
   }
 
   async function handleSend() {
-    if (draftId === null) {
-      setError(t("composeFirst"));
-      return;
-    }
     const text = bodyText.trim();
     if (!text) {
       setError(t("emptyBody"));
@@ -277,14 +225,35 @@ export function GuestMessagesPanel({ reservationId }: Props) {
     setActionMessage("");
     const cid = ensureCorrelationId(correlationId);
     const sendStarted = performance.now();
-    logGuestMessageEvent("send.start", {
-      correlationId: cid,
-      reservationId,
-      draftId,
-      selectedChannel,
-      ...sanitizeBody(text),
-    });
     try {
+      let sendDraftId = draftId;
+      if (sendDraftId === null) {
+        const composeRes = await fetch(`${baseUrl}/compose/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Correlation-Id": cid,
+          },
+          body: JSON.stringify({ body_text: text, hint: "manual" }),
+        });
+        const echoedCompose = syncCorrelationIdFromResponse(composeRes, cid);
+        setCorrelationId(echoedCompose);
+        if (!composeRes.ok) {
+          throw new Error(await extractApiError(composeRes, t("composeFailed")));
+        }
+        const composed = (await composeRes.json()) as GuestMessageComposeResponse;
+        sendDraftId = composed.draft_id;
+        setDraftId(sendDraftId);
+      }
+
+      logGuestMessageEvent("send.start", {
+        correlationId: cid,
+        reservationId,
+        draftId: sendDraftId,
+        selectedChannel,
+        ...sanitizeBody(text),
+      });
+
       const res = await fetch(`${baseUrl}/send/`, {
         method: "POST",
         headers: {
@@ -292,7 +261,7 @@ export function GuestMessagesPanel({ reservationId }: Props) {
           "X-Correlation-Id": cid,
         },
         body: JSON.stringify({
-          draft_id: draftId,
+          draft_id: sendDraftId,
           channel: selectedChannel,
           body_text: text,
         }),
@@ -320,7 +289,7 @@ export function GuestMessagesPanel({ reservationId }: Props) {
         logGuestMessageEvent("send.error", {
           correlationId: echoedId,
           reservationId,
-          draftId,
+          draftId: sendDraftId,
           selectedChannel,
           send_ms: sendMs,
           httpStatus: res.status,
@@ -345,7 +314,7 @@ export function GuestMessagesPanel({ reservationId }: Props) {
           logGuestMessageEvent("send.popup_blocked", {
             correlationId: echoedId,
             reservationId,
-            draftId,
+            draftId: sendDraftId,
             selectedChannel,
             wa_me_url: data.wa_me_url,
           });
@@ -358,24 +327,21 @@ export function GuestMessagesPanel({ reservationId }: Props) {
       logGuestMessageEvent("send.success", {
         correlationId: echoedId,
         reservationId,
-        draftId,
+        draftId: sendDraftId,
         selectedChannel,
         send_ms: sendMs,
         status: data && "status" in data ? data.status : null,
-        handoff_reason:
-          data && "handoff_reason" in data ? data.handoff_reason ?? null : null,
+        handoff_reason: data && "handoff_reason" in data ? data.handoff_reason ?? null : null,
         wa_me_url: data && "wa_me_url" in data ? data.wa_me_url ?? null : null,
         provider_message_id:
-          data && "provider_message_id" in data
-            ? data.provider_message_id ?? null
-            : null,
+          data && "provider_message_id" in data ? data.provider_message_id ?? null : null,
         popupBlocked,
         ...sanitizeBody(text),
       });
 
       setDraftId(null);
       setBodyText("");
-      setComposeHint("");
+      setComposerOpen(false);
       setCorrelationId("");
       channelLoggedRef.current = "";
       await loadTimeline({ background: true });
@@ -463,91 +429,58 @@ export function GuestMessagesPanel({ reservationId }: Props) {
         )}
       </div>
 
-      <div className="space-y-2 rounded-lg border p-3">
-        <p className="text-sm font-medium">{t("composeTitle")}</p>
-        <div className="flex flex-wrap gap-2">
-          {(["checkin", "reply", "custom"] as ComposeIntent[]).map((intent) => (
-            <button
-              key={intent}
-              type="button"
-              className={composeIntent === intent ? "btn btn-sm" : "btn-ghost btn-sm"}
-              onClick={() => setComposeIntent(intent)}
-              disabled={busy}
-            >
-              {intent === "checkin"
-                ? t("intentCheckin")
-                : intent === "reply"
-                  ? t("intentReply")
-                  : t("intentCustom")}
-            </button>
-          ))}
-        </div>
-        {composeIntent !== "checkin" ? (
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">{t("hintLabel")}</span>
-            <input
-              className="input w-full"
-              value={composeHint}
-              onChange={(event) => setComposeHint(event.target.value)}
-              placeholder={composeIntent === "reply" ? t("hintReplyPlaceholder") : t("hintCustomPlaceholder")}
-              disabled={busy}
-            />
-          </label>
-        ) : null}
-        <button type="button" className="btn btn-sm" onClick={() => void handleCompose()} disabled={busy}>
-          {busy ? tc("loading") : t("composeAction")}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={openManualComposer}
+          disabled={busy}
+        >
+          {t("actionManual")}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost btn-sm"
+          onClick={() => {
+            setError("");
+            setAiWizardOpen(true);
+          }}
+          disabled={busy}
+        >
+          <span aria-hidden>✨ </span>
+          {t("actionAi")}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost btn-sm"
+          onClick={() => void handleDismissReply()}
+          disabled={busy}
+        >
+          {t("dismissReply")}
         </button>
       </div>
 
-      {draftId !== null ? (
-        <div className="space-y-2 rounded-lg border p-3">
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium">{t("bodyLabel")}</span>
-            <textarea
-              className="input min-h-40 w-full"
-              value={bodyText}
-              onChange={(event) => setBodyText(event.target.value)}
-              disabled={busy}
-            />
-          </label>
+      {composerOpen ? (
+        <GuestMessageComposer
+          reservationId={reservationId}
+          bodyText={bodyText}
+          onBodyTextChange={setBodyText}
+          channels={channels}
+          selectedChannel={selectedChannel}
+          onSelectedChannelChange={setSelectedChannel}
+          composeIntent={composeIntent}
+          busy={busy}
+          onSend={() => void handleSend()}
+          onCancel={closeComposer}
+        />
+      ) : null}
 
-          {availableChannels.length > 0 ? (
-            <div className="space-y-1">
-              <p className="text-sm font-medium">{t("channelLabel")}</p>
-              <div className="flex flex-wrap gap-2">
-                {availableChannels.map((channel) => (
-                  <label key={channel} className="inline-flex cursor-pointer items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name={`guest-message-channel-${reservationId}`}
-                      value={channel}
-                      checked={selectedChannel === channel}
-                      onChange={() => setSelectedChannel(channel)}
-                      disabled={busy}
-                    />
-                    {t(channelLabelKey(channel))}
-                  </label>
-                ))}
-              </div>
-              {selectedChannel ? (
-                <p className="text-xs text-muted">
-                  {channelHint(selectedChannel, channels, t, composeIntent) ?? null}
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="text-sm text-amber-800">{t("noChannel")}</p>
-          )}
-
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => void handleSend()}
-            disabled={busy || availableChannels.length === 0}
-          >
-            {busy ? tc("loading") : t("sendAction")}
-          </button>
-        </div>
+      {aiWizardOpen ? (
+        <AiReplyWizardModal
+          reservationId={reservationId}
+          onClose={() => setAiWizardOpen(false)}
+          onComplete={handleAiComplete}
+        />
       ) : null}
 
       {actionMessage ? <p className="text-sm text-green-700">{actionMessage}</p> : null}

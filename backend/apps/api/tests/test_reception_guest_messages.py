@@ -611,6 +611,8 @@ class ReceptionGuestMessagesAPITests(TestCase):
 
     @patch.dict(os.environ, {}, clear=False)
     def test_compose_body_text_skips_llm(self):
+        from apps.communications.models import GuestMessageDraft
+
         os.environ.pop("GUEST_COMPOSE_LLM_API_KEY", None)
         exact = "Exact resend text without LLM regeneration."
 
@@ -625,6 +627,26 @@ class ReceptionGuestMessagesAPITests(TestCase):
         self.assertEqual(data["body_text"], exact)
         self.assertFalse(data["llm_used"])
         self.assertIn("draft_id", data)
+        draft = GuestMessageDraft.objects.get(pk=data["draft_id"])
+        self.assertEqual(draft.hint, "resend")
+
+    def test_compose_body_text_records_passed_hint(self):
+        from apps.communications.models import GuestMessageDraft
+
+        os.environ.pop("GUEST_COMPOSE_LLM_API_KEY", None)
+        exact = "Manual staff reply without LLM."
+
+        response = self.client.post(
+            f"{self.base}/compose/",
+            {"body_text": exact, "hint": "manual"},
+            format="json",
+            **self.auth,
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        draft = GuestMessageDraft.objects.get(pk=response.json()["draft_id"])
+        self.assertEqual(draft.hint, "manual")
+        self.assertEqual(draft.llm_body_text, exact)
+        self.assertFalse(response.json()["llm_used"])
 
     @patch("apps.communications.guest_message_send.send_message_for_reservation")
     @patch.dict(os.environ, {}, clear=False)

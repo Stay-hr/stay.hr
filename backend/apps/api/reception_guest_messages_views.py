@@ -165,6 +165,7 @@ class ReceptionGuestMessageComposeView(GuestMessageCorrelationMixin, ReceptionWr
                 reservation,
                 body_text,
                 api_application=api_application,
+                hint=(data.get("hint") or "").strip() or "resend",
             )
             llm_used = False
         else:

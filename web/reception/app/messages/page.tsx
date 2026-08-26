@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { MessageThreadPreview } from "@/app/_components/MessageThreadPreview";
 import { MessageTranslateCacheProvider } from "@/app/_components/MessageTranslateCacheProvider";
 import { ReceptionNav } from "@/app/_components/ReceptionNav";
+import { extractApiError } from "@/lib/api-error";
 import { formatStayDateRange } from "@/lib/locale-format";
 import {
   MESSAGE_INBOX_PAGE_SIZE,
@@ -47,6 +48,7 @@ export default function MessagesInboxPage() {
     arrivingToday: false,
   });
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [dismissBusyId, setDismissBusyId] = useState<number | null>(null);
   const inflightRef = useRef(false);
   const requestSeqRef = useRef(0);
 
@@ -148,6 +150,25 @@ export default function MessagesInboxPage() {
     };
   }, [loadThreads]);
 
+  async function handleDismissReply(reservationId: number) {
+    setDismissBusyId(reservationId);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/stay/reception/reservations/${reservationId}/messages/dismiss-reply/`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        throw new Error(await extractApiError(res, t("dismissReplyFailed")));
+      }
+      await loadThreads({ background: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("dismissReplyFailed"));
+    } finally {
+      setDismissBusyId(null);
+    }
+  }
+
   const pagination = inboxPagination(total, filters.page, MESSAGE_INBOX_PAGE_SIZE);
   const listState = inboxViewState({ loading, error, threadCount: threads.length });
   const dash = tc("dash");
@@ -248,6 +269,20 @@ export default function MessagesInboxPage() {
                       setExpandedId((current) => nextExpandedId(current, thread.reservation_id))
                     }
                   />
+                  {thread.needs_reply ? (
+                    <div className="border-t px-3 py-2">
+                      <button
+                        type="button"
+                        className="btn-ghost btn-sm"
+                        disabled={dismissBusyId === thread.reservation_id || loading}
+                        onClick={() => void handleDismissReply(thread.reservation_id)}
+                      >
+                        {dismissBusyId === thread.reservation_id
+                          ? tc("loading")
+                          : t("dismissReply")}
+                      </button>
+                    </div>
+                  ) : null}
                 </article>
               );
             })

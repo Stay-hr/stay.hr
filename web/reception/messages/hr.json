@@ -478,7 +478,25 @@
     "showTranslation": "Prikaži prijevod",
     "translatedLabel": "Automatski prijevod (OpenAI)",
     "translateFailed": "Prijevod nije uspio.",
-    "retry": "Pokušaj ponovno"
+    "retry": "Pokušaj ponovno",
+    "actionManual": "Odgovori ručno",
+    "actionAi": "AI odgovor",
+    "dismissReply": "Ne treba odgovor",
+    "dismissReplyDone": "Označeno — ne treba odgovor.",
+    "dismissReplyFailed": "Označavanje nije uspjelo.",
+    "composerCancel": "Odustani",
+    "aiWizardTitle": "AI odgovor",
+    "aiWizardStepInput": "Priprema",
+    "aiWizardQuestion": "Što želite da AI pripremi?",
+    "aiIntentReply": "Odgovor gostu",
+    "aiIntentReplyHelp": "AI odgovara na zadnju poruku gosta.",
+    "aiIntentCheckin": "Check-in poruka",
+    "aiIntentCheckinHelp": "AI priprema check-in poruku.",
+    "aiIntentCustom": "Druga poruka",
+    "aiIntentCustomHelp": "Korisnik zada što želi napisati.",
+    "aiHintLabel": "Dodatna uputa AI-u",
+    "aiHintPlaceholder": "Reci mu da možemo odobriti kasni check-in do 23:00.",
+    "aiGenerate": "Generiraj odgovor"
   },
   "messageInbox": {
     "title": "Poruke",
@@ -499,7 +517,9 @@
     "statusFailed": "Neuspjelo",
     "channelBooking": "Channex",
     "channelEmail": "Mail",
-    "channelWhatsapp": "WhatsApp"
+    "channelWhatsapp": "WhatsApp",
+    "dismissReply": "Ne treba odgovor",
+    "dismissReplyFailed": "Označavanje nije uspjelo."
   },
   "guestReviews": {
     "title": "Recenzije gosta",
