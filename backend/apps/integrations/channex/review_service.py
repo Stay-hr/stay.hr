@@ -520,7 +520,7 @@ def list_reviews_for_property(
         qs = _reviews_queryset(tenant)
 
     if unreplied_only:
-        qs = filter_reply_actionable(qs)
+        qs = filter_unreplied_inbox(qs)
     ota_filter = (ota or "").strip()
     if ota_filter:
         qs = qs.filter(ota__iexact=ota_filter)
@@ -618,11 +618,7 @@ def review_reply_block_message(row: ChannexReview) -> str | None:
 
 
 def filter_reply_actionable(qs: QuerySet[ChannexReview]) -> QuerySet[ChannexReview]:
-    """Queryset mirror of ``review_reply_block_reason(row) is None``.
-
-    ``unreplied`` means not answered AND currently actionable. Keep this
-    definition in lockstep with ``review_reply_block_reason``.
-    """
+    """Queryset mirror of ``review_reply_block_reason(row) is None`` (``can_reply``)."""
     now = timezone.now()
     return (
         qs.annotate(
@@ -636,6 +632,31 @@ def filter_reply_actionable(qs: QuerySet[ChannexReview]) -> QuerySet[ChannexRevi
         .exclude(expired_at__isnull=False, expired_at__lte=now)
         .exclude(ota=AIRBNB_OTA, is_hidden=True)
         .exclude(ota=BOOKING_COM_OTA, _reply_actionable_content="")
+    )
+
+
+def review_has_submitted_reply(row: ChannexReview) -> bool:
+    return bool(row.is_replied) or bool(_normalize_reply_text(row.reply)) or reply_published(row)
+
+
+def filter_unreplied_inbox(qs: QuerySet[ChannexReview]) -> QuerySet[ChannexReview]:
+    """Inbox ``?unreplied=1``: needs a first reply.
+
+    A Booking.com reply already submitted (``is_replied`` / reply text) is
+    still ``can_reply`` until publication so staff can resubmit after
+    moderation. It is not unanswered, so it leaves this queue.
+    """
+    return (
+        filter_reply_actionable(qs)
+        .exclude(is_replied=True)
+        .annotate(
+            _submitted_reply=Coalesce(
+                Trim("reply"),
+                Value("", output_field=TextField()),
+                output_field=TextField(),
+            ),
+        )
+        .filter(_submitted_reply="")
     )
 
 

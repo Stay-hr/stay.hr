@@ -73,7 +73,7 @@ Review text fields in list/detail responses:
 
 ## Reply eligibility
 
-`unreplied` on `GET /api/v1/reception/reviews/?unreplied=1` means **not answered AND currently actionable**. The same definition is used for `can_reply`. Rating-only and expired reviews stay in the default inbox (`unreplied` omitted or `0`) as evidence; they leave the action queue only.
+`unreplied` on `GET /api/v1/reception/reviews/?unreplied=1` means **no reply submitted yet AND currently actionable**. That is stricter than `can_reply`: a Booking.com reply already sent (`is_replied` / reply text, `reply_sent_at` still null) stays resubmittable on the detail page until publication, but it leaves the “Samo neodgovorene” queue. Rating-only and expired reviews stay in the default inbox (`unreplied` omitted or `0`) as evidence; they leave the action queue only.
 
 | `reply_blocked_reason` | Meaning | Reply form |
 |------------------------|---------|------------|

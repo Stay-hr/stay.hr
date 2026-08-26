@@ -15,6 +15,7 @@ from apps.integrations.channex.review_service import (
     compose_review_reply,
     detect_review_language,
     filter_reply_actionable,
+    filter_unreplied_inbox,
     reply_pending_moderation,
     reply_published,
     reply_to_review,
@@ -178,6 +179,26 @@ class ChannexReviewReplyTests(TestCase):
         actual = set(filter_reply_actionable(qs).values_list("pk", flat=True))
         self.assertEqual(actual, expected)
         self.assertEqual(expected, {actionable.pk})
+
+    def test_unreplied_inbox_excludes_pending_moderation(self):
+        first_reply = self._review(channex_review_id="r-first", content="Great apartment")
+        pending = self._review(
+            channex_review_id="r-pending",
+            content="Nice stay",
+            reply="Thank you for staying with us.",
+            is_replied=True,
+            reply_sent_at=None,
+        )
+        qs = ChannexReview.objects.filter(pk__in=[first_reply.pk, pending.pk])
+        self.assertEqual(
+            set(filter_reply_actionable(qs).values_list("pk", flat=True)),
+            {first_reply.pk, pending.pk},
+        )
+        self.assertEqual(
+            set(filter_unreplied_inbox(qs).values_list("pk", flat=True)),
+            {first_reply.pk},
+        )
+        self.assertTrue(review_reply_allowed(pending))
 
     def test_upsert_preserves_guest_content_when_reply_payload_omits_it(self):
         row = self._review(content="Great apartment, quiet street.")
