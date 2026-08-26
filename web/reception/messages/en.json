@@ -478,7 +478,25 @@
     "showTranslation": "Show translation",
     "translatedLabel": "Auto-translated (OpenAI)",
     "translateFailed": "Translation failed.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "actionManual": "Reply manually",
+    "actionAi": "AI reply",
+    "dismissReply": "No reply needed",
+    "dismissReplyDone": "Marked — no reply needed.",
+    "dismissReplyFailed": "Could not mark as no reply needed.",
+    "composerCancel": "Cancel",
+    "aiWizardTitle": "AI reply",
+    "aiWizardStepInput": "Prepare",
+    "aiWizardQuestion": "What should AI prepare?",
+    "aiIntentReply": "Reply to guest",
+    "aiIntentReplyHelp": "AI replies to the guest's last message.",
+    "aiIntentCheckin": "Check-in message",
+    "aiIntentCheckinHelp": "AI prepares a check-in message.",
+    "aiIntentCustom": "Other message",
+    "aiIntentCustomHelp": "You describe what to write.",
+    "aiHintLabel": "Extra instruction for AI",
+    "aiHintPlaceholder": "e.g. Tell them we can approve late check-in until 23:00.",
+    "aiGenerate": "Generate reply"
   },
   "messageInbox": {
     "title": "Messages",
@@ -499,7 +517,9 @@
     "statusFailed": "Failed",
     "channelBooking": "Channex",
     "channelEmail": "Mail",
-    "channelWhatsapp": "WhatsApp"
+    "channelWhatsapp": "WhatsApp",
+    "dismissReply": "No reply needed",
+    "dismissReplyFailed": "Could not mark as no reply needed."
   },
   "guestReviews": {
     "title": "Guest reviews",

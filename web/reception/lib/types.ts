@@ -203,6 +203,7 @@ export type GuestMessageChannelInfo = {
 
 export type GuestMessageChannels = Record<string, GuestMessageChannelInfo> & {
   default_channel?: string;
+  reply_channel?: string;
 };
 
 export type GuestMessageComposeResponse = {
@@ -210,6 +211,15 @@ export type GuestMessageComposeResponse = {
   body_text: string;
   language: string;
   llm_used: boolean;
+  channels: GuestMessageChannels;
+};
+
+export type GuestMessageComposeIntent = "checkin" | "reply" | "custom";
+
+/** Full AI compose handoff required by GuestMessageComposer. Never pass bodyText alone. */
+export type GuestMessageComposeResult = {
+  draftId: number;
+  bodyText: string;
   channels: GuestMessageChannels;
 };
 

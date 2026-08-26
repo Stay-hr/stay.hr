@@ -456,7 +456,9 @@
     "statusFailed": "Fehlgeschlagen",
     "channelBooking": "Channex",
     "channelEmail": "Mail",
-    "channelWhatsapp": "WhatsApp"
+    "channelWhatsapp": "WhatsApp",
+    "dismissReply": "Keine Antwort nötig",
+    "dismissReplyFailed": "Konnte nicht als erledigt markieren."
   },
   "guestMessages": {
     "translateAction": "Übersetzen",
