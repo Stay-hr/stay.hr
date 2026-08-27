@@ -27,6 +27,9 @@ from apps.core.daily_ops_report.snapshot import (
 from apps.core.daily_ops_report.tasks import run_daily_ops_report, send_daily_ops_report
 from apps.core.daily_ops_report.types import MetricResult, ReportSection, Severity, max_severity
 from apps.core.system_status import build_system_status_payload
+from apps.reservations.reservation_version_event_bus import (
+    reset_reservation_version_event_bus_for_tests,
+)
 
 ZAGREB = ZoneInfo("Europe/Zagreb")
 TEST_MEDIA = "/tmp/stay-test-daily-ops-media"
@@ -287,6 +290,14 @@ class DailyOpsTaskTests(TestCase):
 
 @override_settings(MEDIA_ROOT=TEST_MEDIA)
 class SystemStatusServiceTests(TestCase):
+    def setUp(self):
+        # EventBus counters are per-process and cumulative; drop the singleton so the
+        # payload assertions do not depend on reservation bumps from earlier suites.
+        reset_reservation_version_event_bus_for_tests()
+
+    def tearDown(self):
+        reset_reservation_version_event_bus_for_tests()
+
     def test_build_system_status_payload_shape(self):
         payload = build_system_status_payload(reporter_process="test")
         self.assertEqual(payload["schema_version"], 4)
