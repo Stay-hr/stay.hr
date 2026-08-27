@@ -1,5 +1,5 @@
 ---
-description: Stay.hr release gate — implement → PR → CI → merge → deploy → post-deploy
+description: Stay.hr release gate — implement → PR → CI → merge → deploy → post-deploy → housekeeping
 alwaysApply: true
 ---
 
@@ -8,7 +8,7 @@ alwaysApply: true
 Canonical order for shipping changes:
 
 ```text
-implement → commit → PR → CI → merge → deploy (CI) → post-deploy check
+implement → commit → PR → CI → merge → deploy (CI) → post-deploy check → housekeeping
 ```
 
 ## Gates
@@ -18,6 +18,20 @@ implement → commit → PR → CI → merge → deploy (CI) → post-deploy che
 3. **Merge** — only after CI is green on the PR head SHA.
 4. **Deploy** — automatic on `push` to `main` via **Deploy production** (`deploy-production.yml` → SSH → `./scripts/deploy.sh`). Do **not** propose a separate manual deploy as the default next step after merge.
 5. **Post-deploy** — optional smoke (dry-run commands, health URLs) **after** deploy CI succeeds — never as a substitute for PR/CI, and never before merge.
+6. **Housekeeping** — once the release is declared **CLOSED/PASS**, delete the feature branch and prove `main` is clean. Not a release gate, but not deferred either: it belongs to the release that just shipped.
+
+## Housekeeping (after the release is CLOSED/PASS)
+
+Trigger is the **CLOSED/PASS** verdict, not merely a finished post-deploy check.
+
+1. Prove the branch holds nothing that missed `main`: `git diff main..<branch>` must be empty.
+2. Delete the **remote** branch, then the **local** branch.
+3. `git fetch origin --prune` (removing stale tracking refs is expected, not a problem).
+4. Confirm `HEAD == origin/main`, `ahead/behind = 0/0`, and a clean working tree.
+
+**Squash merge caveat:** a squashed branch tip is not an ancestor of `main`, so `git branch -d` fails and ancestry alone must **not** be the proof for `-D`. Use the empty `git diff main..<branch>` as the guard.
+
+Housekeeping must not trigger a new deploy and must not touch other branches.
 
 ## Do not propose before PR + CI
 
