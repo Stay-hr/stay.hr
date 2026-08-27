@@ -2,10 +2,10 @@
 
 Guidance for AI agents and developers working in this repository.
 
-## Release workflow (PR → CI → merge → deploy)
+## Release workflow (PR → CI → merge → deploy → housekeeping)
 
 ```text
-implement → commit → PR → CI → merge → deploy (CI) → post-deploy check
+implement → commit → PR → CI → merge → deploy (CI) → post-deploy check → housekeeping
 ```
 
 - Merge only with green **`PR CI / backend`**.
@@ -13,6 +13,17 @@ implement → commit → PR → CI → merge → deploy (CI) → post-deploy che
 - Production dry-run / migrate / manual deploy only **after** deploy CI, or when the user explicitly asks for incident/hotfix.
 
 Full detail: [docs/operations/deploy-ci.md](docs/operations/deploy-ci.md). Cursor rule: [`.cursor/rules/release-workflow.mdc`](.cursor/rules/release-workflow.mdc).
+
+### Housekeeping (after the release is CLOSED/PASS)
+
+Once the release is confirmed **CLOSED/PASS** — not merely after the post-deploy check — clean up the feature branch as part of that release:
+
+1. Confirm the branch has nothing that did not land in `main`: `git diff main..<branch>` is empty.
+2. Delete the **remote** branch, then the **local** branch.
+3. `git fetch origin --prune`.
+4. Confirm `HEAD == origin/main`, `ahead/behind = 0/0`, clean working tree.
+
+With squash merges the branch tip is not an ancestor of `main`, so **ancestry is not sufficient proof** for `git branch -D` — the empty `git diff main..<branch>` is the guard. Housekeeping must not trigger a deploy or touch other branches. Command-level detail: [deploy-ci.md — Housekeeping](docs/operations/deploy-ci.md#housekeeping-after-release-closedpass).
 
 ## Current mode: production
 

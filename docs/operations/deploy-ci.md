@@ -5,7 +5,7 @@
 Default path for Stay.hr changes:
 
 ```text
-implement → commit → PR → CI → merge → deploy (CI) → post-deploy check
+implement → commit → PR → CI → merge → deploy (CI) → post-deploy check → housekeeping
 ```
 
 | Step | What | Gate |
@@ -16,6 +16,7 @@ implement → commit → PR → CI → merge → deploy (CI) → post-deploy che
 | Merge | Squash/merge via PR | Branch protection |
 | Deploy | Automatic **Deploy production** on `push` to `main` | Actions run must succeed |
 | Post-deploy | Optional smoke (health, dry-run CLI) | Only **after** deploy; never before PR/CI |
+| Housekeeping | Delete the feature branch, prove `main` is clean | Only **after** the release is CLOSED/PASS ([Housekeeping](#housekeeping-after-release-closedpass)) |
 
 **Do not** treat production dry-run, manual migrate/seed, or manual `./scripts/deploy.sh` / `remote-deploy` as the next step after implementation. Those are post-deploy or incident/hotfix paths only when explicitly requested.
 
@@ -163,3 +164,26 @@ After merge to `main`:
 2. `https://app.stay.hr` / `https://api.stay.hr` respond
 3. On server: `cd /opt/stacks/stay.hr && git rev-parse HEAD` matches `origin/main`
 4. After a Django image rebuild, `GET /api/v1/reception/system/status/` (`reception:read`) → `build.git_sha` equals the **full** SHA from step 3. Restart-only deploys keep the SHA from the last Django image bake.
+
+## Housekeeping (after release CLOSED/PASS)
+
+Runs once the release is declared **CLOSED/PASS** — a green post-deploy check alone is not the trigger. Local repo only: no deploy, no other branches.
+
+```bash
+BRANCH=fix/example-feature
+
+# 1. Guard: nothing on the branch that missed main
+git checkout main && git fetch origin --prune
+git diff --stat main.."$BRANCH"   # must be empty
+
+# 2. Remote first, then local
+git push origin --delete "$BRANCH"
+git branch -D "$BRANCH"
+
+# 3. Final proof
+git rev-parse HEAD origin/main            # identical
+git rev-list --left-right --count HEAD...origin/main   # 0  0
+git status -sb --untracked-files=no       # clean
+```
+
+`git branch -d` refuses a squash-merged branch because the branch tip is not an ancestor of `main`. That refusal is expected and **ancestry must not be the proof** for using `-D` — the empty `git diff main..$BRANCH` is. `fetch --prune` dropping stale `origin/*` tracking refs is normal cleanup.
