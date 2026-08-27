@@ -6,6 +6,8 @@
 
 **Invoice email capture (auto-reply):** [`invoice-email-capture.md`](invoice-email-capture.md)
 
+**Jezik odgovora i boilerplate:** [`guest-reply-language.md`](guest-reply-language.md)
+
 **Reception web referenca (gotovo):** [`GuestMessagesPanel.tsx`](../../web/reception/app/_components/GuestMessagesPanel.tsx)
 
 **Operativni runbook:** [`guest-messages-channels.md`](../operations/guest-messages-channels.md)

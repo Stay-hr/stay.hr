@@ -171,17 +171,36 @@ def _handle_parking_llm(
     if _parking_reply_sent_today(reservation):
         return {"status": "guest_parking_handled", "reply": {"status": "dedup_skipped"}}
 
-    reply_body = llm_result.reply_text or build_parking_auto_reply(
+    # Single source of truth for the reply language. The LLM claim is compared
+    # against it unresolved, so a claim we did not accept cannot slip its text
+    # through in the wrong language.
+    final_language = GuestLanguageResolver.resolve(
         reservation,
-        body,
-        language=llm_result.reply_language,
-    )
+        mode=LanguageMode.REACTIVE,
+        reply_language=llm_result.reported_reply_language or None,
+        message_text=body,
+    ).language
+
+    if llm_result.reply_text and llm_result.reported_reply_language == final_language:
+        reply_body = llm_result.reply_text
+    else:
+        logger.info(
+            "parking LLM language rejected reservation_id=%s reported=%s final=%s",
+            reservation.pk,
+            llm_result.reported_reply_language or "-",
+            final_language,
+        )
+        reply_body = build_parking_auto_reply(reservation, body, language=final_language)
+
+    if not reply_body:
+        return None
+
     reply_result = send_parking_auto_reply(
         reservation,
         channel=channel,
         body=body,
         reply_body=reply_body,
-        language=llm_result.reply_language,
+        language=final_language,
         used_llm=True,
     )
     return {"status": "guest_parking_handled", "reply": reply_result, "used_llm": True}

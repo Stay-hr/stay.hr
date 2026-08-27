@@ -15,6 +15,11 @@ TRANSLATION_LANGS = frozenset(
 # Minimum detection confidence to persist conversation_language on inbound.
 CONVERSATION_UPDATE_THRESHOLD = 0.65
 
+# Minimum detection confidence for the inbound message to outrank the language
+# the LLM reports for itself. Below this the LLM claim still wins, because our
+# heuristics are blind to languages without markers.
+MESSAGE_OVERRIDES_LLM_THRESHOLD = 0.85
+
 # Valid ISO 639-1 codes for LLM reply_language (no whitelist filter).
 LLM_REPLY_LANGS = frozenset(
     {
