@@ -197,6 +197,17 @@ Za validator protiv stvarne Uzorita baze pokreni management command na serveru s
 - Test baza `stay_platform_test_db` — `./scripts/ensure-test-db.sh`
 - Image se gradi iz repoa (kod **nije** bind-mountan u `stay_django` — nakon izmjena uvijek `docker compose build django`)
 
+## Media u testovima
+
+Testovi pišu stvarne datoteke (dokumenti, prilozi poruka), pa test settings (`test.py`, `test_postgis.py`) preusmjeravaju `MEDIA_ROOT` na `TMPDIR/stay-test-media`.
+
+Bez toga bi `MEDIA_ROOT` bio `backend/media`, koji `docker-compose.yml` bindira na `./data/media` — dakle produkcijski media tree. Dvije posljedice:
+
+- na hostu gdje se UID poklapa s container userom `stay` (uid 1000) testovi bi pisali pored stvarnih podataka
+- na hostu gdje se ne poklapa (npr. dev workspace s uid 1002) suite pada s `PermissionError` na `/app/backend/media/...`
+
+Ne treba ručni `-v /tmp/...:/app/backend/media` workaround; `./scripts/run-tests-postgis.sh` radi bez dodatnih mountova.
+
 ## Povezana dokumentacija
 
 - Channex cert: [channex-demo-property.md](../integrations/channex-demo-property.md)

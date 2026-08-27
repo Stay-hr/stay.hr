@@ -1,6 +1,8 @@
 """SQLite settings for local/CI tests without Postgres."""
 
 import os
+import tempfile
+from pathlib import Path
 
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret-key-not-for-production")
 os.environ.setdefault("DB_PASSWORD", "test")
@@ -13,6 +15,12 @@ DATABASES = {
         "NAME": ":memory:",
     }
 }
+
+# docker-compose binds BASE_DIR/media to ./data/media, so the default MEDIA_ROOT is
+# the live media tree on any host whose UID matches the container user. Tests write
+# real files (documents, message attachments), so they get their own writable root.
+MEDIA_ROOT = Path(tempfile.gettempdir()) / "stay-test-media"
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
 # Fixed Fernet key for integration config tests (generate: Fernet.generate_key())
 STAY_INTEGRATION_FERNET_KEY = "M8U_DJpQILQrKpxTOVtRrQp3nR0LJHAl2X0x-7JOH5k="
