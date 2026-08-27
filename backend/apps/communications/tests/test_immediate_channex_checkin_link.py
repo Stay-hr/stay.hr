@@ -20,7 +20,7 @@ from apps.reservations.models import (
     GuestCheckInSessionStatus,
     Reservation,
 )
-from apps.tenants.models import Tenant
+from apps.tenants.models import ChannelManager, Tenant
 
 
 def _make_channex_reservation(

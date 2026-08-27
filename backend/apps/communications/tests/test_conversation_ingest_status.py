@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.communications.conversation_ingest_status import (
     conversation_ingest_snapshot,
@@ -98,13 +99,16 @@ class ConversationIngestHookTests(TestCase):
             timezone="Europe/Zagreb",
         )
         self.booking_id = "booking-obs-1"
+        # Relative to today so the reservation stays inside the Channex reconcile
+        # pre-arrival window ([today, today+7d]) regardless of when the suite runs.
+        check_in = timezone.localdate() + timedelta(days=1)
         self.reservation = Reservation.objects.create(
             tenant=self.tenant,
             property=self.property,
             external_id=channex_external_id(self.booking_id),
             import_source="channex",
-            check_in=date(2026, 8, 13),
-            check_out=date(2026, 8, 14),
+            check_in=check_in,
+            check_out=check_in + timedelta(days=1),
             booker_name="Obs Guest",
             status=Reservation.Status.EXPECTED,
         )
