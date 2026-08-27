@@ -39,6 +39,24 @@ class GuestLanguagePolicyTests(TestCase):
         self.assertEqual(ctx.language, "it")
         self.assertEqual(ctx.source, LanguageSource.COUNTRY)
 
+    def test_high_confidence_message_beats_llm_reply_language(self):
+        ctx = choose(
+            mode=LanguageMode.REACTIVE,
+            reply_language="hr",
+            message_detection=DetectionResult(language="en", confidence=0.9),
+        )
+        self.assertEqual(ctx.language, "en")
+        self.assertEqual(ctx.source, LanguageSource.MESSAGE)
+
+    def test_low_confidence_message_yields_to_llm_reply_language(self):
+        ctx = choose(
+            mode=LanguageMode.REACTIVE,
+            reply_language="hr",
+            message_detection=DetectionResult(language="en", confidence=0.7),
+        )
+        self.assertEqual(ctx.language, "hr")
+        self.assertEqual(ctx.source, LanguageSource.REPLY_LANGUAGE)
+
     def test_override_wins(self):
         ctx = choose(
             mode=LanguageMode.REACTIVE,

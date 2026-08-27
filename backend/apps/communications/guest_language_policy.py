@@ -8,6 +8,7 @@ from apps.communications.conversation_language_store import StoredConversationLa
 from apps.communications.guest_language_constants import (
     CANONICAL_LANGUAGE_DEFAULT,
     LLM_REPLY_LANGS,
+    MESSAGE_OVERRIDES_LLM_THRESHOLD,
     normalize_iso639_1,
 )
 from apps.communications.guest_language_context import (
@@ -83,7 +84,8 @@ def language_from_country(iso2: str) -> str:
     return CANONICAL_LANGUAGE_DEFAULT
 
 
-def _normalize_reply_language(raw: str | None) -> str | None:
+def normalize_reply_language(raw: str | None) -> str | None:
+    """Normalize an LLM-reported language, or None when it is not a valid code."""
     base = normalize_iso639_1(raw)
     if not base or base not in LLM_REPLY_LANGS:
         return None
@@ -104,6 +106,26 @@ def _reason_for(source: LanguageSource, *, detail: str = "") -> str:
     }.get(source, source.value)
 
 
+def _message_context(
+    detection: DetectionResult,
+    *,
+    mode: LanguageMode,
+    received_at: datetime | None,
+    channel: str,
+) -> GuestLanguageContext:
+    channel_part = f" {channel}" if channel else ""
+    detail = f"detected from inbound{channel_part} message"
+    if received_at:
+        detail = f"{detail} {received_at.isoformat()}"
+    return GuestLanguageContext(
+        language=detection.language,
+        source=LanguageSource.MESSAGE,
+        confidence=detection.confidence,
+        mode=mode,
+        reason=detail,
+    )
+
+
 def choose(
     *,
     mode: LanguageMode,
@@ -120,8 +142,13 @@ def choose(
     """
     Select guest reply language.
 
-    REACTIVE: override → reply_language → message → conversation → country → tenant_default → en
+    REACTIVE: override → high-confidence message → reply_language → message
+              → conversation → country → tenant_default → en
     PROACTIVE: override → country → tenant_default → en
+
+    A message detected with confidence >= MESSAGE_OVERRIDES_LLM_THRESHOLD beats
+    the language the LLM reports for itself: an English message with a single
+    foreign filler word must not be answered in that foreign language.
     """
     override_lang = normalize_iso639_1(override)
     if override_lang:
@@ -134,7 +161,20 @@ def choose(
         )
 
     if mode == LanguageMode.REACTIVE:
-        llm_lang = _normalize_reply_language(reply_language)
+        detected = (
+            message_detection
+            if message_detection and message_detection.language not in ("", "unknown")
+            else None
+        )
+        if detected and detected.confidence >= MESSAGE_OVERRIDES_LLM_THRESHOLD:
+            return _message_context(
+                detected,
+                mode=mode,
+                received_at=message_received_at,
+                channel=message_channel,
+            )
+
+        llm_lang = normalize_reply_language(reply_language)
         if llm_lang:
             return GuestLanguageContext(
                 language=llm_lang,
@@ -147,18 +187,12 @@ def choose(
                 ),
             )
 
-        if message_detection and message_detection.language not in ("", "unknown"):
-            ts = message_received_at.isoformat() if message_received_at else ""
-            channel_part = f" {message_channel}" if message_channel else ""
-            detail = f"detected from inbound{channel_part} message"
-            if ts:
-                detail = f"detected from inbound{channel_part} message {ts}"
-            return GuestLanguageContext(
-                language=message_detection.language,
-                source=LanguageSource.MESSAGE,
-                confidence=message_detection.confidence,
+        if detected:
+            return _message_context(
+                detected,
                 mode=mode,
-                reason=detail,
+                received_at=message_received_at,
+                channel=message_channel,
             )
 
         if conversation and conversation.language:
