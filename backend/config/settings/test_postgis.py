@@ -1,6 +1,8 @@
 """Postgres test settings — dedicated DB on shared PostGIS container (postgis network)."""
 
 import os
+import tempfile
+from pathlib import Path
 
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret-key-not-for-production")
 # WhatsApp send paths read os.environ (not Django settings). CI has no host .env token;
@@ -34,6 +36,12 @@ ALLOWED_HOSTS = list(
         ]
     )
 )
+
+# docker-compose binds BASE_DIR/media to ./data/media, so the default MEDIA_ROOT is
+# the live media tree on any host whose UID matches the container user. Tests write
+# real files (documents, message attachments), so they get their own writable root.
+MEDIA_ROOT = Path(tempfile.gettempdir()) / "stay-test-media"
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
 # Manifest storage needs collectstatic; admin template tests only need plain URLs.
 STORAGES = {
