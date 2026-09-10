@@ -245,6 +245,9 @@ class ChannexAriOutbox(TenantScopedModel):
         PENDING = "pending", "Pending"
         SENT = "sent", "Sent"
         FAILED = "failed", "Failed"
+        # Terminal disposition for a failed push that must never be retried:
+        # the payload is a point-in-time snapshot superseded by later pushes.
+        ABANDONED = "abandoned", "Abandoned"
 
     property = models.ForeignKey(
         "properties.Property",

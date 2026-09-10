@@ -205,7 +205,7 @@ docker compose exec django python manage.py channex_ari_full_sync --tenant-slug 
 docker compose exec django python manage.py verify_channex_availability --tenant-slug uzorita
 ```
 
-Nakon toga `--check` potvrđuje da su blokade već obrisane.
+Nakon toga `--check` potvrđuje da su blokade već obrisane. `FAILED` red ostaje u outboxu i nakon uspješnog full synca; njegovo terminalno zatvaranje opisano je u [channel-manager-setup.md — Disposition za `FAILED` ARI outbox redove](channel-manager-setup.md#disposition-za-failed-ari-outbox-redove).
 
 ---
 
