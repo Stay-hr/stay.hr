@@ -126,6 +126,86 @@ Izvor: `.imports/Check-in 2026-07-01 to 2026-07-31.xls` (47 redova, 40 aktivnih)
 - Channex ingest: upozorenje ako `rooms=0` ili 1 soba + 4+ odraslih (`MULTI_ROOM_SUSPECT`)
 - `flag_channex_room_mismatch`: automatski ARI push kad stay.hr ima 2+ sobe, Channex manje
 - Dnevni scan `detect_multi_room_gaps`: unit gapovi + Channex calendar mismatch
+- **Od 10. 9. 2026.:** zatvaranje ostatka objekta pali se samo kod nekonzistentnog / suspect multi-rooma — vidi [Property-close pravilo](#property-close-pravilo-konzistentan-vs-suspect-multi-room)
+
+---
+
+## Property-close pravilo: konzistentan vs suspect multi-room
+
+**Problem do 10. 9. 2026.:** `qualifies_for_whole_property_sync` palio je na **svaku** rezervaciju s 2+ mapirane sobe iz `{R1, R2, R3, R6}`, pa je i ispravno mapiran 2-sobni booking blokirao ostatak objekta. U prozoru 9.–14. 9. 2026. to je bez gosta držalo zatvorenih 6 soba-noći; cleanup istog dana otvorio je ukupno 31 soba-noć.
+
+Pravilo sada:
+
+| Stanje rezervacije | Konkurentni listinzi |
+|---|---|
+| kanal traži N soba i stay.hr drži točno N različitih soba, bez warning notea | **ostaju otvoreni** — sobe su zatvorene preko okupiranosti |
+| `units_count` je `None` ili 0 (kanal nije dao pouzdan broj) | zatvaraju se |
+| broj mapiranih soba ≠ `units_count`, u bilo kojem smjeru | zatvaraju se |
+| `MULTI_ROOM_SUSPECT:` / `CHANNEX_EMPTY_ROOMS:` / `CHANNEX_ROOMS_MISMATCH:` u `notes` | zatvaraju se |
+
+Invariant konzistentnosti (`multi_room_assignment_is_consistent`): `units_count > 0` **i** broj **različitih** `unit_id` na `ReservationUnit` je točno `units_count` **i** nema otvorenog room warninga. Broje se različite sobe, ne redovi — baza ne brani dva `ReservationUnit` reda na istu sobu, pa bi brojanje redova propustilo duplikat kao „dvije sobe”.
+
+Zaštita od overbookinga se time ne smanjuje: `force_close_property_channex_availability` i dalje zatvara sve listinge kod `MULTI_ROOM_SUSPECT` / `CHANNEX_EMPTY_ROOMS` / rooms mismatch. Mijenja se samo to da zdrava, potpuno mapirana rezervacija više ne aktivira zaštitni mehanizam.
+
+---
+
+## Cleanup zaostalih property-close blokada
+
+`prune_property_close_blocks` briše `property-close:` blokade koje po pravilu iznad više nemaju razlog i **ponovno izračuna** dostupnost preko `compute_unit_availability`. Nikad ne upisuje `availability=1` zato što je blokada obrisana — drži li tu noć druga rezervacija ili druga blokada, ostaje 0.
+
+Blokada se briše kad rezervacija više ne postoji, kad je izvan aktivnih statusa (sve osim `pending` / `expected` / `checked_in`) ili kad je multi-room postao konzistentan. Inače se zadržava uz ispisan razlog. Uz `--reservation-id` može se ograničiti na jednu rezervaciju.
+
+### 1. Dry-run (default)
+
+```bash
+docker compose exec django python manage.py prune_property_close_blocks \
+  --tenant-slug uzorita --from-date 2026-09-09
+```
+
+Ispis ima dvije sekcije:
+
+- **A)** svaka `property-close` blokada u rasponu, s odlukom `delete` / `keep` i razlogom
+- **B)** noći koje bi trebale biti zatvorene a stvarno su otvorene (`WARN missing property-close`)
+
+Sekcija B gleda **dostupnost**, ne evidenciju blokada: nedostatak blokade je izloženost samo ako `compute_unit_availability` još vraća > 0. Dvije rezervacije koje zajedno drže sve četiri core sobe nisu gap.
+
+Bez `--to-date` raspon ide od `--from-date` unaprijed, bez horizonta. To je namjerno: ručni cleanup 10. 9. 2026. s horizontom od 180 dana promašio je 7 blokada u lipnju 2027. (26 soba-noći).
+
+Gate prije `--apply`: svaki `delete` mora biti objašnjiv, a sekcija B prazna. Ako nije — stop; `--apply` će i sam odbiti raditi.
+
+### 2. Apply
+
+```bash
+docker compose exec django python manage.py prune_property_close_blocks \
+  --tenant-slug uzorita --from-date 2026-09-09 --apply
+```
+
+Dry-run **nije** input za `--apply`: komanda iznova čita i ocjenjuje svaku blokadu pod `select_for_update`, pa rezervacija nastala između dva poziva ne može biti pogođena zastarjelom odlukom. Redoslijed je delete → lokalni recompute i outbox → commit → jedan remote ARI push.
+
+Na writer hostu (`CHANNEX_OUTBOUND_ENABLED=true`) `--apply` stvarno ponovno otvara listinge na Booking.comu; na read-only hostu komanda odbija raditi ([ADR 0014](../architecture/adr/0014-channex-outbound-guard.md)).
+
+### 3. Provjera nakon apply-a
+
+```bash
+docker compose exec django python manage.py prune_property_close_blocks \
+  --tenant-slug uzorita --from-date 2026-09-09 --check
+docker compose exec django python manage.py verify_channex_availability --tenant-slug uzorita
+docker compose exec django python manage.py detect_overbooking --tenant-id 2 --from-date 2026-09-09
+docker compose exec django python manage.py detect_multi_room_gaps --tenant-id 2 --from-date 2026-09-09
+```
+
+`--check` je read-only i vraća exit 1 ako postoji ijedna obsolete blokada **ili** ijedna nezaštićena noć. Očekivano: exit 0, `mismatches=0`, `detect_overbooking` 0.
+
+### Recovery kad remote push padne
+
+Komanda tada završi s exit 1 i porukom `Do NOT re-run this command`. DB stanje je **već commitano i ispravno**, pa se cleanup **ne ponavlja**. Pogođeni `ChannexAriOutbox` red je u statusu `FAILED`, a flush bira samo `PENDING` redove — ni ponovni `channex_ari_flush` ga ne bi pokupio. Ponavlja se samo ARI sync:
+
+```bash
+docker compose exec django python manage.py channex_ari_full_sync --tenant-slug uzorita
+docker compose exec django python manage.py verify_channex_availability --tenant-slug uzorita
+```
+
+Nakon toga `--check` potvrđuje da su blokade već obrisane.
 
 ---
 
