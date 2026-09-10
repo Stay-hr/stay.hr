@@ -5,7 +5,10 @@ from django.test import TestCase
 
 from apps.integrations.channex.reservation_availability_service import (
     compute_unit_availability,
+    occupying_reservation_ids,
+    push_channex_inventory_after_ingest,
     should_sync_channex_availability,
+    sync_controlled_overbooking_holds,
     sync_reservation_channex_availability,
 )
 from apps.integrations.models import IntegrationConfig, UnitAvailabilityBlock
@@ -119,3 +122,78 @@ class ChannexReservationAvailabilityTests(TestCase):
         updates = mock_apply.call_args.args[1]
         self.assertEqual(len(updates), 2)
         self.assertTrue(all(item["availability"] == 0 for item in updates))
+
+    def _patch_hold(self, reservation, night=date(2026, 11, 1)):
+        return patch(
+            "apps.integrations.channex.reservation_availability_service.CONTROLLED_OVERBOOKING_HOLDS",
+            ((reservation.pk, "BCOM-STUDIO", night),),
+        )
+
+    @patch("apps.integrations.channex.reservation_availability_service.get_active_channex_integration")
+    @patch("apps.integrations.channex.reservation_availability_service.apply_availability_updates")
+    @patch("apps.integrations.channex.ari_service.push_channex_ari")
+    def test_hold_keeps_listing_open_when_original_alone(
+        self, mock_push, mock_apply, mock_integ
+    ):
+        mock_apply.return_value = []
+        mock_push.return_value = []
+        mock_integ.return_value = self.integration
+        reservation = self._create_reservation()
+        with self._patch_hold(reservation):
+            results = sync_controlled_overbooking_holds(tenant=self.tenant)
+        self.assertEqual(results[0]["availability"], 1)
+        self.assertEqual(mock_apply.call_args.args[1][0]["availability"], 1)
+
+    @patch("apps.integrations.channex.reservation_availability_service.get_active_channex_integration")
+    @patch("apps.integrations.channex.reservation_availability_service.apply_availability_updates")
+    @patch("apps.integrations.channex.ari_service.push_channex_ari")
+    def test_hold_closes_listing_when_replacement_occupies(
+        self, mock_push, mock_apply, mock_integ
+    ):
+        mock_apply.return_value = []
+        mock_push.return_value = []
+        mock_integ.return_value = self.integration
+        original = self._create_reservation()
+        replacement = self._create_reservation(booker_name="Replacement")
+        self.assertCountEqual(
+            occupying_reservation_ids(self.tenant, self.unit, date(2026, 11, 1)),
+            [original.pk, replacement.pk],
+        )
+        with self._patch_hold(original):
+            results = sync_controlled_overbooking_holds(tenant=self.tenant)
+        self.assertEqual(results[0]["availability"], 0)
+        self.assertEqual(mock_apply.call_args.args[1][0]["availability"], 0)
+
+    @patch("apps.integrations.channex.reservation_availability_service.get_active_channex_integration")
+    @patch("apps.integrations.channex.reservation_availability_service.apply_availability_updates")
+    @patch("apps.integrations.channex.ari_service.push_channex_ari")
+    def test_hold_skips_when_original_released(self, mock_push, mock_apply, mock_integ):
+        mock_apply.return_value = []
+        mock_push.return_value = []
+        mock_integ.return_value = self.integration
+        reservation = self._create_reservation()
+        reservation.status = Reservation.Status.CANCELED
+        reservation.save()
+        with self._patch_hold(reservation):
+            results = sync_controlled_overbooking_holds(tenant=self.tenant)
+        self.assertTrue(results[0]["skipped"])
+        self.assertEqual(results[0]["reason"], "original_released")
+        mock_apply.assert_not_called()
+
+    @patch("apps.integrations.channex.reservation_availability_service.get_active_channex_integration")
+    @patch("apps.integrations.channex.reservation_availability_service.apply_availability_updates")
+    @patch("apps.integrations.channex.ari_service.push_channex_ari")
+    @patch(
+        "apps.integrations.channex.reservation_availability_service.push_reservation_channex_availability_unconditional",
+        return_value={"pushed": True},
+    )
+    def test_ingest_reapplies_controlled_overbooking_hold(
+        self, _mock_unconditional, mock_push, mock_apply, mock_integ
+    ):
+        mock_apply.return_value = []
+        mock_push.return_value = []
+        mock_integ.return_value = self.integration
+        reservation = self._create_reservation(import_source="channex")
+        with self._patch_hold(reservation):
+            result = push_channex_inventory_after_ingest(reservation.pk)
+        self.assertEqual(result["controlled_overbooking_holds"][0]["availability"], 1)

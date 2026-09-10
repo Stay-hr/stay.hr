@@ -32,6 +32,11 @@ SYNC_AVAILABILITY_STATUSES = frozenset(
     }
 )
 
+# One-shot ops holds: keep a listing open while the original stay is still
+# assigned, then close it if a replacement occupies the same unit/night
+# (controlled overbooking). Tuple is (reservation_id, unit_code, night).
+CONTROLLED_OVERBOOKING_HOLDS: tuple[tuple[int, str, date], ...] = ()
+
 
 def should_sync_channex_availability(reservation: Reservation) -> bool:
     if get_channel_manager(reservation.tenant) != ChannelManager.CHANNEX:
@@ -433,6 +438,119 @@ def push_reservation_channex_availability_unconditional(reservation: Reservation
     return {"reservation_id": reservation.pk, "pushed": True, "units": results}
 
 
+def occupying_reservation_ids(tenant, unit: Unit, day: date) -> list[int]:
+    """Active reservation PKs that occupy ``unit`` on ``day``."""
+    night_end = day + timedelta(days=1)
+    return list(
+        ReservationUnit.objects.filter(
+            tenant=tenant,
+            unit=unit,
+            reservation__status__in=SYNC_AVAILABILITY_STATUSES,
+            reservation__check_in__lt=night_end,
+            reservation__check_out__gt=day,
+        )
+        .order_by("reservation_id")
+        .values_list("reservation_id", flat=True)
+        .distinct()
+    )
+
+
+def sync_controlled_overbooking_holds(*, tenant=None) -> list[dict]:
+    """Re-apply controlled overbooking ARI after ingest (open while alone, close if replaced)."""
+    from apps.integrations.channex.ari_service import push_channex_ari
+
+    results: list[dict] = []
+    for reservation_id, unit_code, night in CONTROLLED_OVERBOOKING_HOLDS:
+        original = (
+            Reservation.objects.filter(pk=reservation_id)
+            .select_related("tenant")
+            .first()
+        )
+        if original is None:
+            results.append(
+                {"skipped": True, "reason": "missing_reservation", "reservation_id": reservation_id}
+            )
+            continue
+        if tenant is not None and original.tenant_id != tenant.pk:
+            continue
+        unit = Unit.objects.filter(
+            tenant=original.tenant,
+            code=unit_code,
+            is_active=True,
+        ).first()
+        if unit is None:
+            results.append(
+                {
+                    "skipped": True,
+                    "reason": "missing_unit",
+                    "reservation_id": reservation_id,
+                    "unit_code": unit_code,
+                }
+            )
+            continue
+        occupant_ids = occupying_reservation_ids(original.tenant, unit, night)
+        original_occupying = reservation_id in occupant_ids
+        replacement_occupying = any(pk != reservation_id for pk in occupant_ids)
+        if replacement_occupying:
+            availability = 0
+        elif original_occupying:
+            availability = 1
+        else:
+            results.append(
+                {
+                    "skipped": True,
+                    "reason": "original_released",
+                    "reservation_id": reservation_id,
+                    "unit_code": unit_code,
+                    "occupants": occupant_ids,
+                }
+            )
+            continue
+        try:
+            integration = get_active_channex_integration(original.tenant.slug)
+        except ChannexBookingIngestError as exc:
+            results.append(
+                {
+                    "skipped": True,
+                    "reason": str(exc),
+                    "reservation_id": reservation_id,
+                }
+            )
+            continue
+        apply_availability_updates(
+            integration,
+            [
+                {
+                    "unit_code": unit_code,
+                    "date": night.isoformat(),
+                    "availability": availability,
+                }
+            ],
+            queue_push=True,
+        )
+        push_channex_ari(integration)
+        logger.info(
+            "controlled overbooking ARI hold applied",
+            extra={
+                "reservation_id": reservation_id,
+                "unit_code": unit_code,
+                "night": night.isoformat(),
+                "availability": availability,
+                "occupants": occupant_ids,
+            },
+        )
+        results.append(
+            {
+                "reservation_id": reservation_id,
+                "unit_code": unit_code,
+                "night": night.isoformat(),
+                "availability": availability,
+                "occupants": occupant_ids,
+            }
+        )
+    return results
+
+
 def push_channex_inventory_after_ingest(reservation_id: int) -> dict:
     """
     Recompute and push ARI to Channex after inbound booking ingest/cancel.
@@ -448,7 +566,11 @@ def push_channex_inventory_after_ingest(reservation_id: int) -> dict:
     if reservation is None:
         return {"skipped": True, "reason": "not_found", "reservation_id": reservation_id}
 
-    return push_reservation_channex_availability_unconditional(reservation)
+    result = push_reservation_channex_availability_unconditional(reservation)
+    result["controlled_overbooking_holds"] = sync_controlled_overbooking_holds(
+        tenant=reservation.tenant,
+    )
+    return result
 
 
 @transaction.atomic
