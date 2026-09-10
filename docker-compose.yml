@@ -12,6 +12,10 @@ services:
     stop_grace_period: 90s
     env_file:
       - .env
+    environment:
+      # The only service that migrates. Explicit so a STARTUP_MODE in the shared
+      # .env cannot silently turn the sole writer into a waiter.
+      STARTUP_MODE: web
     healthcheck:
       test:
         [
@@ -88,6 +92,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Workers never migrate; they wait for the web role to finish. See docker-entrypoint.sh.
+      STARTUP_MODE: worker
     volumes:
       - ./data/media:/app/backend/media
       - ./hospira-fc0dc-f77596470912.json:/run/secrets/firebase-service-account.json:ro
@@ -104,6 +111,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Workers never migrate; they wait for the web role to finish. See docker-entrypoint.sh.
+      STARTUP_MODE: worker
     volumes:
       - ./hospira-fc0dc-f77596470912.json:/run/secrets/firebase-service-account.json:ro
     networks:
