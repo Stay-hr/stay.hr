@@ -233,6 +233,8 @@ docker compose --profile test-run run --rm \
 
 **Produkcija:** ne koristiti `docker compose run django` — one-off kontejner nasljeđuje Traefik labele s `django` servisa i može uzrokovati intermittentne 502. Za testove i `manage.py` one-shot koristiti **`django-run`** (profil `test-run`, bez proxy mreže).
 
+`django-run` namjerno preskače image entrypoint, pa one-off poziv **ne** izvršava `migrate`/`collectstatic` nad produkcijskom bazom — produkcijske migracije idu isključivo kroz deploy. Dugotrajni servisi (`django`, `celery-worker`, `celery-beat`) entrypoint i dalje nasljeđuju.
+
 Za čistu test bazu: `docker exec postgis psql -U postgres -c 'DROP DATABASE stay_platform_test_db;'`, zatim `./scripts/ensure-test-db.sh`.
 
 Integration suite: **335/335** na PostGIS-u (stabilizacija 2026-07). Povijest burn-downa: [integrations-test-triage.md](docs/development/integrations-test-triage.md). Novi PR-ovi moraju zadržati zeleni smoke — ne sužavati suite.
