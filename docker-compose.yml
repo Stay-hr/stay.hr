@@ -67,6 +67,10 @@ services:
     profiles: ["test-run"]
     build: *django-build
     image: stay-hr-django:latest
+    # The image ENTRYPOINT runs migrate + collectstatic. A one-off inherits the
+    # production .env, so keeping it would migrate production merely by invoking
+    # an inspection command. Long-running services keep the entrypoint.
+    entrypoint: []
     env_file:
       - .env
     volumes:
