@@ -136,6 +136,49 @@ def _property_close_block_ref(reservation_id: int, unit_id: int) -> str:
     return f"{PROPERTY_CLOSE_BLOCK_REF_PREFIX}{reservation_id}:{unit_id}"
 
 
+def _distinct_mapped_unit_count(reservation: Reservation) -> int:
+    """How many distinct physical units are assigned to this reservation."""
+    return (
+        ReservationUnit.objects.filter(reservation=reservation, unit_id__isnull=False)
+        .values("unit_id")
+        .distinct()
+        .count()
+    )
+
+
+def multi_room_assignment_is_consistent(reservation: Reservation) -> bool:
+    """
+    True when the channel's room count is known and stay.hr holds exactly that
+    many distinct units, with no open room warning.
+
+    A consistent multi-room stay closes its own units through occupancy, so the
+    competing listings must stay open. Anything else — unknown ``units_count``,
+    a count mismatch in either direction, or an open room warning — keeps the
+    whole-property close as an overbooking guard.
+    """
+    from apps.integrations.channex.booking_room_mismatch import (
+        CHANNEX_EMPTY_ROOMS_NOTE,
+        CHANNEX_ROOMS_MISMATCH_NOTE,
+        MULTI_ROOM_SUSPECT_NOTE,
+    )
+
+    expected = reservation.units_count
+    if not expected or expected < 1:
+        return False
+    if _distinct_mapped_unit_count(reservation) != expected:
+        return False
+
+    notes = reservation.notes or ""
+    return not any(
+        prefix in notes
+        for prefix in (
+            MULTI_ROOM_SUSPECT_NOTE,
+            CHANNEX_EMPTY_ROOMS_NOTE,
+            CHANNEX_ROOMS_MISMATCH_NOTE,
+        )
+    )
+
+
 def mapped_channex_unit_codes_for_property(*, integration, property: Property) -> frozenset[str]:
     """Active stay.hr unit codes that have a Channex room-type mapping for this property."""
     config = integration.get_config_dict()
@@ -178,6 +221,10 @@ def qualifies_for_whole_property_sync(
         return False
     codes = _mapped_unit_codes_on_reservation(reservation)
     overlap = codes & close_codes
+    if not overlap:
+        return False
+    if multi_room_assignment_is_consistent(reservation):
+        return False
     return len(overlap) >= 2 or (
         (reservation.units_count or 0) >= 2 and len(overlap) >= 1
     )

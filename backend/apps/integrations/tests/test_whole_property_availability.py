@@ -3,9 +3,15 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
+from apps.integrations.channex.booking_room_mismatch import (
+    CHANNEX_EMPTY_ROOMS_NOTE,
+    CHANNEX_ROOMS_MISMATCH_NOTE,
+    MULTI_ROOM_SUSPECT_NOTE,
+)
 from apps.integrations.channex.reservation_availability_service import (
     PROPERTY_CLOSE_BLOCK_REF_PREFIX,
     UZORITA_WHOLE_PROPERTY_UNIT_CODES,
+    _distinct_mapped_unit_count,
     compute_unit_availability,
     force_close_property_channex_availability,
     mapped_channex_unit_codes_for_property,
@@ -99,6 +105,107 @@ class WholePropertyAvailabilityTests(TestCase):
             property=self.property,
         )
         self.assertEqual(codes, UZORITA_WHOLE_PROPERTY_UNIT_CODES)
+
+    def _reservation(self, *, units_count, units, notes=""):
+        reservation = Reservation.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            check_in=date(2026, 7, 24),
+            check_out=date(2026, 7, 25),
+            status=Reservation.Status.EXPECTED,
+            booker_name="Guest",
+            units_count=units_count,
+            notes=notes,
+        )
+        for sort_order, unit in enumerate(units):
+            ReservationUnit.objects.create(
+                tenant=self.tenant,
+                reservation=reservation,
+                unit=unit,
+                room_name=unit.code,
+                sort_order=sort_order,
+            )
+        return reservation
+
+    def test_consistent_multi_room_does_not_property_close(self):
+        reservation = self._reservation(
+            units_count=2,
+            units=[self.units["R2"], self.units["R6"]],
+        )
+        self.assertFalse(qualifies_for_whole_property_sync(reservation))
+
+    def test_consistent_multi_room_with_one_core_room_does_not_property_close(self):
+        """Consistency is the room count, not how many units fall in the close set."""
+        outside_close_set = Unit.objects.create(
+            tenant=self.tenant,
+            property=self.property,
+            code="R4",
+            name="R4",
+        )
+        reservation = self._reservation(
+            units_count=2,
+            units=[self.units["R1"], outside_close_set],
+        )
+        self.assertFalse(qualifies_for_whole_property_sync(reservation))
+
+    def test_fewer_units_than_channel_claims_property_closes(self):
+        reservation = self._reservation(
+            units_count=3,
+            units=[self.units["R1"], self.units["R3"]],
+        )
+        self.assertTrue(qualifies_for_whole_property_sync(reservation))
+
+    def test_single_unit_for_two_room_booking_property_closes(self):
+        reservation = self._reservation(units_count=2, units=[self.units["R1"]])
+        self.assertTrue(qualifies_for_whole_property_sync(reservation))
+
+    def test_more_units_than_channel_claims_property_closes(self):
+        reservation = self._reservation(
+            units_count=2,
+            units=[self.units["R1"], self.units["R2"], self.units["R3"]],
+        )
+        self.assertTrue(qualifies_for_whole_property_sync(reservation))
+
+    def test_unknown_channel_room_count_property_closes(self):
+        for units_count in (None, 0):
+            with self.subTest(units_count=units_count):
+                reservation = self._reservation(
+                    units_count=units_count,
+                    units=[self.units["R1"], self.units["R2"]],
+                )
+                self.assertTrue(qualifies_for_whole_property_sync(reservation))
+
+    def test_two_rows_on_one_unit_are_one_room_and_property_close(self):
+        """units_count=2 with both rows on R1 is a single physical room."""
+        reservation = self._reservation(
+            units_count=2,
+            units=[self.units["R1"], self.units["R1"]],
+        )
+        self.assertEqual(_distinct_mapped_unit_count(reservation), 1)
+        self.assertTrue(qualifies_for_whole_property_sync(reservation))
+
+    def test_open_room_warning_note_property_closes(self):
+        for prefix in (
+            MULTI_ROOM_SUSPECT_NOTE,
+            CHANNEX_EMPTY_ROOMS_NOTE,
+            CHANNEX_ROOMS_MISMATCH_NOTE,
+        ):
+            with self.subTest(prefix=prefix):
+                reservation = self._reservation(
+                    units_count=2,
+                    units=[self.units["R2"], self.units["R6"]],
+                    notes=f"{prefix} provjeri multi-room PDF import",
+                )
+                self.assertTrue(qualifies_for_whole_property_sync(reservation))
+
+    def test_no_unit_in_close_set_does_not_reach_the_gate(self):
+        """
+        Without a unit in the close set there is nothing to compare, so the gate
+        declines. An unmapped suspect booking is guarded by
+        force_close_property_channex_availability instead.
+        """
+        reservation = self._reservation(units_count=2, units=[])
+        self.assertFalse(qualifies_for_whole_property_sync(reservation))
 
     @patch("apps.integrations.channex.reservation_availability_service.apply_availability_updates")
     @patch("apps.integrations.channex.ari_service.push_channex_ari")
@@ -222,7 +329,7 @@ class GenericPropertyCloseCodesTests(TestCase):
         )
         self.assertEqual(codes, frozenset({"A1", "B1"}))
 
-    def test_qualifies_without_uzorita_hardcode(self):
+    def _reservation(self, *, units_count):
         reservation = Reservation.objects.create(
             tenant=self.tenant,
             property=self.property,
@@ -230,23 +337,28 @@ class GenericPropertyCloseCodesTests(TestCase):
             check_out=date(2026, 8, 2),
             status=Reservation.Status.EXPECTED,
             booker_name="Guest",
-            units_count=2,
+            units_count=units_count,
         )
-        ReservationUnit.objects.create(
-            tenant=self.tenant,
-            reservation=reservation,
-            unit=self.unit_a,
-            room_name="A1",
-            sort_order=0,
-        )
-        ReservationUnit.objects.create(
-            tenant=self.tenant,
-            reservation=reservation,
-            unit=self.unit_b,
-            room_name="B1",
-            sort_order=1,
-        )
+        for sort_order, unit in enumerate((self.unit_a, self.unit_b)):
+            ReservationUnit.objects.create(
+                tenant=self.tenant,
+                reservation=reservation,
+                unit=unit,
+                room_name=unit.code,
+                sort_order=sort_order,
+            )
+        return reservation
+
+    def test_inconsistent_multi_room_property_closes_without_uzorita_hardcode(self):
+        """A generic property reaches the close gate through its mapped room types."""
+        reservation = self._reservation(units_count=3)
         self.assertTrue(
+            qualifies_for_whole_property_sync(reservation, self.integration)
+        )
+
+    def test_consistent_multi_room_does_not_property_close(self):
+        reservation = self._reservation(units_count=2)
+        self.assertFalse(
             qualifies_for_whole_property_sync(reservation, self.integration)
         )
 
