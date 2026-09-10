@@ -1,0 +1,32 @@
+---
+description: Ops — radi samo što je eksplicitno traženo; ne pretpostavljaj sljedeće korake
+alwaysApply: true
+---
+
+# Samo što je eksplicitno traženo
+
+U ops / reception / eVisitor / WhatsApp / OCR radu:
+
+- Radi **isključivo** korake koje je korisnik imenovao u poruci.
+- **Ne** dodaj „logične” follow-upe (checkout, invent podataka, brisanje gostiju, check-in, ARI push, flush outbox, invent adrese, …) osim ako su eksplicitno zatraženi.
+- Ako je traženo npr. „OCR + match + eVisitor”, stani nakon eVisitor **prijave** — ne radi checkout.
+- Checkout raditi **samo** kad korisnik kaže checkout / odjava — ne zbog `check_out` datuma, ne noću, ne „jer je danas odlazak”.
+- Ako trebaš sljedeći korak koji nije naveden: **pitaj**, ne izvršavaj.
+
+## Primjeri
+
+```text
+❌ Traženo: OCR + match + eVisitor
+   Agent radi i checkout jer je check_out danas
+
+✅ Traženo: OCR + match + eVisitor
+   Agent: OCR → match → eVisitor prijava → stani / pitaj za checkout
+```
+
+```text
+❌ Traženo: stavi doc faces za #1150
+   Agent radi eVisitor + checkout
+
+✅ Traženo: stavi doc faces za #1150
+   Agent samo dokumenti + face cutovi
+```
