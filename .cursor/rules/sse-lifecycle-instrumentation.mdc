@@ -1,0 +1,31 @@
+---
+description: Keep SSE lifecycle instrumentation permanent through Redis/Uvicorn phases (ADR 0005).
+globs: backend/apps/reservations/reservation_version_events.py,backend/apps/api/reception_views.py,backend/apps/core/system_status.py,backend/apps/core/daily_ops_report/**/*.py,web/reception/app/api/stay/**/*.ts,docs/architecture/adr/0005*.md,docs/operations/gunicorn-sse-monitoring.md,docs/operations/sse-lifecycle-observation-log.md,AGENTS.md
+alwaysApply: false
+---
+
+# SSE lifecycle instrumentation — permanent
+
+Phase 1 SSE lifecycle is **closed**. Do **not** remove or disable this instrumentation when implementing Phase 2a (Redis EventBus) or Phase 2b (Uvicorn SSE).
+
+## Must keep
+
+| Layer | Artifacts |
+|-------|-----------|
+| BFF | AbortSignal → upstream abort; `bff_sse_proxy_start` / `bff_sse_upstream_connected` / `bff_sse_client_aborted` |
+| Django stream | `stream_id`, `X-SSE-Stream-Id`, `sse_stream_opened` / `sse_stream_closed` (+ `close_reason`) |
+| Registry + invariant | `register_sse_stream` / `close_sse_stream` / `touch_sse_stream`, `check_sse_invariant`, `sse_invariant_breach` |
+| Status + ops | `GET /system/status` → `sse.*` (`invariant_delta`, `active_streams`, …); daily ops CRIT on breach |
+
+## Why
+
+- Redis replaces **in-process fan-out**, not proof that streams close.
+- Uvicorn moves **transport**; disconnect/registry/invariant still required on the SSE service.
+- Ops diagnose leaks via `stream_id` + `invariant_delta`, not by feel.
+
+## Rules for agents
+
+- Do not gate Phase 2a on a calendar “N consecutive PASS days” window.
+- If leak/saturation returns → stop and analyze with the tools above; do not “clean up” by deleting metrics.
+- When adding Redis or Uvicorn, **wire** instrumentation into the new path; do not replace it with bus/transport-only logging.
+- Reference: [ADR 0005](docs/architecture/adr/0005-gunicorn-sse-worker-evolution.md), [gunicorn-sse-monitoring.md](docs/operations/gunicorn-sse-monitoring.md).
