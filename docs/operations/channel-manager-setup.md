@@ -307,6 +307,7 @@ Validacija: spremanje `channel_manager=channex` bez aktivnog Channex `Integratio
 | `sync_channex_credentials` | Merge API key / webhook / property ID iz env |
 | `channex_ari_full_sync` | Push 500-day ARI u Channex |
 | `channex_ari_flush` | Retry pending outbox (operativno) |
+| `channex_ari_abandon_failed` | Terminalno zatvaranje starih `FAILED` outbox redova (`ABANDONED`) |
 
 Svi commandi:
 
@@ -314,6 +315,35 @@ Svi commandi:
 cd /opt/stacks/stay.hr
 docker compose exec django python manage.py <command> --help
 ```
+
+---
+
+## Disposition za `FAILED` ARI outbox redove
+
+`flush_channex_ari_outbox` bira **samo** `PENDING` redove i na grešci označi red `FAILED` pa re-raisea. `FAILED` red se dakle ne flusha sam, a ponovni `channex_ari_flush` ga neće pokupiti.
+
+**Stari `FAILED` ARI snapshot ne smije se izravno requeueati.** Payload je point-in-time stanje i može pokrivati datume daleko u budućnost, pa bi ponovno slanje pregazilo dostupnost koja je u međuvremenu postala ispravna. Prvo se trenutno stanje ponovno uskladi i verificira canonical putem (`channex_ari_full_sync`, `FULL_SYNC_DAYS=500`, pa `verify_channex_availability`), nakon čega se stari zapis može terminalno označiti `ABANDONED`.
+
+Za **svjež** failure ovo pravilo ne vrijedi — tamo su istraga ili requeue sasvim legitimni.
+
+`ABANDONED` je terminalno stanje: flush ga po definiciji ne vidi (bira `PENDING`), pa red više ne može biti poslan.
+
+```bash
+# 1. dry-run — bez cutoffa prikazuje sve FAILED redove, po tenantu
+docker compose exec django python manage.py channex_ari_abandon_failed
+
+# 2. apply — cutoff je obavezan i ekskluzivan (created_at < 00:00 tog dana)
+docker compose exec django python manage.py channex_ari_abandon_failed \
+  --created-before YYYY-MM-DD --apply
+```
+
+Dry-run po tenantu ispisuje broj redova, razbijanje po `kind`, span `created_at`, **span payload datuma** (pokriva oba oblika value zapisa — per-day `date` i komprimirani `date_from`/`date_to`) te je li Channex integracija aktivna. Uz zadan cutoff dodaje `in scope` / `outside cutoff`.
+
+Guardovi:
+
+- `--apply` bez `--created-before` je odbijen — cohort mora biti eksplicitan da svjež `FAILED` red ne bi slučajno završio kao `ABANDONED`
+- prije `--apply` dry-run mora potvrditi **točno očekivani cohort**, ne samo ukupan broj: očekivani broj redova **po tenantu** i raspon `created_at`. Novi tenant, novi `kind` ili red izvan očekivanog perioda znače **STOP i pregled**
+- komanda ne radi ni jedan Channex poziv i ne traži aktivnu integraciju, pa može zatvoriti i redove dekomisioniranog tenanta
 
 ---
 
