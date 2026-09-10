@@ -5,9 +5,25 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret-key-not-for-production")
-# WhatsApp send paths read os.environ (not Django settings). CI has no host .env token;
-# without this, send_credentials_ok() returns missing_credentials on Actions.
-os.environ.setdefault("WHATSAPP_ACCESS_TOKEN", "ci-test-whatsapp-access-token")
+
+# These are read straight from os.environ, so override_settings cannot shield them,
+# and setdefault only fills a missing key — a docker test run inherits the production
+# .env, which is how the suite reached the live Meta Graph API with the real token.
+# Assign, so a test run never holds a usable third-party credential.
+os.environ.update(
+    {
+        "WHATSAPP_ACCESS_TOKEN": "ci-test-whatsapp-access-token",
+        "WHATSAPP_APP_SECRET": "ci-test-whatsapp-app-secret",
+        "WHATSAPP_WEBHOOK_VERIFY_TOKEN": "ci-test-whatsapp-verify-token",
+        "WHATSAPP_PHONE_NUMBER_ID": "100000000000000",
+        "WHATSAPP_WABA_ID": "200000000000000",
+        # eVisitor is the live guest registry: a stray call could register or
+        # check out a real guest.
+        "UZORITA_EVISITOR_USERNAME": "ci-test-evisitor-user",
+        "UZORITA_EVISITOR_PASSWORD": "ci-test-evisitor-pass",
+        "UZORITA_EVISITOR_BASE_URL": "https://evisitor.invalid/ci-test",
+    }
+)
 
 from config.settings.base import *  # noqa: F403
 
