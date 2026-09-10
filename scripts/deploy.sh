@@ -152,10 +152,12 @@ pending_migrations_in_db() {
     return
   fi
 
-  log "django not running; starting temporarily for migration check..."
-  docker compose up -d django
-  sleep 2
-  ! docker compose exec -T django python manage.py migrate --check >/dev/null 2>&1
+  # `up -d django` would answer a read-only question by starting the service, and
+  # the web role migrates on startup — so the check would apply what it reports.
+  # django-run has no entrypoint, so a one-off only reads.
+  log "django not running; checking migrations in a one-off container..."
+  ! docker compose --profile test-run run --rm -T django-run \
+    python manage.py migrate --check >/dev/null 2>&1
 }
 
 needs_backend_rebuild=false
