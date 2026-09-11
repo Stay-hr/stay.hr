@@ -305,6 +305,18 @@ Rođendan tijekom boravka **ne** mijenja kategoriju i **ne** dijeli prijavu.
 4. **CheckInTourist** — POST na `/Rest/Htz/CheckInTourist/`.
 5. **Uspjeh** — submission → `sent`, `Guest.evisitor_status` → `sent`, spremljen `evisitor_registration_id`.
 
+### Prihvaćeni oblici adrese
+
+| Oblik | Primjer | `CityOfResidence` |
+|-------|---------|-------------------|
+| `Grad, ulica` (kanonski) | `Osijek, Dubrovačka 30` | `Osijek` |
+| `Grad, kućni broj` (bez zareza) | `DONJI BITELIĆ 208 A` | `DONJI BITELIĆ` |
+| S administrativnom labelom | `Grad Zagreb, Ulica 1` · `Općina Vodice, Ulica 1` | `Zagreb` · `Vodice` |
+| **HR osobna: `naselje, GRAD/OPĆINA X, ulica broj`** | `SESVETE, GRAD ZAGREB, ULICA KRSTE HEGEDUSICA 13 M` | `ZAGREB` |
+| Street-first | `Dubrovačka 30, Osijek` | odbijeno (`MSG_STREET_FIRST`) |
+
+eVisitor šifrarnik sadrži **jedinicu lokalne samouprave**, ne naselje. Kad je drugi segment adrese `Grad X` ili `Općina X`, grad se uzima iz njega (`_validate_id_card_form`) — inače bi se poslalo naselje (`SESVETE`) i eVisitor bi vratio `ne postoji u sustavu` (#1159). `normalized_address` pritom **zadržava sve segmente**, pa ponovna validacija persistirane adrese daje isti grad.
+
 ### Okidači submita
 
 | Okidač | Put | Napomena |

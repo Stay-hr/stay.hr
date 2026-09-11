@@ -39,6 +39,14 @@ _STREETISH_TOKEN_RE = re.compile(
     re.IGNORECASE | re.UNICODE,
 )
 
+# Administrative unit (JLS) labels: "Grad Zagreb", "Općina Privlaka".
+_ADMIN_UNIT_LABELS = ("grad", "općina", "opcina")
+
+_JLS_SEGMENT_RE = re.compile(
+    r"^(?:grad|op[ćc]ina)\s+(?P<name>.+)$",
+    re.IGNORECASE | re.UNICODE,
+)
+
 _MAX_CITY_LEN = 64
 _MAX_CITY_WORDS_COMMA = 5
 _MAX_CITY_WORDS_NO_COMMA = 4
@@ -69,6 +77,9 @@ def validate_evisitor_residence_address(address: str) -> AddressValidationResult
     stripped = normalize_residence_address(raw)
 
     if "," in stripped:
+        id_card = _validate_id_card_form(stripped)
+        if id_card is not None:
+            return id_card
         return _validate_comma_form(stripped)
 
     return _validate_no_comma_form(stripped)
@@ -134,13 +145,13 @@ def _city_has_streetish_token(city: str) -> bool:
     return False
 
 
-def _strip_grad_label(city: str) -> str:
-    """Strip leading administrative label ``Grad`` (e.g. ``Grad Zagreb`` → ``Zagreb``).
+def _strip_admin_label(city: str) -> str:
+    """Strip leading administrative label (e.g. ``Grad Zagreb`` → ``Zagreb``).
 
     Does not touch multi-word place names like ``Stari Grad``.
     """
     parts = (city or "").strip().split(None, 1)
-    if len(parts) == 2 and parts[0].casefold() == "grad":
+    if len(parts) == 2 and parts[0].casefold() in _ADMIN_UNIT_LABELS:
         return parts[1].strip()
     return (city or "").strip()
 
@@ -153,6 +164,40 @@ def _city_shape_errors(city: str, *, max_words: int) -> str | None:
     if len(city) > _MAX_CITY_LEN or _word_count(city) > max_words:
         return MSG_CITY_TOO_LONG
     return None
+
+
+def _validate_id_card_form(address: str) -> AddressValidationResult | None:
+    """Croatian ID card form ``naselje, Grad/Općina X, ulica broj``.
+
+    eVisitor's šifrarnik holds the administrative unit, not the settlement, so
+    ``Sesvete, Grad Zagreb, …`` must register as ``Zagreb`` (#1159). Returns
+    ``None`` when the address is not this form, leaving the generic rules in
+    charge.
+    """
+    segments = [segment.strip() for segment in address.split(",")]
+    if len(segments) < 2:
+        return None
+
+    settlement = segments[0]
+    if not settlement or _looks_like_street_segment(settlement):
+        return None
+
+    match = _JLS_SEGMENT_RE.match(segments[1])
+    if not match:
+        return None
+
+    city = match.group("name").strip()
+    if _city_shape_errors(city, max_words=_MAX_CITY_WORDS_COMMA):
+        return None
+
+    # Keep every segment so re-validating ``normalized_address`` yields the same
+    # city — OCR apply and sync_guest_evisitor_fields persist it onto Guest.
+    normalized = ", ".join(segment for segment in segments if segment)
+    return _ok(
+        city,
+        normalized,
+        warnings=("Grad prebivališta uzet iz jedinice lokalne samouprave.",),
+    )
 
 
 def _validate_comma_form(address: str) -> AddressValidationResult:
@@ -170,7 +215,7 @@ def _validate_comma_form(address: str) -> AddressValidationResult:
     if shape_err:
         return _fail(shape_err)
 
-    city = _strip_grad_label(city)
+    city = _strip_admin_label(city)
     if not city:
         return _fail(MSG_CANNOT_DETERMINE)
 
@@ -201,7 +246,7 @@ def _validate_no_comma_form(address: str) -> AddressValidationResult:
             return _fail(MSG_CANNOT_DETERMINE)
         return _fail(shape_err)
 
-    city = _strip_grad_label(city)
+    city = _strip_admin_label(city)
     if not city:
         return _fail(MSG_CANNOT_DETERMINE)
 
