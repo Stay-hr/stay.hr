@@ -137,3 +137,76 @@ class EvisitorResidenceAddressTests(SimpleTestCase):
         self.assertTrue(result.valid)
         self.assertEqual(result.city, "Zagreb")
         self.assertEqual(result.normalized_address, "Zagreb, 12")
+
+    def test_strip_opcina_label_comma_form(self):
+        result = validate_evisitor_residence_address("Općina Vodice, Ulica 1")
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "Vodice")
+        self.assertEqual(result.normalized_address, "Vodice, Ulica 1")
+
+
+class EvisitorIdCardAddressTests(SimpleTestCase):
+    """Croatian ID card form: naselje, Grad/Općina X, ulica broj (#1159)."""
+
+    def test_regression_1159_settlement_differs_from_city(self):
+        result = validate_evisitor_residence_address(
+            "SESVETE, GRAD ZAGREB, ULICA KRSTE HEGEDUSICA 13 M"
+        )
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "ZAGREB")
+        self.assertEqual(
+            result.normalized_address,
+            "SESVETE, GRAD ZAGREB, ULICA KRSTE HEGEDUSICA 13 M",
+        )
+        self.assertTrue(result.warnings)
+
+    def test_normalized_address_revalidates_to_same_city(self):
+        """OCR apply and sync_guest_evisitor_fields persist normalized_address."""
+        raw = "SESVETE, GRAD ZAGREB, ULICA KRSTE HEGEDUSICA 13 M"
+        first = validate_evisitor_residence_address(raw)
+        second = validate_evisitor_residence_address(first.normalized_address)
+        self.assertTrue(second.valid)
+        self.assertEqual(second.city, first.city)
+        self.assertEqual(second.normalized_address, first.normalized_address)
+
+    def test_settlement_equal_to_city_unchanged(self):
+        result = validate_evisitor_residence_address(
+            "ZAGREB, GRAD ZAGREB, OPOROVEČKI VINOGRADI 66 A"
+        )
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "ZAGREB")
+
+    def test_two_segment_settlement_and_city(self):
+        result = validate_evisitor_residence_address("Zagreb, Grad Zagreb")
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "Zagreb")
+        self.assertEqual(result.normalized_address, "Zagreb, Grad Zagreb")
+
+    def test_opcina_segment(self):
+        result = validate_evisitor_residence_address(
+            "Privlaka, Općina Privlaka, Ulica 5"
+        )
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "Privlaka")
+
+    def test_postal_prefix_stripped_before_jls_lookup(self):
+        result = validate_evisitor_residence_address(
+            "10360 Sesvete, Grad Zagreb, Ulica 13"
+        )
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "Zagreb")
+        self.assertEqual(result.normalized_address, "Sesvete, Grad Zagreb, Ulica 13")
+
+    def test_second_segment_without_label_keeps_first_segment(self):
+        result = validate_evisitor_residence_address("Split, Hrvatska, Ulica 5")
+        self.assertTrue(result.valid)
+        self.assertEqual(result.city, "Split")
+
+    def test_street_first_still_rejected(self):
+        result = validate_evisitor_residence_address(
+            "Ulica Krste Hegedušića 13, Grad Zagreb"
+        )
+        self.assertFalse(result.valid)
+        self.assertEqual(result.city, "")
+        self.assertEqual(result.normalized_address, "")
+        self.assertIn(MSG_STREET_FIRST, result.errors)

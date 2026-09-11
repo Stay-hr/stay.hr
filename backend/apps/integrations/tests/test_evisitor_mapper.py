@@ -84,6 +84,23 @@ class EvisitorMapperTests(TestCase):
         self.assertEqual(payload["CityOfBirth"], "Berlin")
         self.assertEqual(payload["ResidenceAddress"], "Berlin, Grad Berlin")
 
+    @patch("apps.integrations.evisitor.mapper.iso2_to_iso3", return_value="HRV")
+    def test_id_card_address_sends_administrative_city(self, mock_iso):
+        """Regression #1159: naselje Sesvete must register as Zagreb."""
+        self.guest.address = "SESVETE, GRAD ZAGREB, ULICA KRSTE HEGEDUSICA 13 M"
+        self.guest.save(update_fields=["address", "updated_at"])
+        payload = build_check_in_payload(
+            self.guest,
+            config=self.config,
+            registration_id=uuid4(),
+        )
+        self.assertEqual(payload["CityOfResidence"], "ZAGREB")
+        self.assertEqual(payload["CityOfBirth"], "ZAGREB")
+        self.assertEqual(
+            payload["ResidenceAddress"],
+            "SESVETE, GRAD ZAGREB, ULICA KRSTE HEGEDUSICA 13 M",
+        )
+
     @patch("apps.integrations.evisitor.mapper.iso2_to_iso3", return_value="DEU")
     def test_invalid_address_raises_validation_error(self, mock_iso):
         self.guest.address = "DONJI BITELIĆ HRVACE DONJI BITELIĆ 208 A"
