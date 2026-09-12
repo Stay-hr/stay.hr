@@ -72,9 +72,9 @@ class BillingRecipientIssueLockTests(TestCase):
             total=Decimal("100.00"),
         )
 
-    def test_issue_does_not_wire_recipient_resolver(self):
+    def test_issue_wires_recipient_resolver(self):
         source = inspect.getsource(issue_guest_invoice)
-        self.assertNotIn("resolve_billing_recipient_issuance", source)
+        self.assertIn("resolve_billing_recipient_issuance", source)
 
     def test_issue_rereads_existing_invoice_after_reservation_lock(self):
         self.assertFalse(hasattr(self.reservation, "invoice"))
