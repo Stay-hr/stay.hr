@@ -26,6 +26,7 @@ class RecipientSource(StrEnum):
 
 class RecipientRejectReason(StrEnum):
     EMPTY_REQUEST = "empty_request"
+    OPEN_ALREADY_EXISTS = "open_already_exists"
     ALREADY_APPLIED = "already_applied"
     SKIP_TO_APPLIED = "skip_to_applied"
     NOT_READY = "not_ready"
