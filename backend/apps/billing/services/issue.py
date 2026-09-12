@@ -4,8 +4,20 @@ import uuid
 
 from django.db import transaction
 
-from apps.billing.exceptions import FiscalConfigError, InvoiceBuildError
-from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
+from apps.billing.exceptions import (
+    BillingRecipientError,
+    BillingRecipientIssuanceDeferred,
+    FiscalConfigError,
+)
+from apps.billing.models import BillingRecipient, Invoice, InvoiceLine, TenantFiscalSettings
+from apps.billing.services.billing_recipient import (
+    BillingRecipientIssuanceDecision,
+    RecipientRejectReason,
+)
+from apps.billing.services.billing_recipient_apply import apply_recipient_to_new_invoice
+from apps.billing.services.billing_recipient_issuance import (
+    resolve_billing_recipient_issuance,
+)
 from apps.billing.services.invoice_builder import build_invoice_from_reservation
 from apps.billing.services.pdf import render_invoice_pdf
 from apps.billing.services.zki import calculate_zki, load_fiscal_private_key
@@ -48,6 +60,42 @@ def validate_fiscal_settings(settings: TenantFiscalSettings) -> None:
         raise FiscalConfigError(f"Missing fiscal settings: {', '.join(missing)}")
 
 
+def _open_ready_recipient(reservation: Reservation) -> BillingRecipient:
+    recipient = (
+        BillingRecipient.objects.filter(
+            reservation=reservation,
+            tenant_id=reservation.tenant_id,
+            status=BillingRecipient.Status.READY,
+        )
+        .first()
+    )
+    if recipient is None:
+        raise BillingRecipientError(
+            "APPLY_READY requires an open READY billing recipient.",
+            reason=RecipientRejectReason.NOT_READY,
+        )
+    return recipient
+
+
+def _persist_invoice_lines(invoice: Invoice, built) -> None:
+    InvoiceLine.objects.bulk_create(
+        [
+            InvoiceLine(
+                invoice=invoice,
+                sort_order=line.sort_order,
+                line_kind=line.line_kind,
+                description=line.description,
+                quantity=line.quantity,
+                unit_price=line.unit_price,
+                vat_rate=line.vat_rate,
+                vat_amount=line.vat_amount,
+                line_total=line.line_total,
+            )
+            for line in built.lines
+        ]
+    )
+
+
 @transaction.atomic
 def issue_guest_invoice(reservation: Reservation) -> Invoice:
     reservation = Reservation.objects.select_for_update().get(pk=reservation.pk)
@@ -57,6 +105,14 @@ def issue_guest_invoice(reservation: Reservation) -> Invoice:
     ).first()
     if existing is not None:
         return existing
+
+    decision = resolve_billing_recipient_issuance(reservation)
+    if decision is BillingRecipientIssuanceDecision.BLOCK_REQUESTED:
+        raise BillingRecipientIssuanceDeferred()
+
+    recipient = None
+    if decision is BillingRecipientIssuanceDecision.APPLY_READY:
+        recipient = _open_ready_recipient(reservation)
 
     settings = get_fiscal_settings_for_reservation(reservation)
     if not settings.is_vat_registered:
@@ -77,44 +133,49 @@ def issue_guest_invoice(reservation: Reservation) -> Invoice:
         private_key=load_fiscal_private_key(settings),
     )
 
-    invoice = Invoice.objects.create(
-        tenant=reservation.tenant,
-        reservation=reservation,
-        invoice_number=invoice_number,
-        sequence_number=seq,
-        issued_at=issued_at,
-        buyer_name=built.buyer_name,
-        buyer_document_number=built.buyer_document_number,
-        buyer_address=built.buyer_address,
-        buyer_country=built.buyer_country,
-        payment_method=built.payment_method,
-        payment_note=built.payment_note,
-        subtotal=built.subtotal,
-        vat_amount=built.vat_amount,
-        total=built.total,
-        currency=built.currency,
-        zki=zki,
-        fiscal_status=Invoice.FiscalStatus.PENDING,
-        public_access_token=uuid.uuid4(),
-    )
+    if recipient is not None:
+        invoice = apply_recipient_to_new_invoice(
+            recipient=recipient,
+            invoice_create_kwargs={
+                "tenant": reservation.tenant,
+                "reservation": reservation,
+                "invoice_number": invoice_number,
+                "sequence_number": seq,
+                "issued_at": issued_at,
+                "payment_method": built.payment_method,
+                "payment_note": built.payment_note,
+                "subtotal": built.subtotal,
+                "vat_amount": built.vat_amount,
+                "total": built.total,
+                "currency": built.currency,
+                "zki": zki,
+                "fiscal_status": Invoice.FiscalStatus.PENDING,
+                "public_access_token": uuid.uuid4(),
+            },
+        )
+    else:
+        invoice = Invoice.objects.create(
+            tenant=reservation.tenant,
+            reservation=reservation,
+            invoice_number=invoice_number,
+            sequence_number=seq,
+            issued_at=issued_at,
+            buyer_name=built.buyer_name,
+            buyer_document_number=built.buyer_document_number,
+            buyer_address=built.buyer_address,
+            buyer_country=built.buyer_country,
+            payment_method=built.payment_method,
+            payment_note=built.payment_note,
+            subtotal=built.subtotal,
+            vat_amount=built.vat_amount,
+            total=built.total,
+            currency=built.currency,
+            zki=zki,
+            fiscal_status=Invoice.FiscalStatus.PENDING,
+            public_access_token=uuid.uuid4(),
+        )
 
-    InvoiceLine.objects.bulk_create(
-        [
-            InvoiceLine(
-                invoice=invoice,
-                sort_order=line.sort_order,
-                line_kind=line.line_kind,
-                description=line.description,
-                quantity=line.quantity,
-                unit_price=line.unit_price,
-                vat_rate=line.vat_rate,
-                vat_amount=line.vat_amount,
-                line_total=line.line_total,
-            )
-            for line in built.lines
-        ]
-    )
-
+    _persist_invoice_lines(invoice, built)
     render_invoice_pdf(invoice, settings)
     return invoice
 

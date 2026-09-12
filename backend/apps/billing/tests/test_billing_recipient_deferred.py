@@ -23,10 +23,10 @@ class BillingRecipientIssuanceDeferredTests(TestCase):
             "billing_recipient_incomplete",
         )
 
-    def test_issue_guest_invoice_does_not_raise_deferred_yet(self):
+    def test_issue_guest_invoice_wires_resolver_and_deferred(self):
         source = inspect.getsource(issue_guest_invoice)
-        self.assertNotIn("BillingRecipientIssuanceDeferred", source)
-        self.assertNotIn("resolve_billing_recipient_issuance", source)
+        self.assertIn("BillingRecipientIssuanceDeferred", source)
+        self.assertIn("resolve_billing_recipient_issuance", source)
 
 
 class CheckoutDeferredInvoiceTests(TestCase):
