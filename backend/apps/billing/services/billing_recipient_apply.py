@@ -16,6 +16,7 @@ from apps.billing.services.billing_recipient import (
     can_mark_applied,
     snapshot_recipient_onto_invoice,
 )
+from apps.reservations.models import Reservation
 
 FORBIDDEN_INVOICE_BUYER_FIELDS: frozenset[str] = frozenset(
     {
@@ -61,6 +62,15 @@ def apply_recipient_to_new_invoice(
         )
 
     with transaction.atomic():
+        locked_reservation = Reservation.objects.select_for_update().get(pk=reservation_id)
+        if Invoice.objects.filter(
+            reservation_id=locked_reservation.pk,
+            tenant_id=locked_reservation.tenant_id,
+        ).exists():
+            raise BillingRecipientError(
+                "Apply cannot target an already persisted invoice.",
+                reason=RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+            )
         locked = (
             BillingRecipient.objects.select_for_update()
             .select_related("reservation")
@@ -79,11 +89,6 @@ def apply_recipient_to_new_invoice(
             raise BillingRecipientError(
                 "Invoice reservation must match the billing recipient reservation.",
                 reason=RecipientRejectReason.RESERVATION_MISMATCH,
-            )
-        if Invoice.objects.filter(reservation_id=locked.reservation_id).exists():
-            raise BillingRecipientError(
-                "Apply cannot target an already persisted invoice.",
-                reason=RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
             )
 
         snapshot = snapshot_recipient_onto_invoice(recipient=locked)

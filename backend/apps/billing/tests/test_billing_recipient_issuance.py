@@ -104,8 +104,8 @@ class BillingRecipientIssuanceDecisionTests(TestCase):
         )
 
     def test_existing_invoice_ignores_open_requested(self):
-        self._add_invoice()
         create_open_recipient(self.reservation, {"company_name": "Example GmbH"})
+        self._add_invoice()
         self.assertEqual(
             resolve_billing_recipient_issuance(self.reservation),
             BillingRecipientIssuanceDecision.GUEST,
@@ -113,8 +113,8 @@ class BillingRecipientIssuanceDecisionTests(TestCase):
         self.assertEqual(Invoice.objects.count(), 1)
 
     def test_existing_invoice_ignores_open_ready(self):
-        self._add_invoice()
         create_open_recipient(self.reservation, self._ready_fields())
+        self._add_invoice()
         self.assertEqual(
             resolve_billing_recipient_issuance(self.reservation),
             BillingRecipientIssuanceDecision.GUEST,
