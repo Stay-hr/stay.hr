@@ -179,6 +179,12 @@ class BillingRecipientRuntimeIssuanceTests(TestCase):
         )
         self.assertEqual(kwargs["total"], Decimal("100.00"))
         self.assertEqual(kwargs["payment_method"], "booking")
+        self.assertEqual(kwargs["issuer_oib"], "12345678901")
+        self.assertEqual(kwargs["issuer_name"], "Issuer d.o.o.")
+        self.assertEqual(invoice.issuer_oib, "12345678901")
+        self.assertEqual(invoice.business_premise_code, "PP1")
+        self.assertEqual(invoice.payment_device_code, "1")
+        self.assertEqual(invoice.reservation_reference, str(self.reservation.pk))
 
     def test_apply_failure_does_not_fall_back_to_guest_and_rolls_back_sequence(self):
         recipient = create_open_recipient(self.reservation, self._ready_fields())

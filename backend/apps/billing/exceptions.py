@@ -42,6 +42,12 @@ class ReplacementInProgress(BillingError):
     code = "replacement_in_progress"
 
 
+class InvoiceIssuerContextMissing(BillingError):
+    """Legacy invoice has no frozen issuer context and must not be rewritten."""
+
+    code = "invoice_issuer_context_missing"
+
+
 class FiscalizationError(BillingError):
     """Fiskalizacija 1.0 request failed."""
 

@@ -1,8 +1,10 @@
 from django.core.management.base import BaseCommand, CommandError
 
+from apps.billing.exceptions import InvoiceIssuerContextMissing
 from apps.billing.models import Invoice
 from apps.billing.services.invoice_resolution import resolve_effective_invoice
 from apps.billing.services.issue import get_fiscal_settings_for_reservation, refresh_invoice_buyer_from_reservation
+from apps.billing.services.issuer_context import require_frozen_issuer_context
 from apps.billing.services.pdf import render_invoice_pdf
 from apps.reservations.models import Reservation
 
@@ -30,6 +32,11 @@ class Command(BaseCommand):
 
         if invoice is None:
             raise CommandError("Invoice not found.")
+
+        try:
+            require_frozen_issuer_context(invoice)
+        except InvoiceIssuerContextMissing as exc:
+            raise CommandError(str(exc)) from exc
 
         refresh_invoice_buyer_from_reservation(invoice)
         settings = get_fiscal_settings_for_reservation(invoice.reservation)

@@ -41,10 +41,10 @@
     {% endif %}
 
     <p><strong>Izdavatelj:</strong><br>
-      {{ settings.issuer_name }}<br>
-      {{ settings.issuer_address|linebreaksbr }}
-      {% if settings.issuer_oib %}<br>OIB: {{ settings.issuer_oib }}{% endif %}
-      {% if settings.issuer_iban %}<br>IBAN: {{ settings.issuer_iban }}{% endif %}
+      {{ issuer_name }}<br>
+      {{ issuer_address|linebreaksbr }}
+      {% if issuer_oib %}<br>OIB: {{ issuer_oib }}{% endif %}
+      {% if issuer_iban %}<br>IBAN: {{ issuer_iban }}{% endif %}
     </p>
 
     <p><strong>Kupac:</strong><br>

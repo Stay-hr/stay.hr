@@ -24,6 +24,7 @@ from apps.billing.services.invoice_resolution import (
     has_open_post_storno_gap,
     resolve_effective_invoice,
 )
+from apps.billing.services.issuer_context import snapshot_issuer_document_context
 from apps.billing.services.pdf import render_invoice_pdf
 from apps.billing.services.zki import calculate_zki, load_fiscal_private_key
 from apps.core.timezone import tenant_local_now
@@ -136,6 +137,7 @@ def issue_guest_invoice(reservation: Reservation) -> Invoice:
         total=built.total,
         private_key=load_fiscal_private_key(settings),
     )
+    issuer_context = snapshot_issuer_document_context(settings, reservation)
 
     if recipient is not None:
         invoice = apply_recipient_to_new_invoice(
@@ -155,6 +157,7 @@ def issue_guest_invoice(reservation: Reservation) -> Invoice:
                 "zki": zki,
                 "fiscal_status": Invoice.FiscalStatus.PENDING,
                 "public_access_token": uuid.uuid4(),
+                **issuer_context,
             },
         )
     else:
@@ -177,6 +180,7 @@ def issue_guest_invoice(reservation: Reservation) -> Invoice:
             zki=zki,
             fiscal_status=Invoice.FiscalStatus.PENDING,
             public_access_token=uuid.uuid4(),
+            **issuer_context,
         )
 
     _persist_invoice_lines(invoice, built)
