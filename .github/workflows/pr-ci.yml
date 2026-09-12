@@ -186,6 +186,8 @@ jobs:
               apps.billing.tests.test_invoice_replacement_model
               apps.billing.tests.test_invoice_replacement_gap
               apps.billing.tests.test_invoice_issuer_context
+              apps.billing.tests.test_invoice_replacement_service
+              apps.billing.tests.test_invoice_replacement_lock
               apps.api.tests.test_reception_eporezna
             )
           }

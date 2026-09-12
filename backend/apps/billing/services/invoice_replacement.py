@@ -39,6 +39,13 @@ class ReplacementRejectReason(StrEnum):
     STORNO_MISSING = "storno_missing"
     REPLACEMENT_ALREADY_EXISTS = "replacement_already_exists"
     CANCEL_AFTER_STORNO = "cancel_after_storno"
+    CASE_REASON_REQUIRED = "case_reason_required"
+    CANCEL_REASON_REQUIRED = "cancel_reason_required"
+    ISSUER_OIB_EVIDENCE_REQUIRED = "issuer_oib_evidence_required"
+    ISSUER_OIB_MISMATCH = "issuer_oib_mismatch"
+    ISSUER_OIB_INVALID = "issuer_oib_invalid"
+    INVALID_COUNTRY = "invalid_country"
+    INVALID_RECIPIENT = "invalid_recipient"
 
 
 READY_REQUIRED_FIELDS: tuple[str, ...] = (

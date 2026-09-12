@@ -65,6 +65,7 @@ No hard delete of issued `Invoice` / case / recipient. Audit actor FKs use `PROT
 
 - Contract: [backend/apps/billing/services/invoice_replacement.py](../../../backend/apps/billing/services/invoice_replacement.py)
 - ORM: [backend/apps/billing/models.py](../../../backend/apps/billing/models.py)
-- Tests: [backend/apps/billing/tests/test_invoice_replacement.py](../../../backend/apps/billing/tests/test_invoice_replacement.py), [test_invoice_replacement_model.py](../../../backend/apps/billing/tests/test_invoice_replacement_model.py)
+- Commands: [backend/apps/billing/services/invoice_replacement_service.py](../../../backend/apps/billing/services/invoice_replacement_service.py) — open / update / verify / cancel; no Invoice writes
+- Tests: [backend/apps/billing/tests/test_invoice_replacement.py](../../../backend/apps/billing/tests/test_invoice_replacement.py), [test_invoice_replacement_model.py](../../../backend/apps/billing/tests/test_invoice_replacement_model.py), [test_invoice_replacement_service.py](../../../backend/apps/billing/tests/test_invoice_replacement_service.py)
 
-No command services in this slice.
+No storno issuance, admin API, or `#1159` write in this slice.
