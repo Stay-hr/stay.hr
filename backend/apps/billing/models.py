@@ -4,8 +4,19 @@ import uuid
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
+from django.utils import timezone
 
+from apps.billing.services.billing_recipient import (
+    BillingRecipientDraft,
+    BuyerStatusConfidence,
+    RecipientSource,
+    RecipientStatus,
+    has_request_anchor,
+    is_structurally_ready,
+)
 from apps.core.models import TenantScopedModel
 from apps.tenants.token_encryption import decrypt_api_token, encrypt_api_token
 
@@ -359,6 +370,174 @@ class BookingOffer(TenantScopedModel):
 
     def __str__(self) -> str:
         return f"{self.offer_number} ({self.reservation_id})"
+
+
+class BillingRecipient(TenantScopedModel):
+    """Company invoice recipient on a reservation (ADR 0021).
+
+    Apply to an already persisted invoice is not reachable from ordinary save.
+    """
+
+    class Status(models.TextChoices):
+        REQUESTED = RecipientStatus.REQUESTED.value, "Requested"
+        READY = RecipientStatus.READY.value, "Ready"
+        APPLIED = RecipientStatus.APPLIED.value, "Applied"
+
+    class IdentityConfidence(models.TextChoices):
+        UNVERIFIED = BuyerStatusConfidence.UNVERIFIED.value, "Unverified"
+        VERIFIED = BuyerStatusConfidence.VERIFIED.value, "Verified"
+
+    class Source(models.TextChoices):
+        BOOKING_MESSAGE = RecipientSource.BOOKING_MESSAGE.value, "Booking message"
+        WHATSAPP = RecipientSource.WHATSAPP.value, "WhatsApp"
+        GUEST_FORM = RecipientSource.GUEST_FORM.value, "Guest form"
+        STAFF = RecipientSource.STAFF.value, "Staff"
+
+    reservation = models.ForeignKey(
+        "reservations.Reservation",
+        on_delete=models.CASCADE,
+        related_name="billing_recipients",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.REQUESTED,
+        db_index=True,
+    )
+    identity_confidence = models.CharField(
+        max_length=16,
+        choices=IdentityConfidence.choices,
+        default=IdentityConfidence.UNVERIFIED,
+    )
+    company_name = models.CharField(max_length=255, blank=True, default="")
+    tax_id = models.CharField(max_length=64, blank=True, default="")
+    tax_id_country = models.CharField(max_length=2, blank=True, default="")
+    country = models.CharField(max_length=2, blank=True, default="")
+    address = models.TextField(blank=True, default="")
+    postal_code = models.CharField(max_length=16, blank=True, default="")
+    city = models.CharField(max_length=128, blank=True, default="")
+    email = models.EmailField(blank=True, default="")
+    phone = models.CharField(max_length=64, blank=True, default="")
+    source = models.CharField(max_length=32, choices=Source.choices, blank=True, default="")
+    source_ref = models.CharField(max_length=64, blank=True, default="")
+    source_excerpt = models.TextField(blank=True, default="")
+    requested_at = models.DateTimeField(default=timezone.now)
+    ready_at = models.DateTimeField(null=True, blank=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    applied_invoice = models.OneToOneField(
+        "billing.Invoice",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="applied_billing_recipient",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-requested_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["reservation"],
+                condition=Q(status__in=["requested", "ready"]),
+                name="billing_recipient_one_open_per_reservation",
+            ),
+            models.CheckConstraint(
+                check=(
+                    Q(status="applied", applied_invoice_id__isnull=False)
+                    | Q(
+                        status__in=["requested", "ready"],
+                        applied_invoice_id__isnull=True,
+                    )
+                ),
+                name="billing_recipient_applied_iff_invoice",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"BillingRecipient #{self.pk} res={self.reservation_id} {self.status}"
+
+    def as_draft(self) -> BillingRecipientDraft:
+        source = None
+        if self.source:
+            source = RecipientSource(self.source)
+        return BillingRecipientDraft(
+            company_name=self.company_name,
+            tax_id=self.tax_id,
+            tax_id_country=self.tax_id_country,
+            country=self.country,
+            address=self.address,
+            postal_code=self.postal_code,
+            city=self.city,
+            email=self.email,
+            phone=self.phone,
+            identity_confidence=BuyerStatusConfidence(
+                self.identity_confidence or BuyerStatusConfidence.UNVERIFIED
+            ),
+            source=source,
+            source_ref=self.source_ref,
+            source_excerpt=self.source_excerpt,
+        )
+
+    def clean(self) -> None:
+        super().clean()
+        if self.reservation_id:
+            reservation_tenant_id = getattr(self.reservation, "tenant_id", None)
+            if reservation_tenant_id is not None:
+                if not self.tenant_id:
+                    self.tenant_id = reservation_tenant_id
+                elif reservation_tenant_id != self.tenant_id:
+                    raise ValidationError(
+                        {"tenant": "BillingRecipient tenant must match reservation.tenant_id."}
+                    )
+        if not has_request_anchor(self.as_draft()):
+            raise ValidationError(
+                "A billing recipient needs company_name, tax_id, or source_excerpt."
+            )
+        if self.status == self.Status.READY and not is_structurally_ready(self.as_draft()):
+            raise ValidationError(
+                {"status": "READY requires a structurally complete recipient."}
+            )
+        if self.status == self.Status.APPLIED and self.applied_invoice_id is None:
+            raise ValidationError(
+                {"applied_invoice": "APPLIED requires applied_invoice."}
+            )
+        if self.status != self.Status.APPLIED and self.applied_invoice_id is not None:
+            raise ValidationError(
+                {"applied_invoice": "applied_invoice is only valid when status is APPLIED."}
+            )
+
+    def save(self, *args, **kwargs):
+        allow_apply = kwargs.pop("allow_apply", False)
+        if self.reservation_id and not self.tenant_id:
+            self.tenant_id = self.reservation.tenant_id
+        previous = None
+        if self.pk:
+            previous = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values("status", "requested_at", "applied_invoice_id")
+                .first()
+            )
+        becoming_applied = self.status == self.Status.APPLIED and (
+            previous is None or previous["status"] != self.Status.APPLIED
+        )
+        if becoming_applied and not allow_apply:
+            raise ValidationError(
+                {
+                    "status": (
+                        "APPLIED cannot be set by an ordinary save. "
+                        "Apply is reserved for new-invoice issue."
+                    )
+                }
+            )
+        if previous is not None:
+            if previous["requested_at"] != self.requested_at:
+                raise ValidationError({"requested_at": "requested_at is immutable."})
+            if previous["status"] == self.Status.APPLIED:
+                raise ValidationError("An APPLIED billing recipient is frozen.")
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class FiscalizationAttempt(models.Model):
