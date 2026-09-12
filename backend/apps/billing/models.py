@@ -17,6 +17,11 @@ from apps.billing.services.billing_recipient import (
     has_request_anchor,
     is_structurally_ready,
 )
+from apps.billing.services.invoice_replacement import (
+    ReplacementCaseStatus,
+    ReplacementRecipientDraft,
+    is_structurally_ready as replacement_recipient_is_ready,
+)
 from apps.core.models import TenantScopedModel
 from apps.tenants.token_encryption import decrypt_api_token, encrypt_api_token
 
@@ -536,6 +541,382 @@ class BillingRecipient(TenantScopedModel):
                 raise ValidationError({"requested_at": "requested_at is immutable."})
             if previous["status"] == self.Status.APPLIED:
                 raise ValidationError("An APPLIED billing recipient is frozen.")
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class InvoiceReplacement(TenantScopedModel):
+    """Privileged replacement/storno case (ADR 0022). No Invoice type flag."""
+
+    class Status(models.TextChoices):
+        OPEN = ReplacementCaseStatus.OPEN.value, "Open"
+        COMPLETED = ReplacementCaseStatus.COMPLETED.value, "Completed"
+        CANCELLED = ReplacementCaseStatus.CANCELLED.value, "Cancelled"
+
+    reservation = models.ForeignKey(
+        "reservations.Reservation",
+        on_delete=models.PROTECT,
+        related_name="invoice_replacements",
+    )
+    original_invoice = models.ForeignKey(
+        "billing.Invoice",
+        on_delete=models.PROTECT,
+        related_name="replacements_as_original",
+    )
+    storno_invoice = models.ForeignKey(
+        "billing.Invoice",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="replacements_as_storno",
+    )
+    replacement_invoice = models.ForeignKey(
+        "billing.Invoice",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="replacements_as_replacement",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.OPEN,
+        db_index=True,
+    )
+    reason = models.TextField()
+    opened_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="invoice_replacements_opened",
+    )
+    opened_at = models.DateTimeField()
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="invoice_replacements_completed",
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="invoice_replacements_cancelled",
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.TextField(blank=True, default="")
+    original_issuer_oib = models.CharField(max_length=11, blank=True, default="")
+    original_issuer_oib_source = models.TextField(blank=True, default="")
+    original_issuer_oib_recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="invoice_replacements_issuer_oib_recorded",
+    )
+    original_issuer_oib_recorded_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-opened_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["reservation"],
+                condition=Q(status="open"),
+                name="billing_ir_one_open_per_reservation",
+            ),
+            models.UniqueConstraint(
+                fields=["original_invoice"],
+                condition=Q(status="open"),
+                name="billing_ir_one_open_per_original",
+            ),
+            models.UniqueConstraint(
+                fields=["original_invoice"],
+                condition=Q(status="completed"),
+                name="billing_ir_one_completed_per_original",
+            ),
+            models.UniqueConstraint(
+                fields=["storno_invoice"],
+                condition=Q(storno_invoice__isnull=False),
+                name="billing_ir_unique_storno_invoice",
+            ),
+            models.UniqueConstraint(
+                fields=["replacement_invoice"],
+                condition=Q(replacement_invoice__isnull=False),
+                name="billing_ir_unique_replacement_invoice",
+            ),
+            models.CheckConstraint(
+                check=(
+                    Q(
+                        status="open",
+                        replacement_invoice__isnull=True,
+                        completed_by__isnull=True,
+                        completed_at__isnull=True,
+                        cancelled_by__isnull=True,
+                        cancelled_at__isnull=True,
+                        cancel_reason="",
+                    )
+                    | Q(
+                        status="completed",
+                        storno_invoice__isnull=False,
+                        replacement_invoice__isnull=False,
+                        completed_by__isnull=False,
+                        completed_at__isnull=False,
+                        cancelled_by__isnull=True,
+                        cancelled_at__isnull=True,
+                    )
+                    | Q(
+                        status="cancelled",
+                        storno_invoice__isnull=True,
+                        replacement_invoice__isnull=True,
+                        cancelled_by__isnull=False,
+                        cancelled_at__isnull=False,
+                        completed_by__isnull=True,
+                        completed_at__isnull=True,
+                    )
+                    & ~Q(cancel_reason="")
+                ),
+                name="billing_ir_status_links_and_audit",
+            ),
+            models.CheckConstraint(
+                check=(Q(storno_invoice__isnull=True) | ~Q(storno_invoice=models.F("original_invoice"))),
+                name="billing_ir_storno_ne_original",
+            ),
+            models.CheckConstraint(
+                check=(
+                    Q(replacement_invoice__isnull=True)
+                    | ~Q(replacement_invoice=models.F("original_invoice"))
+                ),
+                name="billing_ir_replacement_ne_original",
+            ),
+            models.CheckConstraint(
+                check=(
+                    Q(storno_invoice__isnull=True)
+                    | Q(replacement_invoice__isnull=True)
+                    | ~Q(storno_invoice=models.F("replacement_invoice"))
+                ),
+                name="billing_ir_storno_ne_replacement",
+            ),
+            models.CheckConstraint(
+                check=(
+                    Q(
+                        original_issuer_oib_recorded_by__isnull=True,
+                        original_issuer_oib_recorded_at__isnull=True,
+                    )
+                    | Q(
+                        original_issuer_oib_recorded_by__isnull=False,
+                        original_issuer_oib_recorded_at__isnull=False,
+                    )
+                ),
+                name="billing_ir_issuer_oib_audit_pair",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"InvoiceReplacement #{self.pk} res={self.reservation_id} {self.status}"
+
+    def clean(self) -> None:
+        super().clean()
+        if self.reservation_id:
+            reservation_tenant_id = getattr(self.reservation, "tenant_id", None)
+            if reservation_tenant_id is not None:
+                if not self.tenant_id:
+                    self.tenant_id = reservation_tenant_id
+                elif reservation_tenant_id != self.tenant_id:
+                    raise ValidationError(
+                        {"tenant": "InvoiceReplacement tenant must match reservation.tenant_id."}
+                    )
+            if (
+                self.original_invoice_id
+                and self.original_invoice.reservation_id != self.reservation_id
+            ):
+                raise ValidationError(
+                    {"original_invoice": "original_invoice must belong to the same reservation."}
+                )
+            if (
+                self.original_invoice_id
+                and self.original_invoice.tenant_id != self.tenant_id
+            ):
+                raise ValidationError(
+                    {"original_invoice": "original_invoice must belong to the same tenant."}
+                )
+        for field_name in ("storno_invoice", "replacement_invoice"):
+            invoice = getattr(self, field_name)
+            if invoice is None:
+                continue
+            if self.reservation_id and invoice.reservation_id != self.reservation_id:
+                raise ValidationError(
+                    {field_name: f"{field_name} must belong to the same reservation."}
+                )
+            if self.tenant_id and invoice.tenant_id != self.tenant_id:
+                raise ValidationError(
+                    {field_name: f"{field_name} must belong to the same tenant."}
+                )
+
+    def save(self, *args, **kwargs):
+        if self.reservation_id and not self.tenant_id:
+            self.tenant_id = self.reservation.tenant_id
+        if self.pk:
+            previous = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values(
+                    "opened_by_id",
+                    "opened_at",
+                    "original_issuer_oib",
+                    "original_issuer_oib_source",
+                    "original_issuer_oib_recorded_by_id",
+                    "original_issuer_oib_recorded_at",
+                )
+                .first()
+            )
+            if previous is not None:
+                if previous["opened_by_id"] != self.opened_by_id:
+                    raise ValidationError({"opened_by": "opened_by is immutable."})
+                if previous["opened_at"] != self.opened_at:
+                    raise ValidationError({"opened_at": "opened_at is immutable."})
+                current = {
+                    "original_issuer_oib": self.original_issuer_oib,
+                    "original_issuer_oib_source": self.original_issuer_oib_source,
+                    "original_issuer_oib_recorded_by_id": self.original_issuer_oib_recorded_by_id,
+                    "original_issuer_oib_recorded_at": self.original_issuer_oib_recorded_at,
+                }
+                for name, new in current.items():
+                    old = previous[name]
+                    if old not in (None, "") and old != new:
+                        raise ValidationError({name: f"{name} is write-once."})
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class InvoiceReplacementRecipient(TenantScopedModel):
+    """Structured B2B recipient snapshot for one replacement case (ADR 0022)."""
+
+    class IdentityConfidence(models.TextChoices):
+        UNVERIFIED = BuyerStatusConfidence.UNVERIFIED.value, "Unverified"
+        VERIFIED = BuyerStatusConfidence.VERIFIED.value, "Verified"
+
+    class Source(models.TextChoices):
+        BOOKING_MESSAGE = RecipientSource.BOOKING_MESSAGE.value, "Booking message"
+        WHATSAPP = RecipientSource.WHATSAPP.value, "WhatsApp"
+        GUEST_FORM = RecipientSource.GUEST_FORM.value, "Guest form"
+        STAFF = RecipientSource.STAFF.value, "Staff"
+
+    case = models.OneToOneField(
+        InvoiceReplacement,
+        on_delete=models.PROTECT,
+        related_name="recipient",
+    )
+    identity_confidence = models.CharField(
+        max_length=16,
+        choices=IdentityConfidence.choices,
+        default=IdentityConfidence.UNVERIFIED,
+    )
+    company_name = models.CharField(max_length=255, blank=True, default="")
+    tax_id = models.CharField(max_length=64, blank=True, default="")
+    tax_id_country = models.CharField(max_length=2, blank=True, default="")
+    country = models.CharField(max_length=2, blank=True, default="")
+    address = models.TextField(blank=True, default="")
+    postal_code = models.CharField(max_length=16, blank=True, default="")
+    city = models.CharField(max_length=128, blank=True, default="")
+    email = models.EmailField(blank=True, default="")
+    phone = models.CharField(max_length=64, blank=True, default="")
+    source = models.CharField(max_length=32, choices=Source.choices, blank=True, default="")
+    source_ref = models.CharField(max_length=64, blank=True, default="")
+    source_excerpt = models.TextField(blank=True, default="")
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="invoice_replacement_recipients_verified",
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    Q(
+                        identity_confidence="unverified",
+                        verified_by__isnull=True,
+                        verified_at__isnull=True,
+                    )
+                    | Q(
+                        identity_confidence="verified",
+                        verified_by__isnull=False,
+                        verified_at__isnull=False,
+                    )
+                ),
+                name="billing_irr_verified_iff_audit",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"InvoiceReplacementRecipient case={self.case_id} {self.identity_confidence}"
+
+    def as_draft(self) -> ReplacementRecipientDraft:
+        source = None
+        if self.source:
+            source = RecipientSource(self.source)
+        return ReplacementRecipientDraft(
+            company_name=self.company_name,
+            tax_id=self.tax_id,
+            tax_id_country=self.tax_id_country,
+            country=self.country,
+            address=self.address,
+            postal_code=self.postal_code,
+            city=self.city,
+            email=self.email,
+            phone=self.phone,
+            identity_confidence=BuyerStatusConfidence(
+                self.identity_confidence or BuyerStatusConfidence.UNVERIFIED
+            ),
+            source=source,
+            source_ref=self.source_ref,
+            source_excerpt=self.source_excerpt,
+        )
+
+    def clean(self) -> None:
+        super().clean()
+        if self.case_id:
+            case_tenant_id = getattr(self.case, "tenant_id", None)
+            if case_tenant_id is not None:
+                if not self.tenant_id:
+                    self.tenant_id = case_tenant_id
+                elif case_tenant_id != self.tenant_id:
+                    raise ValidationError(
+                        {"tenant": "Recipient tenant must match the replacement case tenant."}
+                    )
+        if (
+            self.identity_confidence == self.IdentityConfidence.VERIFIED
+            and not replacement_recipient_is_ready(self.as_draft())
+        ):
+            raise ValidationError(
+                {"identity_confidence": "VERIFIED requires a structurally complete recipient."}
+            )
+
+    def save(self, *args, **kwargs):
+        if self.case_id and not self.tenant_id:
+            self.tenant_id = self.case.tenant_id
+        if self.pk:
+            previous = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values("source", "source_ref", "source_excerpt")
+                .first()
+            )
+            if previous is not None:
+                for name in ("source", "source_ref", "source_excerpt"):
+                    old = previous[name]
+                    new = getattr(self, name)
+                    if old and old != new:
+                        raise ValidationError({name: f"{name} is write-once."})
         self.full_clean()
         super().save(*args, **kwargs)
 
