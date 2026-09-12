@@ -1,7 +1,10 @@
 import inspect
 from datetime import date, datetime
 from decimal import Decimal
+
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.api.billing_views import (
     ReservationInvoiceView,
@@ -11,8 +14,11 @@ from apps.api.reception_serializers import ReservationTimelineSerializer
 from apps.api.reception_views import _reservation_queryset
 from apps.billing.exceptions import InvoiceGraphError
 from apps.billing.management.commands.regenerate_invoice_pdf import Command as RegenCommand
-from apps.billing.models import Invoice
-from apps.billing.services.invoice_resolution import resolve_effective_invoice
+from apps.billing.models import Invoice, InvoiceReplacement
+from apps.billing.services.invoice_resolution import (
+    has_open_post_storno_gap,
+    resolve_effective_invoice,
+)
 from apps.properties.models import Property
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
@@ -37,6 +43,11 @@ class InvoiceResolutionTests(TestCase):
             status=Reservation.Status.CHECKED_OUT,
             booker_name="Guest Guest",
             amount=Decimal("100.00"),
+        )
+        self.actor = get_user_model().objects.create_user(
+            username="effective-resolver",
+            password="x",
+            is_staff=True,
         )
 
     def _add_invoice(self, reservation=None, *, sequence_number=1) -> Invoice:
@@ -74,11 +85,109 @@ class InvoiceResolutionTests(TestCase):
         self._add_invoice(other, sequence_number=2)
         self.assertIsNone(resolve_effective_invoice(self.reservation))
 
-    def test_more_than_one_invoice_is_fail_closed(self):
+    def test_more_than_one_invoice_without_cases_is_fail_closed(self):
         self._add_invoice(sequence_number=1)
         self._add_invoice(sequence_number=2)
         with self.assertRaises(InvoiceGraphError):
             resolve_effective_invoice(self.reservation)
+
+    def test_open_without_storno_keeps_original_effective(self):
+        original = self._add_invoice(sequence_number=1)
+        InvoiceReplacement.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            original_invoice=original,
+            reason="wrong buyer",
+            opened_by=self.actor,
+            opened_at=timezone.now(),
+        )
+        self.assertEqual(resolve_effective_invoice(self.reservation), original)
+        self.assertFalse(has_open_post_storno_gap(self.reservation))
+
+    def test_open_with_storno_is_gap(self):
+        original = self._add_invoice(sequence_number=1)
+        storno = self._add_invoice(sequence_number=2)
+        InvoiceReplacement.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            original_invoice=original,
+            storno_invoice=storno,
+            reason="wrong buyer",
+            opened_by=self.actor,
+            opened_at=timezone.now(),
+        )
+        self.assertIsNone(resolve_effective_invoice(self.reservation))
+        self.assertTrue(has_open_post_storno_gap(self.reservation))
+
+    def test_completed_returns_replacement(self):
+        original = self._add_invoice(sequence_number=1)
+        storno = self._add_invoice(sequence_number=2)
+        replacement = self._add_invoice(sequence_number=3)
+        InvoiceReplacement.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            original_invoice=original,
+            storno_invoice=storno,
+            replacement_invoice=replacement,
+            status=InvoiceReplacement.Status.COMPLETED,
+            reason="wrong buyer",
+            opened_by=self.actor,
+            opened_at=timezone.now(),
+            completed_by=self.actor,
+            completed_at=timezone.now(),
+        )
+        self.assertEqual(resolve_effective_invoice(self.reservation), replacement)
+        self.assertFalse(has_open_post_storno_gap(self.reservation))
+
+    def test_cancelled_keeps_original_effective(self):
+        original = self._add_invoice(sequence_number=1)
+        InvoiceReplacement.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            original_invoice=original,
+            status=InvoiceReplacement.Status.CANCELLED,
+            reason="wrong buyer",
+            opened_by=self.actor,
+            opened_at=timezone.now(),
+            cancelled_by=self.actor,
+            cancelled_at=timezone.now(),
+            cancel_reason="opened by mistake",
+        )
+        self.assertEqual(resolve_effective_invoice(self.reservation), original)
+
+    def test_second_completed_link_returns_latest_replacement(self):
+        first = self._add_invoice(sequence_number=1)
+        storno_first = self._add_invoice(sequence_number=2)
+        second = self._add_invoice(sequence_number=3)
+        storno_second = self._add_invoice(sequence_number=4)
+        third = self._add_invoice(sequence_number=5)
+        InvoiceReplacement.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            original_invoice=first,
+            storno_invoice=storno_first,
+            replacement_invoice=second,
+            status=InvoiceReplacement.Status.COMPLETED,
+            reason="first",
+            opened_by=self.actor,
+            opened_at=timezone.now(),
+            completed_by=self.actor,
+            completed_at=timezone.now(),
+        )
+        InvoiceReplacement.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            original_invoice=second,
+            storno_invoice=storno_second,
+            replacement_invoice=third,
+            status=InvoiceReplacement.Status.COMPLETED,
+            reason="second",
+            opened_by=self.actor,
+            opened_at=timezone.now(),
+            completed_by=self.actor,
+            completed_at=timezone.now(),
+        )
+        self.assertEqual(resolve_effective_invoice(self.reservation), third)
 
     def test_does_not_use_last_or_reservation_invoice(self):
         source = inspect.getsource(resolve_effective_invoice)

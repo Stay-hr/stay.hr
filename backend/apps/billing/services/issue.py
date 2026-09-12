@@ -8,6 +8,7 @@ from apps.billing.exceptions import (
     BillingRecipientError,
     BillingRecipientIssuanceDeferred,
     FiscalConfigError,
+    ReplacementInProgress,
 )
 from apps.billing.models import BillingRecipient, Invoice, InvoiceLine, TenantFiscalSettings
 from apps.billing.services.billing_recipient import (
@@ -19,6 +20,10 @@ from apps.billing.services.billing_recipient_issuance import (
     resolve_billing_recipient_issuance,
 )
 from apps.billing.services.invoice_builder import build_invoice_from_reservation
+from apps.billing.services.invoice_resolution import (
+    has_open_post_storno_gap,
+    resolve_effective_invoice,
+)
 from apps.billing.services.pdf import render_invoice_pdf
 from apps.billing.services.zki import calculate_zki, load_fiscal_private_key
 from apps.core.timezone import tenant_local_now
@@ -99,10 +104,9 @@ def _persist_invoice_lines(invoice: Invoice, built) -> None:
 @transaction.atomic
 def issue_guest_invoice(reservation: Reservation) -> Invoice:
     reservation = Reservation.objects.select_for_update().get(pk=reservation.pk)
-    existing = Invoice.objects.filter(
-        reservation_id=reservation.pk,
-        tenant_id=reservation.tenant_id,
-    ).first()
+    if has_open_post_storno_gap(reservation):
+        raise ReplacementInProgress()
+    existing = resolve_effective_invoice(reservation)
     if existing is not None:
         return existing
 
