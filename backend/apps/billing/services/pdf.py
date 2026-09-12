@@ -14,6 +14,10 @@ from reportlab.pdfbase.ttfonts import TTFont
 from xhtml2pdf import pisa
 
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
+from apps.billing.services.issuer_context import (
+    has_frozen_issuer_context,
+    reservation_reference_for,
+)
 from apps.billing.services.qr import build_invoice_qr_url
 
 _STYLE_RE = re.compile(r"<style[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
@@ -52,14 +56,10 @@ def _format_money(value: Decimal) -> str:
 
 
 def resolve_reservation_number(invoice: Invoice) -> str:
-    reservation = invoice.reservation
-    booking_code = (reservation.booking_code or "").strip()
-    if booking_code:
-        return booking_code
-    external_id = (reservation.external_id or "").strip()
-    if external_id:
-        return external_id
-    return str(reservation.pk)
+    frozen = (invoice.reservation_reference or "").strip()
+    if frozen:
+        return frozen
+    return reservation_reference_for(invoice.reservation)
 
 
 def _qr_data_uri(invoice: Invoice) -> str:
@@ -76,11 +76,33 @@ def _qr_data_uri(invoice: Invoice) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
+def _issuer_document_display(invoice: Invoice, settings: TenantFiscalSettings) -> dict:
+    if has_frozen_issuer_context(invoice):
+        return {
+            "issuer_name": invoice.issuer_name,
+            "issuer_address": invoice.issuer_address,
+            "issuer_oib": invoice.issuer_oib,
+            "issuer_iban": invoice.issuer_iban,
+            "operator_code": invoice.operator_code or invoice.issuer_oib,
+            "reservation_number": invoice.reservation_reference,
+        }
+    return {
+        "issuer_name": settings.issuer_name,
+        "issuer_address": settings.issuer_address,
+        "issuer_oib": settings.issuer_oib,
+        "issuer_iban": settings.issuer_iban,
+        "operator_code": settings.operator_code or settings.issuer_oib,
+        "reservation_number": reservation_reference_for(invoice.reservation),
+    }
+
+
 def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -> dict:
     lines = list(invoice.lines.order_by("sort_order", "id"))
+    issuer_display = _issuer_document_display(invoice, settings)
     return {
         "invoice": invoice,
         "settings": settings,
+        **issuer_display,
         "lines": lines,
         "formatted_lines": [
             {
@@ -99,10 +121,8 @@ def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -
         "vat_amount": _format_money(invoice.vat_amount),
         "total": _format_money(invoice.total),
         "issued_at_display": invoice.issued_at.strftime("%d.%m.%Y %H:%M"),
-        "reservation_number": resolve_reservation_number(invoice),
         "jir_display": invoice.jir or "u obradi",
         "zki_display": invoice.zki,
-        "operator_code": settings.operator_code or settings.issuer_oib,
         "qr_data_uri": _qr_data_uri(invoice),
         "tourist_tax_clause": (
             "Turistička pristojba ne podliježe oporezivanju sukladno čl. 33. st. 3. Zakona o PDV-u."

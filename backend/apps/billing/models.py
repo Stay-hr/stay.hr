@@ -275,6 +275,53 @@ class Invoice(TenantScopedModel):
     buyer_document_number = models.CharField(max_length=64, blank=True, default="")
     buyer_address = models.TextField(blank=True, default="")
     buyer_country = models.CharField(max_length=64, blank=True, default="")
+    issuer_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Frozen issuer name at issue time. Empty on legacy invoices.",
+    )
+    issuer_address = models.TextField(
+        blank=True,
+        default="",
+        help_text="Frozen issuer address at issue time. Empty on legacy invoices.",
+    )
+    issuer_oib = models.CharField(
+        max_length=11,
+        blank=True,
+        default="",
+        help_text="Frozen issuer OIB at issue time. Empty on legacy invoices.",
+    )
+    issuer_iban = models.CharField(
+        max_length=34,
+        blank=True,
+        default="",
+        help_text="Frozen issuer IBAN at issue time. Empty on legacy invoices.",
+    )
+    operator_code = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Frozen operator mark at issue time. Empty on legacy invoices.",
+    )
+    business_premise_code = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Frozen business premise code at issue time. Empty on legacy invoices.",
+    )
+    payment_device_code = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Frozen payment device code at issue time. Empty on legacy invoices.",
+    )
+    reservation_reference = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Frozen reservation reference at issue time. Empty on legacy invoices.",
+    )
     payment_method = models.CharField(
         max_length=16,
         choices=PaymentMethod.choices,
@@ -316,6 +363,22 @@ class Invoice(TenantScopedModel):
 
     def __str__(self) -> str:
         return f"{self.invoice_number} ({self.buyer_name})"
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            from apps.billing.services.issuer_context import ISSUER_CONTEXT_FIELDS
+
+            previous = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values(*ISSUER_CONTEXT_FIELDS)
+                .first()
+            )
+            if previous is not None:
+                for name in ISSUER_CONTEXT_FIELDS:
+                    if getattr(self, name) != previous[name]:
+                        raise ValidationError({name: f"{name} is immutable after create."})
+        super().save(*args, **kwargs)
 
 
 class InvoiceLine(models.Model):

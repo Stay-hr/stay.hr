@@ -19,6 +19,7 @@ from apps.billing.services.issue import (
     get_fiscal_settings_for_reservation,
     refresh_invoice_buyer_from_reservation,
 )
+from apps.billing.services.issuer_context import has_frozen_issuer_context
 from apps.billing.services.pdf import render_invoice_pdf
 from apps.billing.tasks import fiscalize_invoice
 from apps.core.admin import SuperuserOnlyAdminMixin
@@ -239,16 +240,27 @@ def retry_fiscalization(modeladmin, request, queryset):
 @admin.action(description="Regeneriraj PDF")
 def regenerate_invoice_pdf(modeladmin, request, queryset):
     count = 0
+    skipped = 0
     for invoice in queryset.select_related("tenant", "reservation"):
+        if not has_frozen_issuer_context(invoice):
+            skipped += 1
+            continue
         refresh_invoice_buyer_from_reservation(invoice)
         settings = get_fiscal_settings_for_reservation(invoice.reservation)
         render_invoice_pdf(invoice, settings)
         count += 1
-    modeladmin.message_user(
-        request,
-        f"Regenerated PDF for {count} invoice(s).",
-        level=messages.SUCCESS,
-    )
+    if count:
+        modeladmin.message_user(
+            request,
+            f"Regenerated PDF for {count} invoice(s).",
+            level=messages.SUCCESS,
+        )
+    if skipped:
+        modeladmin.message_user(
+            request,
+            f"Skipped {skipped} invoice(s) without frozen issuer context.",
+            level=messages.WARNING,
+        )
 
 
 @admin.register(Invoice)
@@ -273,6 +285,14 @@ class InvoiceAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         "buyer_name",
         "buyer_document_number",
         "buyer_address",
+        "issuer_name",
+        "issuer_address",
+        "issuer_oib",
+        "issuer_iban",
+        "operator_code",
+        "business_premise_code",
+        "payment_device_code",
+        "reservation_reference",
         "payment_method",
         "payment_note",
         "subtotal",
