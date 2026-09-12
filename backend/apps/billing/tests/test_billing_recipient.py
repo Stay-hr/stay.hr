@@ -1,17 +1,23 @@
+from dataclasses import asdict, dataclass
+
 from django.test import SimpleTestCase
 
+from apps.billing.exceptions import BillingRecipientError
 from apps.billing.services.billing_recipient import (
     ALLOWED_TRANSITIONS,
     BillingRecipientDraft,
+    InvoiceBuyerSnapshot,
     RecipientRejectReason,
     RecipientStatus,
     can_mark_applied,
     can_transition,
+    format_invoice_buyer_address,
     has_request_anchor,
     is_structurally_ready,
     next_status_for_fields,
     normalize_country,
     ready_missing_fields,
+    snapshot_recipient_onto_invoice,
 )
 from apps.billing.services.fiscal_routing import BuyerStatusConfidence
 
@@ -169,3 +175,132 @@ class BillingRecipientApplyGuardTests(SimpleTestCase):
             ),
             RecipientRejectReason.ALREADY_APPLIED,
         )
+
+
+@dataclass
+class _SnapshotRecipient:
+    status: str
+    company_name: str = ""
+    tax_id: str = ""
+    tax_id_country: str = ""
+    country: str = ""
+    address: str = ""
+    postal_code: str = ""
+    city: str = ""
+    email: str = ""
+    phone: str = ""
+    identity_confidence: str = BuyerStatusConfidence.UNVERIFIED
+    source: str = ""
+    source_ref: str = ""
+    source_excerpt: str = ""
+
+    def as_draft(self) -> BillingRecipientDraft:
+        return BillingRecipientDraft(
+            company_name=self.company_name,
+            tax_id=self.tax_id,
+            tax_id_country=self.tax_id_country,
+            country=self.country,
+            address=self.address,
+            postal_code=self.postal_code,
+            city=self.city,
+            email=self.email,
+            phone=self.phone,
+            identity_confidence=BuyerStatusConfidence(self.identity_confidence),
+            source_excerpt=self.source_excerpt,
+        )
+
+
+def _ready_snapshot_recipient(**overrides) -> _SnapshotRecipient:
+    fields = dict(
+        status=RecipientStatus.READY,
+        company_name="Example d.o.o.",
+        tax_id="12345678901",
+        tax_id_country="HR",
+        country="HR",
+        address="Novo naselje 19E",
+        postal_code="22000",
+        city="Bilice",
+        email="billing@example.com",
+        phone="+38591111111",
+        identity_confidence=BuyerStatusConfidence.UNVERIFIED,
+        source_excerpt="R1 please",
+    )
+    fields.update(overrides)
+    return _SnapshotRecipient(**fields)
+
+
+class InvoiceBuyerSnapshotTests(SimpleTestCase):
+    def test_ready_hr_maps_printable_buyer_fields(self):
+        snapshot = snapshot_recipient_onto_invoice(recipient=_ready_snapshot_recipient())
+        self.assertEqual(
+            snapshot,
+            InvoiceBuyerSnapshot(
+                buyer_name="Example d.o.o.",
+                buyer_document_number="12345678901",
+                buyer_address="Novo naselje 19E, 22000 Bilice",
+                buyer_country="Hrvatska",
+            ),
+        )
+        self.assertEqual(
+            set(asdict(snapshot)),
+            {
+                "buyer_name",
+                "buyer_document_number",
+                "buyer_address",
+                "buyer_country",
+            },
+        )
+
+    def test_ready_foreign_vat_and_display_country(self):
+        snapshot = snapshot_recipient_onto_invoice(
+            recipient=_ready_snapshot_recipient(
+                company_name="Example GmbH",
+                tax_id="DE123456789",
+                tax_id_country="DE",
+                country="DE",
+                address="Unter den Linden 1",
+                postal_code="10115",
+                city="Berlin",
+            )
+        )
+        self.assertEqual(snapshot.buyer_name, "Example GmbH")
+        self.assertEqual(snapshot.buyer_document_number, "DE123456789")
+        self.assertEqual(snapshot.buyer_address, "Unter den Linden 1, 10115 Berlin")
+        self.assertEqual(snapshot.buyer_country, "Njemačka")
+
+    def test_address_format_is_deterministic(self):
+        first = format_invoice_buyer_address(
+            address="Novo naselje 19E",
+            postal_code="22000",
+            city="Bilice",
+        )
+        second = format_invoice_buyer_address(
+            address="  Novo naselje 19E  ",
+            postal_code="22000",
+            city="Bilice",
+        )
+        self.assertEqual(first, "Novo naselje 19E, 22000 Bilice")
+        self.assertEqual(first, second)
+
+    def test_requested_is_rejected(self):
+        with self.assertRaises(BillingRecipientError) as ctx:
+            snapshot_recipient_onto_invoice(
+                recipient=_ready_snapshot_recipient(status=RecipientStatus.REQUESTED)
+            )
+        self.assertEqual(ctx.exception.reason, RecipientRejectReason.NOT_READY)
+
+    def test_applied_is_rejected(self):
+        with self.assertRaises(BillingRecipientError) as ctx:
+            snapshot_recipient_onto_invoice(
+                recipient=_ready_snapshot_recipient(status=RecipientStatus.APPLIED)
+            )
+        self.assertEqual(ctx.exception.reason, RecipientRejectReason.ALREADY_APPLIED)
+
+    def test_does_not_copy_structured_or_identity_fields(self):
+        snapshot = snapshot_recipient_onto_invoice(recipient=_ready_snapshot_recipient())
+        payload = asdict(snapshot)
+        self.assertNotIn("tax_id_country", payload)
+        self.assertNotIn("email", payload)
+        self.assertNotIn("phone", payload)
+        self.assertNotIn("identity_confidence", payload)
+        self.assertNotIn("status", payload)

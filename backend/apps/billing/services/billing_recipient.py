@@ -1,14 +1,20 @@
 """BillingRecipient lifecycle contract (ADR 0021).
 
-Pure functions: no Django, no I/O, no persistence. The ORM model is a later slice.
+Pure functions: no Django, no I/O, no persistence.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
+from apps.billing.exceptions import BillingRecipientError
+from apps.billing.services.country_names_hr import country_display_name_hr
 from apps.billing.services.fiscal_routing import BuyerStatusConfidence
+
+if TYPE_CHECKING:
+    from apps.billing.models import BillingRecipient
 
 
 class RecipientStatus(StrEnum):
@@ -73,6 +79,16 @@ class BillingRecipientDraft:
     source: RecipientSource | None = None
     source_ref: str = ""
     source_excerpt: str = ""
+
+
+@dataclass(frozen=True)
+class InvoiceBuyerSnapshot:
+    """Printable Invoice.buyer_* view of a READY recipient. Not a structured B2B record."""
+
+    buyer_name: str
+    buyer_document_number: str
+    buyer_address: str
+    buyer_country: str
 
 
 def _strip(value: str) -> str:
@@ -149,3 +165,65 @@ def can_mark_applied(
     if invoice_already_persisted:
         return RecipientRejectReason.INVOICE_ALREADY_PERSISTED
     return None
+
+
+def format_invoice_buyer_address(*, address: str, postal_code: str, city: str) -> str:
+    return f"{_strip(address)}, {_strip(postal_code)} {_strip(city)}"
+
+
+def _recipient_status(recipient: BillingRecipient) -> RecipientStatus:
+    status = getattr(recipient, "status", "")
+    if isinstance(status, RecipientStatus):
+        return status
+    return RecipientStatus(str(status))
+
+
+def _recipient_draft(recipient: BillingRecipient) -> BillingRecipientDraft:
+    as_draft = getattr(recipient, "as_draft", None)
+    if callable(as_draft):
+        return as_draft()
+    return BillingRecipientDraft(
+        company_name=getattr(recipient, "company_name", ""),
+        tax_id=getattr(recipient, "tax_id", ""),
+        tax_id_country=getattr(recipient, "tax_id_country", ""),
+        country=getattr(recipient, "country", ""),
+        address=getattr(recipient, "address", ""),
+        postal_code=getattr(recipient, "postal_code", ""),
+        city=getattr(recipient, "city", ""),
+        email=getattr(recipient, "email", ""),
+        phone=getattr(recipient, "phone", ""),
+    )
+
+
+def snapshot_recipient_onto_invoice(
+    *,
+    recipient: BillingRecipient,
+) -> InvoiceBuyerSnapshot:
+    """Map a READY recipient to printable Invoice.buyer_* fields. No I/O."""
+    status = _recipient_status(recipient)
+    if status is RecipientStatus.APPLIED:
+        raise BillingRecipientError(
+            "An APPLIED billing recipient is frozen.",
+            reason=RecipientRejectReason.ALREADY_APPLIED,
+        )
+    if status is not RecipientStatus.READY:
+        raise BillingRecipientError(
+            "Only a READY billing recipient can be snapshotted onto an invoice.",
+            reason=RecipientRejectReason.NOT_READY,
+        )
+    draft = _recipient_draft(recipient)
+    if not is_structurally_ready(draft):
+        raise BillingRecipientError(
+            "READY recipient is structurally incomplete.",
+            reason=RecipientRejectReason.STRUCTURALLY_INCOMPLETE,
+        )
+    return InvoiceBuyerSnapshot(
+        buyer_name=_strip(draft.company_name),
+        buyer_document_number=_strip(draft.tax_id),
+        buyer_address=format_invoice_buyer_address(
+            address=draft.address,
+            postal_code=draft.postal_code,
+            city=draft.city,
+        ),
+        buyer_country=country_display_name_hr(draft.country),
+    )
