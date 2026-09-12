@@ -18,6 +18,12 @@ class BillingRecipientError(BillingError):
         self.reason = reason
 
 
+class BillingRecipientIssuanceDeferred(BillingError):
+    """Invoice issuance deferred until the billing recipient is complete."""
+
+    code = "billing_recipient_incomplete"
+
+
 class FiscalizationError(BillingError):
     """Fiskalizacija 1.0 request failed."""
 

@@ -177,6 +177,7 @@ jobs:
               apps.billing.tests.test_billing_recipient_apply
               apps.billing.tests.test_billing_recipient_issuance
               apps.billing.tests.test_billing_recipient_lock
+              apps.billing.tests.test_billing_recipient_deferred
               apps.billing.tests.test_billing_recipient_api
               apps.api.tests.test_reception_eporezna
             )
