@@ -172,6 +172,7 @@ jobs:
             suites+=(
               apps.billing.tests.test_eporezna_pdv
               apps.billing.tests.test_eporezna_pdvs
+              apps.billing.tests.test_billing_recipient_api
               apps.api.tests.test_reception_eporezna
             )
           }
