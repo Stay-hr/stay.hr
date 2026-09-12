@@ -21,6 +21,7 @@ from apps.api.reception_booking_intake_views import (
     BookingIntakeConfirmView,
     BookingIntakeParseView,
 )
+from apps.api.billing_recipient_views import ReservationOpenBillingRecipientView
 from apps.api.billing_views import (
     InvoicePdfView,
     ReservationInvoicePdfView,
@@ -299,6 +300,11 @@ urlpatterns = [
         "reservations/<int:pk>/confirmation-pdf/",
         ReservationConfirmationPdfView.as_view(),
         name="reception-reservation-confirmation-pdf",
+    ),
+    path(
+        "reservations/<int:pk>/billing-recipient/",
+        ReservationOpenBillingRecipientView.as_view(),
+        name="reception-reservation-billing-recipient",
     ),
     path(
         "reservations/<int:pk>/invoice/",
