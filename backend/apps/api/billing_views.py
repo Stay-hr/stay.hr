@@ -121,13 +121,26 @@ class ReservationInvoiceView(TenantAPIView, InvoiceSerializerMixin, APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from apps.billing.exceptions import FiscalConfigError, InvoiceBuildError
+        from apps.billing.exceptions import (
+            BillingRecipientIssuanceDeferred,
+            FiscalConfigError,
+            InvoiceBuildError,
+        )
         from apps.billing.services.issue import issue_guest_invoice
         from apps.billing.tasks import fiscalize_invoice, send_invoice_email_task
         from apps.communications.invoice_email import resolve_invoice_recipient
 
         try:
             invoice = issue_guest_invoice(reservation)
+        except BillingRecipientIssuanceDeferred as exc:
+            return Response(
+                {
+                    "status": "error",
+                    "reason": BillingRecipientIssuanceDeferred.code,
+                    "detail": str(exc) or BillingRecipientIssuanceDeferred.code,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         except FiscalConfigError as exc:
             return Response(
                 {
