@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
+from apps.billing.services.invoice_resolution import resolve_effective_invoice
 from apps.billing.tests.helpers import make_guest, make_test_p12
 from apps.properties.models import Property
 from apps.reservations.checkout import perform_reservation_checkout
@@ -95,7 +96,7 @@ class CheckoutInvoiceHookTests(TestCase):
 
         reservation.refresh_from_db()
         self.assertEqual(reservation.status, Reservation.Status.CHECKED_OUT)
-        self.assertTrue(hasattr(reservation, "invoice"))
+        self.assertIsNotNone(resolve_effective_invoice(reservation))
         mock_fiscalize.assert_called_once()
         mock_email.assert_called_once()
 

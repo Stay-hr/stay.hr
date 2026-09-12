@@ -24,6 +24,10 @@ class BillingRecipientIssuanceDeferred(BillingError):
     code = "billing_recipient_incomplete"
 
 
+class InvoiceGraphError(BillingError):
+    """Replacement/invoice graph is invalid or ambiguous; fail closed."""
+
+
 class FiscalizationError(BillingError):
     """Fiskalizacija 1.0 request failed."""
 

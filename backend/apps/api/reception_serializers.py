@@ -333,7 +333,9 @@ class ReservationTimelineSerializer(serializers.ModelSerializer):
         settings = TenantFiscalSettings.objects.filter(tenant=tenant).first()
         if settings is None or not settings.is_vat_registered:
             return None
-        invoice = getattr(obj, "invoice", None)
+        from apps.billing.services.invoice_resolution import resolve_effective_invoice
+
+        invoice = resolve_effective_invoice(obj)
         if invoice is None:
             return None
         return {

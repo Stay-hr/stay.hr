@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.billing.models import Invoice
+from apps.billing.services.invoice_resolution import resolve_effective_invoice
 from apps.billing.services.issue import get_fiscal_settings_for_reservation, refresh_invoice_buyer_from_reservation
 from apps.billing.services.pdf import render_invoice_pdf
 from apps.reservations.models import Reservation
@@ -25,7 +26,7 @@ class Command(BaseCommand):
             reservation = Reservation.objects.filter(pk=reservation_id).first()
             if reservation is None:
                 raise CommandError(f"Reservation {reservation_id} not found.")
-            invoice = getattr(reservation, "invoice", None)
+            invoice = resolve_effective_invoice(reservation)
 
         if invoice is None:
             raise CommandError("Invoice not found.")
