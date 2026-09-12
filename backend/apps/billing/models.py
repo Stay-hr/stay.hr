@@ -258,10 +258,10 @@ class Invoice(TenantScopedModel):
         TRANSFER = "transfer", "Transfer"
         OTHER = "other", "Other"
 
-    reservation = models.OneToOneField(
+    reservation = models.ForeignKey(
         "reservations.Reservation",
-        on_delete=models.CASCADE,
-        related_name="invoice",
+        on_delete=models.PROTECT,
+        related_name="invoices",
     )
     invoice_number = models.CharField(max_length=64)
     sequence_number = models.PositiveIntegerField()

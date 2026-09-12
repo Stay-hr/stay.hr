@@ -1,8 +1,6 @@
 import inspect
 from datetime import date, datetime
 from decimal import Decimal
-from unittest.mock import patch
-
 from django.test import TestCase
 
 from apps.api.billing_views import (
@@ -77,23 +75,10 @@ class InvoiceResolutionTests(TestCase):
         self.assertIsNone(resolve_effective_invoice(self.reservation))
 
     def test_more_than_one_invoice_is_fail_closed(self):
-        invoice = self._add_invoice()
-        other = Reservation.objects.create(
-            tenant=self.tenant,
-            property=self.property,
-            check_in=date(2026, 9, 10),
-            check_out=date(2026, 9, 12),
-            status=Reservation.Status.CHECKED_OUT,
-            booker_name="Other Guest",
-            amount=Decimal("80.00"),
-        )
-        extra = self._add_invoice(other, sequence_number=2)
-        with patch(
-            "apps.billing.services.invoice_resolution.Invoice.objects.filter"
-        ) as mock_filter:
-            mock_filter.return_value = [invoice, extra]
-            with self.assertRaises(InvoiceGraphError):
-                resolve_effective_invoice(self.reservation)
+        self._add_invoice(sequence_number=1)
+        self._add_invoice(sequence_number=2)
+        with self.assertRaises(InvoiceGraphError):
+            resolve_effective_invoice(self.reservation)
 
     def test_does_not_use_last_or_reservation_invoice(self):
         source = inspect.getsource(resolve_effective_invoice)
