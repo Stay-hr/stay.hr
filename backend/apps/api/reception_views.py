@@ -110,7 +110,6 @@ class ReceptionWriteView(TenantAPIView):
 def _reservation_queryset(tenant):
     return (
         Reservation.objects.for_tenant(tenant)
-        .select_related("invoice")
         .annotate(guests_count=Count("guests", distinct=True))
         .prefetch_related(
             Prefetch("guests", queryset=Guest.objects.order_by("-is_primary", "id")),

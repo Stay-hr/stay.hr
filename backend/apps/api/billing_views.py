@@ -16,6 +16,7 @@ from apps.api.permissions import DenyAdminScopes, HasReceptionAccess
 from apps.api.reception_views import ReceptionReadView, ReceptionWriteView
 from apps.api.views import TenantAPIView
 from apps.billing.models import Invoice, TenantFiscalSettings
+from apps.billing.services.invoice_resolution import resolve_effective_invoice
 from apps.billing.services.pdf import render_invoice_html, split_rendered_invoice_html
 from apps.communications.invoice_email import send_invoice_email
 from apps.reservations.models import Guest, Reservation
@@ -23,10 +24,10 @@ from apps.reservations.models import Guest, Reservation
 
 def _get_reservation_invoice(request, pk: int) -> tuple[Reservation, Invoice]:
     reservation = get_object_or_404(
-        Reservation.objects.for_tenant(request.tenant).select_related("invoice"),
+        Reservation.objects.for_tenant(request.tenant),
         pk=pk,
     )
-    invoice = getattr(reservation, "invoice", None)
+    invoice = resolve_effective_invoice(reservation)
     if invoice is None:
         raise Invoice.DoesNotExist
     return reservation, invoice
@@ -99,7 +100,7 @@ class ReservationInvoiceView(TenantAPIView, InvoiceSerializerMixin, APIView):
             Reservation.objects.for_tenant(request.tenant),
             pk=pk,
         )
-        invoice = getattr(reservation, "invoice", None)
+        invoice = resolve_effective_invoice(reservation)
         if invoice is None:
             return Response({"detail": "Invoice not found."}, status=status.HTTP_404_NOT_FOUND)
         return Response(self.serialize_invoice(invoice))
@@ -108,10 +109,10 @@ class ReservationInvoiceView(TenantAPIView, InvoiceSerializerMixin, APIView):
         if _vat_settings_for_tenant(request.tenant) is None:
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
         reservation = get_object_or_404(
-            Reservation.objects.for_tenant(request.tenant).select_related("invoice"),
+            Reservation.objects.for_tenant(request.tenant),
             pk=pk,
         )
-        existing = getattr(reservation, "invoice", None)
+        existing = resolve_effective_invoice(reservation)
         if existing is not None:
             return Response(self.serialize_invoice(existing))
 
