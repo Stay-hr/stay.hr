@@ -126,8 +126,12 @@ Absence of a `READY` row does not imply `CONSUMER`. Missing recipient ≠ consum
 - Messages remain a valid proof of an R1 request without falsifying an already issued invoice.
 - `#1159` can later become a `REQUESTED` row **without** becoming `APPLIED` on 259.
 - Storno / replacement invoice / CIS / NakDost stay out of this slice and out of 0020 callers.
-- The next implementation slice may add the Django model + migration that matches this contract. It still must not apply to existing invoices.
+- The Django model + migration exist. Apply on an already persisted invoice is still unreachable. Checkout is not wired. `#1159` is not written.
 
 ## Implementation
 
-Pure contract: [backend/apps/billing/services/billing_recipient.py](../../../backend/apps/billing/services/billing_recipient.py). Tests: [backend/apps/billing/tests/test_billing_recipient.py](../../../backend/apps/billing/tests/test_billing_recipient.py). No ORM, no `models.py` change.
+- Contract: [backend/apps/billing/services/billing_recipient.py](../../../backend/apps/billing/services/billing_recipient.py)
+- ORM: [backend/apps/billing/models.py](../../../backend/apps/billing/models.py) (`BillingRecipient`)
+- Tests: [backend/apps/billing/tests/test_billing_recipient.py](../../../backend/apps/billing/tests/test_billing_recipient.py), [backend/apps/billing/tests/test_billing_recipient_model.py](../../../backend/apps/billing/tests/test_billing_recipient_model.py)
+
+`BillingRecipient.save(allow_apply=False)` rejects any transition into `APPLIED`. There is no checkout or issue caller. Ordinary edits cannot create an applied row.
