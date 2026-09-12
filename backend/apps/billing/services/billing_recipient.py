@@ -23,6 +23,12 @@ class RecipientStatus(StrEnum):
     APPLIED = "applied"
 
 
+class BillingRecipientIssuanceDecision(StrEnum):
+    GUEST = "guest"
+    APPLY_READY = "apply_ready"
+    BLOCK_REQUESTED = "block_requested"
+
+
 class RecipientSource(StrEnum):
     BOOKING_MESSAGE = "booking_message"
     WHATSAPP = "whatsapp"
