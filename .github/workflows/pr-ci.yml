@@ -182,6 +182,8 @@ jobs:
               apps.billing.tests.test_billing_recipient_api
               apps.billing.tests.test_invoice_resolution
               apps.billing.tests.test_invoice_reservation_fk
+              apps.billing.tests.test_invoice_replacement
+              apps.billing.tests.test_invoice_replacement_model
               apps.api.tests.test_reception_eporezna
             )
           }
