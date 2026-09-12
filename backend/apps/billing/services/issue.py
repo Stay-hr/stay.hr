@@ -50,8 +50,13 @@ def validate_fiscal_settings(settings: TenantFiscalSettings) -> None:
 
 @transaction.atomic
 def issue_guest_invoice(reservation: Reservation) -> Invoice:
-    if hasattr(reservation, "invoice"):
-        return reservation.invoice
+    reservation = Reservation.objects.select_for_update().get(pk=reservation.pk)
+    existing = Invoice.objects.filter(
+        reservation_id=reservation.pk,
+        tenant_id=reservation.tenant_id,
+    ).first()
+    if existing is not None:
+        return existing
 
     settings = get_fiscal_settings_for_reservation(reservation)
     if not settings.is_vat_registered:

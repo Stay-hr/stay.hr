@@ -8,7 +8,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.billing.exceptions import BillingRecipientError
-from apps.billing.models import BillingRecipient
+from apps.billing.models import BillingRecipient, Invoice
 from apps.billing.services.billing_recipient import (
     BillingRecipientDraft,
     BuyerStatusConfidence,
@@ -49,6 +49,13 @@ def _open_qs(reservation: Reservation):
         reservation=reservation,
         status__in=OPEN_STATUSES,
     )
+
+
+def _existing_invoice(reservation: Reservation) -> Invoice | None:
+    return Invoice.objects.filter(
+        reservation_id=reservation.pk,
+        tenant_id=reservation.tenant_id,
+    ).first()
 
 
 def _normalize_value(name: str, value: Any) -> str:
@@ -137,11 +144,6 @@ def create_open_recipient(
             "A billing recipient needs company_name, tax_id, or source_excerpt.",
             reason=RecipientRejectReason.EMPTY_REQUEST,
         )
-    if _open_qs(reservation).exists():
-        raise BillingRecipientError(
-            "Reservation already has an open billing recipient.",
-            reason=RecipientRejectReason.OPEN_ALREADY_EXISTS,
-        )
 
     status = next_status_for_fields(RecipientStatus.REQUESTED, draft)
     if status is None or status is RecipientStatus.APPLIED:
@@ -150,13 +152,26 @@ def create_open_recipient(
             reason=RecipientRejectReason.SKIP_TO_APPLIED,
         )
 
-    row = BillingRecipient(
-        tenant_id=reservation.tenant_id,
-        reservation=reservation,
-    )
-    _apply_open_state(row, values, status)
     try:
         with transaction.atomic():
+            locked_reservation = Reservation.objects.select_for_update().get(
+                pk=reservation.pk
+            )
+            if _existing_invoice(locked_reservation) is not None:
+                raise BillingRecipientError(
+                    "An invoice already exists for this reservation.",
+                    reason=RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+                )
+            if _open_qs(locked_reservation).exists():
+                raise BillingRecipientError(
+                    "Reservation already has an open billing recipient.",
+                    reason=RecipientRejectReason.OPEN_ALREADY_EXISTS,
+                )
+            row = BillingRecipient(
+                tenant_id=locked_reservation.tenant_id,
+                reservation=locked_reservation,
+            )
+            _apply_open_state(row, values, status)
             row.save()
     except IntegrityError as exc:
         raise BillingRecipientError(
@@ -170,27 +185,37 @@ def update_open_recipient(
     recipient: BillingRecipient,
     fields: dict[str, Any],
 ) -> BillingRecipient:
-    if recipient.status == BillingRecipient.Status.APPLIED:
-        raise BillingRecipientError(
-            "An APPLIED billing recipient is frozen.",
-            reason=RecipientRejectReason.ALREADY_APPLIED,
+    with transaction.atomic():
+        locked_reservation = Reservation.objects.select_for_update().get(
+            pk=recipient.reservation_id
         )
-    values = _merge_fields(_values_from_row(recipient), fields)
-    draft = _draft_from_values(values)
-    if not has_request_anchor(draft):
-        raise BillingRecipientError(
-            "A billing recipient needs company_name, tax_id, or source_excerpt.",
-            reason=RecipientRejectReason.EMPTY_REQUEST,
-        )
-    current = RecipientStatus(recipient.status)
-    status = next_status_for_fields(current, draft)
-    if status is None or status is RecipientStatus.APPLIED:
-        raise BillingRecipientError(
-            "Open recipient cannot enter APPLIED.",
-            reason=RecipientRejectReason.SKIP_TO_APPLIED,
-        )
-    requested_at = recipient.requested_at
-    _apply_open_state(recipient, values, status)
-    recipient.requested_at = requested_at
-    recipient.save()
-    return recipient
+        if _existing_invoice(locked_reservation) is not None:
+            raise BillingRecipientError(
+                "An invoice already exists for this reservation.",
+                reason=RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+            )
+        locked = BillingRecipient.objects.select_for_update().get(pk=recipient.pk)
+        if locked.status == BillingRecipient.Status.APPLIED:
+            raise BillingRecipientError(
+                "An APPLIED billing recipient is frozen.",
+                reason=RecipientRejectReason.ALREADY_APPLIED,
+            )
+        values = _merge_fields(_values_from_row(locked), fields)
+        draft = _draft_from_values(values)
+        if not has_request_anchor(draft):
+            raise BillingRecipientError(
+                "A billing recipient needs company_name, tax_id, or source_excerpt.",
+                reason=RecipientRejectReason.EMPTY_REQUEST,
+            )
+        current = RecipientStatus(locked.status)
+        status = next_status_for_fields(current, draft)
+        if status is None or status is RecipientStatus.APPLIED:
+            raise BillingRecipientError(
+                "Open recipient cannot enter APPLIED.",
+                reason=RecipientRejectReason.SKIP_TO_APPLIED,
+            )
+        requested_at = locked.requested_at
+        _apply_open_state(locked, values, status)
+        locked.requested_at = requested_at
+        locked.save()
+        return locked

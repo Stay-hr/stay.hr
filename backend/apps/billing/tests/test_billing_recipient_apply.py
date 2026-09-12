@@ -9,7 +9,10 @@ from apps.billing.exceptions import BillingRecipientError
 from apps.billing.models import BillingRecipient, Invoice
 from apps.billing.services.billing_recipient import RecipientRejectReason
 from apps.billing.services.billing_recipient_apply import apply_recipient_to_new_invoice
-from apps.billing.services.billing_recipient_service import create_open_recipient
+from apps.billing.services.billing_recipient_service import (
+    create_open_recipient,
+    update_open_recipient,
+)
 from apps.properties.models import Property
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
@@ -120,7 +123,10 @@ class BillingRecipientApplyTests(TestCase):
                     sequence_number=2,
                 ),
             )
-        self.assertEqual(ctx.exception.reason, RecipientRejectReason.ALREADY_APPLIED)
+        self.assertEqual(
+            ctx.exception.reason,
+            RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+        )
         self.assertEqual(Invoice.objects.count(), 1)
 
     def test_other_reservation_is_rejected(self):
@@ -176,6 +182,52 @@ class BillingRecipientApplyTests(TestCase):
         self.assertIsNone(recipient.applied_invoice_id)
         self.assertEqual(Invoice.objects.count(), 0)
 
+    def test_existing_invoice_is_rejected_before_recipient_lock(self):
+        recipient = create_open_recipient(self.reservation, self._ready_fields())
+        Invoice.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            invoice_number="1-ROOMS-1",
+            sequence_number=1,
+            issued_at=datetime(2026, 9, 12, 11, 3, 0),
+            buyer_name="Guest Guest",
+            payment_method=Invoice.PaymentMethod.CARD,
+            subtotal=Decimal("88.50"),
+            vat_amount=Decimal("11.50"),
+            total=Decimal("100.00"),
+        )
+        with self.assertRaises(BillingRecipientError) as ctx:
+            apply_recipient_to_new_invoice(
+                recipient=recipient,
+                invoice_create_kwargs=self._invoice_kwargs(
+                    invoice_number="2-ROOMS-1",
+                    sequence_number=2,
+                ),
+            )
+        self.assertEqual(
+            ctx.exception.reason,
+            RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+        )
+        recipient.refresh_from_db()
+        self.assertEqual(recipient.status, BillingRecipient.Status.READY)
+        self.assertIsNone(recipient.applied_invoice_id)
+        self.assertEqual(Invoice.objects.count(), 1)
+
+    def test_apply_rereads_recipient_after_reservation_lock(self):
+        recipient = create_open_recipient(self.reservation, self._ready_fields())
+        update_open_recipient(recipient, {"email": ""})
+        stale = BillingRecipient(pk=recipient.pk, status=BillingRecipient.Status.READY)
+        stale.reservation = self.reservation
+        with self.assertRaises(BillingRecipientError) as ctx:
+            apply_recipient_to_new_invoice(
+                recipient=stale,
+                invoice_create_kwargs=self._invoice_kwargs(),
+            )
+        self.assertEqual(ctx.exception.reason, RecipientRejectReason.SKIP_TO_APPLIED)
+        recipient.refresh_from_db()
+        self.assertEqual(recipient.status, BillingRecipient.Status.REQUESTED)
+        self.assertEqual(Invoice.objects.count(), 0)
+
     def test_second_apply_does_not_create_another_invoice(self):
         recipient = create_open_recipient(self.reservation, self._ready_fields())
         first = apply_recipient_to_new_invoice(
@@ -190,7 +242,10 @@ class BillingRecipientApplyTests(TestCase):
                     sequence_number=2,
                 ),
             )
-        self.assertEqual(ctx.exception.reason, RecipientRejectReason.ALREADY_APPLIED)
+        self.assertEqual(
+            ctx.exception.reason,
+            RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+        )
         self.assertEqual(Invoice.objects.count(), 1)
         self.assertEqual(Invoice.objects.get().pk, first.pk)
         recipient.refresh_from_db()

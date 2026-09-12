@@ -136,8 +136,8 @@ class BillingRecipientServiceTests(TestCase):
             )
         self.assertEqual(ctx.exception.reason, RecipientRejectReason.INVALID_COUNTRY)
 
-    def test_update_applied_is_rejected(self):
-        invoice = Invoice.objects.create(
+    def _add_invoice(self) -> Invoice:
+        return Invoice.objects.create(
             tenant=self.tenant,
             reservation=self.reservation,
             invoice_number="1-ROOMS-1",
@@ -149,6 +149,43 @@ class BillingRecipientServiceTests(TestCase):
             vat_amount=Decimal("11.50"),
             total=Decimal("100.00"),
         )
+
+    def test_create_rejects_existing_invoice(self):
+        self._add_invoice()
+        with self.assertRaises(BillingRecipientError) as ctx:
+            create_open_recipient(self.reservation, {"company_name": "Example GmbH"})
+        self.assertEqual(
+            ctx.exception.reason,
+            RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+        )
+        self.assertEqual(BillingRecipient.objects.count(), 0)
+
+    def test_create_rereads_invoice_after_reservation_lock(self):
+        self.assertFalse(hasattr(self.reservation, "invoice"))
+        self._add_invoice()
+        with self.assertRaises(BillingRecipientError) as ctx:
+            create_open_recipient(self.reservation, {"company_name": "Example GmbH"})
+        self.assertEqual(
+            ctx.exception.reason,
+            RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+        )
+        self.assertEqual(BillingRecipient.objects.count(), 0)
+
+    def test_update_rejects_existing_invoice(self):
+        row = create_open_recipient(self.reservation, {"company_name": "Example GmbH"})
+        self._add_invoice()
+        with self.assertRaises(BillingRecipientError) as ctx:
+            update_open_recipient(row, {"city": "Hamburg"})
+        self.assertEqual(
+            ctx.exception.reason,
+            RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+        )
+        row.refresh_from_db()
+        self.assertEqual(row.status, BillingRecipient.Status.REQUESTED)
+        self.assertEqual(row.city, "")
+
+    def test_update_applied_is_rejected(self):
+        invoice = self._add_invoice()
         applied = BillingRecipient(
             tenant=self.tenant,
             reservation=self.reservation,
@@ -159,7 +196,10 @@ class BillingRecipientServiceTests(TestCase):
         applied.save(allow_apply=True)
         with self.assertRaises(BillingRecipientError) as ctx:
             update_open_recipient(applied, {"city": "Hamburg"})
-        self.assertEqual(ctx.exception.reason, RecipientRejectReason.ALREADY_APPLIED)
+        self.assertEqual(
+            ctx.exception.reason,
+            RecipientRejectReason.INVOICE_ALREADY_PERSISTED,
+        )
         applied.refresh_from_db()
         self.assertEqual(applied.city, "Berlin")
 
