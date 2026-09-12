@@ -40,6 +40,8 @@ class RecipientRejectReason(StrEnum):
     STRUCTURALLY_INCOMPLETE = "structurally_incomplete"
     INVALID_COUNTRY = "invalid_country"
     INVALID_HR_TAX_ID = "invalid_hr_tax_id"
+    RESERVATION_MISMATCH = "reservation_mismatch"
+    FORBIDDEN_BUYER_FIELDS = "forbidden_buyer_fields"
 
 
 ALLOWED_TRANSITIONS: frozenset[tuple[RecipientStatus, RecipientStatus]] = frozenset(
