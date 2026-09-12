@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 
 from apps.billing.exceptions import FiscalizationError
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
 from apps.billing.services.payment import fisk1_payment_code
+from apps.core.timezone import effective_timezone
 
 
 def _operator_oib(settings: TenantFiscalSettings) -> str:
@@ -21,6 +24,18 @@ def _amount(value: Decimal) -> str:
     return f"{value.quantize(Decimal('0.01')):.2f}"
 
 
+def issued_at_for_f1(invoice: Invoice) -> datetime:
+    """Wall-clock used in ZKI and F73 DatVrijeme: tenant/property TZ, not Django UTC."""
+    issued_at = invoice.issued_at
+    if timezone.is_naive(issued_at):
+        issued_at = timezone.make_aware(issued_at, timezone.get_current_timezone())
+    property = None
+    if invoice.reservation_id:
+        property = getattr(invoice.reservation, "property", None)
+    tz_name = effective_timezone(property=property, tenant=invoice.tenant)
+    return issued_at.astimezone(ZoneInfo(tz_name))
+
+
 def build_guest_invoice_f1_payload(
     invoice: Invoice,
     settings: TenantFiscalSettings,
@@ -31,9 +46,7 @@ def build_guest_invoice_f1_payload(
     if accommodation is None:
         raise FiscalizationError("Invoice has no accommodation line.")
 
-    issued_at = invoice.issued_at
-    if timezone.is_naive(issued_at):
-        issued_at = timezone.make_aware(issued_at, timezone.get_current_timezone())
+    issued_at = issued_at_for_f1(invoice)
 
     vat_base = accommodation.unit_price * accommodation.quantity
     payload: dict = {
