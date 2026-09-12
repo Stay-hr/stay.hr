@@ -4,12 +4,11 @@ from unittest.mock import patch
 import uuid
 from zoneinfo import ZoneInfo
 
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
-from apps.billing.tests.helpers import make_guest
+from apps.billing.tests.helpers import make_guest, make_test_p12
 from apps.properties.models import Property
 from apps.reservations.checkout import perform_reservation_checkout
 from apps.reservations.models import EvisitorGuestStatus, Reservation
@@ -86,7 +85,7 @@ class CheckoutInvoiceHookTests(TestCase):
             issuer_address="Ulica 1",
             business_premise_code="PP1",
             payment_device_code="1",
-            certificate_file=SimpleUploadedFile("test.p12", b"fake-cert"),
+            certificate_file=make_test_p12(password="secret", oib="12345678901"),
         )
         settings.set_certificate_password("secret")
         settings.save()

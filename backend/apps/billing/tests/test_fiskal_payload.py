@@ -1,12 +1,15 @@
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 from django.test import TestCase
-from django.utils import timezone
 
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
-from apps.billing.services.fiskal_platform.payload import build_guest_invoice_f1_payload
+from apps.billing.services.fiskal_platform.payload import (
+    build_guest_invoice_f1_payload,
+    issued_at_for_f1,
+)
 from apps.properties.models import Property
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
@@ -80,10 +83,26 @@ class GuestInvoiceF1PayloadTests(TestCase):
         self.assertEqual(payload["reservation_id"], self.invoice.reservation_id)
         self.assertEqual(payload["guest_name"], "Guest Guest")
 
-        issued_at = self.invoice.issued_at
-        if timezone.is_naive(issued_at):
-            issued_at = timezone.make_aware(issued_at, timezone.get_current_timezone())
+        issued_at = issued_at_for_f1(self.invoice)
         self.assertEqual(payload["issued_at"], issued_at.strftime("%d.%m.%YT%H:%M:%S"))
+
+    def test_issued_at_uses_tenant_timezone_not_utc(self):
+        self.tenant.timezone = "Europe/Zagreb"
+        self.tenant.save(update_fields=["timezone"])
+        self.invoice.reservation.property.timezone = "Europe/Zagreb"
+        self.invoice.reservation.property.save(update_fields=["timezone"])
+        self.invoice.issued_at = datetime(2026, 9, 1, 9, 3, 49, tzinfo=dt_timezone.utc)
+        self.invoice.save(update_fields=["issued_at"])
+        self.invoice.refresh_from_db()
+        self.invoice.tenant.refresh_from_db()
+
+        payload = build_guest_invoice_f1_payload(self.invoice, self.settings)
+
+        self.assertEqual(payload["issued_at"], "01.09.2026T11:03:49")
+        self.assertEqual(
+            issued_at_for_f1(self.invoice).tzinfo,
+            ZoneInfo("Europe/Zagreb"),
+        )
 
     def test_operator_oib_falls_back_to_issuer(self):
         self.settings.operator_code = "short"

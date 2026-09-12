@@ -8,7 +8,7 @@ from apps.billing.exceptions import FiscalConfigError, InvoiceBuildError
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
 from apps.billing.services.invoice_builder import build_invoice_from_reservation
 from apps.billing.services.pdf import render_invoice_pdf
-from apps.billing.services.zki import calculate_zki
+from apps.billing.services.zki import calculate_zki, load_fiscal_private_key
 from apps.core.timezone import tenant_local_now
 from apps.reservations.models import Reservation
 
@@ -69,6 +69,7 @@ def issue_guest_invoice(reservation: Reservation) -> Invoice:
         business_premise_code=settings.business_premise_code,
         payment_device_code=settings.payment_device_code,
         total=built.total,
+        private_key=load_fiscal_private_key(settings),
     )
 
     invoice = Invoice.objects.create(
