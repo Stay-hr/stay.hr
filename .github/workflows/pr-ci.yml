@@ -181,6 +181,7 @@ jobs:
               apps.billing.tests.test_billing_recipient_issue
               apps.billing.tests.test_billing_recipient_api
               apps.billing.tests.test_invoice_resolution
+              apps.billing.tests.test_invoice_reservation_fk
               apps.api.tests.test_reception_eporezna
             )
           }
