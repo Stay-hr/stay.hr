@@ -352,6 +352,28 @@
       "noSmtp": "SMTP is not configured.",
       "noRecipient": "No invoice email address.",
       "loadFailed": "Could not load offer."
+    },
+    "billingRecipient": {
+      "title": "Company invoice details",
+      "statusRequested": "Missing details",
+      "statusReady": "Ready for invoice",
+      "companyName": "Company name",
+      "taxId": "OIB / VAT ID",
+      "taxIdCountry": "Tax ID country",
+      "address": "Address",
+      "postalCode": "Postal code",
+      "city": "City",
+      "country": "Country",
+      "email": "Email",
+      "phone": "Phone",
+      "save": "Save",
+      "saved": "Details saved.",
+      "saveFailed": "Could not save details.",
+      "loadFailed": "Could not load details.",
+      "empty": "Enter a company name or tax ID.",
+      "hrTaxId": "A Croatian OIB must have 11 digits.",
+      "countryIso": "Country must be a 2-letter ISO code (e.g. HR).",
+      "emailInvalid": "Enter a valid email address."
     }
   },
   "guest": {

@@ -9,6 +9,7 @@ import { GuestCheckInProgressSection } from "@/app/_components/GuestCheckInProgr
 import { GuestList } from "@/app/_components/GuestList";
 import { GuestMessagesPanel } from "@/app/_components/GuestMessagesPanel";
 import { GuestReviewsPanel } from "@/app/_components/GuestReviewsPanel";
+import { ReservationBillingRecipientSection } from "@/app/_components/ReservationBillingRecipientSection";
 import { ReservationFinancialSection } from "@/app/_components/ReservationFinancialSection";
 import { ReservationOfferSection } from "@/app/_components/ReservationOfferSection";
 import { ReservationPaymentSendSection } from "@/app/_components/ReservationPaymentSendSection";
@@ -352,6 +353,8 @@ export function ReservationDetailPanel({ reservationId, embedded = false, onUpda
       ) : null}
 
       <ReservationFinancialSection reservation={reservation} />
+
+      <ReservationBillingRecipientSection reservationId={reservation.id} />
 
       <ReservationPaymentSendSection
         reservation={reservation}

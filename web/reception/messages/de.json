@@ -177,7 +177,29 @@
     "importPdfNone": "Keine Datei ausgewählt",
     "downloadPdf": "PDF-Bestätigung herunterladen",
     "importPdfBookingMismatchConfirm": "Die Buchungsnummer im PDF ({pdf}) weicht von der Nummer auf dieser Seite ({context}) ab. Import trotzdem fortsetzen?",
-    "importPdfCancelled": "PDF-Import abgebrochen."
+    "importPdfCancelled": "PDF-Import abgebrochen.",
+    "billingRecipient": {
+      "title": "Firmendaten für die Rechnung",
+      "statusRequested": "Angaben fehlen",
+      "statusReady": "Bereit für die Rechnung",
+      "companyName": "Firmenname",
+      "taxId": "OIB / USt-IdNr.",
+      "taxIdCountry": "Land der Steuernummer",
+      "address": "Adresse",
+      "postalCode": "Postleitzahl",
+      "city": "Ort",
+      "country": "Land",
+      "email": "E-Mail",
+      "phone": "Telefon",
+      "save": "Speichern",
+      "saved": "Angaben gespeichert.",
+      "saveFailed": "Speichern fehlgeschlagen.",
+      "loadFailed": "Laden fehlgeschlagen.",
+      "empty": "Firmenname oder Steuernummer eingeben.",
+      "hrTaxId": "Eine kroatische OIB muss 11 Ziffern haben.",
+      "countryIso": "Land muss ein 2-stelliger ISO-Code sein (z. B. HR).",
+      "emailInvalid": "Gültige E-Mail-Adresse eingeben."
+    }
   },
   "guest": {
     "primary": "primär",
