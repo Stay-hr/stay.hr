@@ -20,6 +20,7 @@ from apps.billing.services.invoice_replacement import (
     can_open_case,
     can_transition,
     derive_document_role,
+    expected_issuer_oib,
     identity_changed,
     is_structurally_ready,
     mirror_invoice_snapshot,
@@ -210,6 +211,23 @@ class ReplacementGuardTests(SimpleTestCase):
         )
         self.assertIsNone(
             can_edit_recipient(status=ReplacementCaseStatus.OPEN, storno_invoice_id=None)
+        )
+
+    def test_expected_issuer_oib_prefers_frozen_original(self):
+        self.assertEqual(
+            expected_issuer_oib(
+                original_issuer_oib="12345678901",
+                recorded_issuer_oib="10987654321",
+            ),
+            "12345678901",
+        )
+        self.assertEqual(
+            expected_issuer_oib(original_issuer_oib="", recorded_issuer_oib="12345678901"),
+            "12345678901",
+        )
+        self.assertEqual(
+            expected_issuer_oib(original_issuer_oib="", recorded_issuer_oib=""),
+            "",
         )
 
     def test_storno_requires_ready_and_verified(self):
