@@ -177,7 +177,29 @@
     "importPdfNone": "Aucun fichier sélectionné",
     "downloadPdf": "Télécharger la confirmation PDF",
     "importPdfBookingMismatchConfirm": "Le numéro de réservation dans le PDF ({pdf}) diffère de celui de cette page ({context}). Continuer l'import ?",
-    "importPdfCancelled": "Import PDF annulé."
+    "importPdfCancelled": "Import PDF annulé.",
+    "billingRecipient": {
+      "title": "Données pour facture société",
+      "statusRequested": "Données manquantes",
+      "statusReady": "Prêt pour la facture",
+      "companyName": "Raison sociale",
+      "taxId": "OIB / n° TVA",
+      "taxIdCountry": "Pays du n° fiscal",
+      "address": "Adresse",
+      "postalCode": "Code postal",
+      "city": "Ville",
+      "country": "Pays",
+      "email": "E-mail",
+      "phone": "Téléphone",
+      "save": "Enregistrer",
+      "saved": "Données enregistrées.",
+      "saveFailed": "Enregistrement impossible.",
+      "loadFailed": "Chargement impossible.",
+      "empty": "Saisissez la raison sociale ou le n° fiscal.",
+      "hrTaxId": "L’OIB croate doit comporter 11 chiffres.",
+      "countryIso": "Le pays doit être un code ISO à 2 lettres (ex. HR).",
+      "emailInvalid": "Saisissez une adresse e-mail valide."
+    }
   },
   "guest": {
     "primary": "principal",

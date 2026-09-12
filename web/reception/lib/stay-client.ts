@@ -13,6 +13,10 @@ export function reservationConfirmationPdfPath(reservationId: number): string {
   return `/api/stay/reception/reservations/${reservationId}/confirmation-pdf/`;
 }
 
+export function reservationBillingRecipientPath(reservationId: number): string {
+  return `/api/stay/reception/reservations/${reservationId}/billing-recipient/`;
+}
+
 export function reservationInvoicePath(reservationId: number): string {
   return `/api/stay/reception/reservations/${reservationId}/invoice/`;
 }

@@ -177,7 +177,29 @@
     "importPdfNone": "Ningún archivo seleccionado",
     "downloadPdf": "Descargar confirmación PDF",
     "importPdfBookingMismatchConfirm": "El número de reserva en el PDF ({pdf}) difiere del de esta página ({context}). ¿Continuar con la importación?",
-    "importPdfCancelled": "Importación PDF cancelada."
+    "importPdfCancelled": "Importación PDF cancelada.",
+    "billingRecipient": {
+      "title": "Datos para factura a empresa",
+      "statusRequested": "Faltan datos",
+      "statusReady": "Listo para factura",
+      "companyName": "Nombre de la empresa",
+      "taxId": "OIB / VAT ID",
+      "taxIdCountry": "País del NIF",
+      "address": "Dirección",
+      "postalCode": "Código postal",
+      "city": "Ciudad",
+      "country": "País",
+      "email": "Email",
+      "phone": "Teléfono",
+      "save": "Guardar",
+      "saved": "Datos guardados.",
+      "saveFailed": "No se pudieron guardar los datos.",
+      "loadFailed": "No se pudieron cargar los datos.",
+      "empty": "Introduzca el nombre de la empresa o el NIF.",
+      "hrTaxId": "El OIB croata debe tener 11 dígitos.",
+      "countryIso": "El país debe ser un código ISO de 2 letras (p. ej. HR).",
+      "emailInvalid": "Introduzca un email válido."
+    }
   },
   "guest": {
     "primary": "principal",

@@ -352,6 +352,28 @@
       "noSmtp": "SMTP nije konfiguriran.",
       "noRecipient": "Nema invoice email adrese.",
       "loadFailed": "Učitavanje ponude nije uspjelo."
+    },
+    "billingRecipient": {
+      "title": "Podaci za račun na firmu",
+      "statusRequested": "Nedostaju podaci",
+      "statusReady": "Spremno za račun",
+      "companyName": "Naziv firme",
+      "taxId": "OIB / VAT ID",
+      "taxIdCountry": "Država poreznog broja",
+      "address": "Adresa",
+      "postalCode": "Poštanski broj",
+      "city": "Grad",
+      "country": "Država",
+      "email": "Email",
+      "phone": "Telefon",
+      "save": "Spremi",
+      "saved": "Podaci su spremljeni.",
+      "saveFailed": "Spremanje nije uspjelo.",
+      "loadFailed": "Učitavanje nije uspjelo.",
+      "empty": "Unesite naziv firme ili porezni broj.",
+      "hrTaxId": "HR OIB mora imati 11 znamenki.",
+      "countryIso": "Država mora biti ISO kod od 2 slova (npr. HR).",
+      "emailInvalid": "Unesite ispravnu email adresu."
     }
   },
   "guest": {
