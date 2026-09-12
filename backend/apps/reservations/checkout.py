@@ -75,6 +75,7 @@ def perform_reservation_checkout(
         BillingRecipientIssuanceDeferred,
         FiscalConfigError,
         InvoiceBuildError,
+        ReplacementInProgress,
     )
     from apps.billing.services.issue import issue_guest_invoice, should_issue_invoice_on_checkout
     from apps.billing.tasks import fiscalize_invoice, send_invoice_email_task
@@ -91,6 +92,12 @@ def perform_reservation_checkout(
                 "Checkout invoice deferred reservation_id=%s reason=%s",
                 reservation.pk,
                 BillingRecipientIssuanceDeferred.code,
+            )
+        except ReplacementInProgress:
+            logger.info(
+                "Checkout invoice blocked reservation_id=%s reason=%s",
+                reservation.pk,
+                ReplacementInProgress.code,
             )
         except FiscalConfigError as exc:
             raise CheckoutBlockedError("fiscal_config_incomplete", str(exc)) from exc

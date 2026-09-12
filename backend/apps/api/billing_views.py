@@ -126,6 +126,7 @@ class ReservationInvoiceView(TenantAPIView, InvoiceSerializerMixin, APIView):
             BillingRecipientIssuanceDeferred,
             FiscalConfigError,
             InvoiceBuildError,
+            ReplacementInProgress,
         )
         from apps.billing.services.issue import issue_guest_invoice
         from apps.billing.tasks import fiscalize_invoice, send_invoice_email_task
@@ -139,6 +140,15 @@ class ReservationInvoiceView(TenantAPIView, InvoiceSerializerMixin, APIView):
                     "status": "error",
                     "reason": BillingRecipientIssuanceDeferred.code,
                     "detail": str(exc) or BillingRecipientIssuanceDeferred.code,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        except ReplacementInProgress as exc:
+            return Response(
+                {
+                    "status": "error",
+                    "reason": ReplacementInProgress.code,
+                    "detail": str(exc) or ReplacementInProgress.code,
                 },
                 status=status.HTTP_409_CONFLICT,
             )
