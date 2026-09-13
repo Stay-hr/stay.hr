@@ -194,6 +194,7 @@ jobs:
               apps.billing.tests.test_invoice_replacement_api
               apps.billing.tests.test_fisk1_xml
               apps.billing.tests.test_fisk1_connector
+              apps.billing.tests.test_fisk1_cis_tls
               apps.billing.tests.test_fiscalize_invoice_platform
               apps.billing.tests.test_zki
               apps.api.tests.test_reception_eporezna
