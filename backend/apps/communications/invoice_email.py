@@ -48,21 +48,23 @@ def _public_invoice_url(invoice: Invoice) -> str:
     return f"{base}/api/v1/public/invoices/{invoice.public_access_token}/"
 
 
-def send_invoice_email(invoice_id: int) -> dict:
+def _load_invoice(invoice_id: int) -> Invoice | None:
     try:
-        invoice = Invoice.objects.select_related(
+        return Invoice.objects.select_related(
             "reservation",
             "reservation__property",
             "reservation__tenant",
         ).get(pk=invoice_id)
     except Invoice.DoesNotExist:
-        return {"status": "missing", "invoice_id": invoice_id}
+        return None
 
-    reservation = invoice.reservation
-    recipient = resolve_invoice_recipient(reservation)
+
+def _deliver_invoice_email(invoice: Invoice, recipient: str | None) -> dict:
+    invoice_id = invoice.pk
     if not recipient:
         return {"status": "skipped", "reason": "no_recipient", "invoice_id": invoice_id}
 
+    reservation = invoice.reservation
     connection = _smtp_connection_for_reservation(reservation)
     if connection is None:
         return {"status": "skipped", "reason": "no_smtp", "invoice_id": invoice_id}
@@ -106,3 +108,17 @@ def send_invoice_email(invoice_id: int) -> dict:
         },
     )
     return {"status": "sent", "invoice_id": invoice_id, "recipient": recipient}
+
+
+def send_invoice_email(invoice_id: int) -> dict:
+    invoice = _load_invoice(invoice_id)
+    if invoice is None:
+        return {"status": "missing", "invoice_id": invoice_id}
+    return _deliver_invoice_email(invoice, resolve_invoice_recipient(invoice.reservation))
+
+
+def send_invoice_email_to(invoice_id: int, recipient: str) -> dict:
+    invoice = _load_invoice(invoice_id)
+    if invoice is None:
+        return {"status": "missing", "invoice_id": invoice_id}
+    return _deliver_invoice_email(invoice, (recipient or "").strip())

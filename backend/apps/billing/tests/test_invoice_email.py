@@ -5,7 +5,7 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from apps.billing.models import Invoice
-from apps.communications.invoice_email import send_invoice_email
+from apps.communications.invoice_email import send_invoice_email, send_invoice_email_to
 from apps.properties.models import Property
 from apps.reservations.models import Guest, Reservation
 from apps.tenants.models import Tenant, TenantReceptionSettings
@@ -80,3 +80,17 @@ class InvoiceEmailTests(TestCase):
         self.assertNotIn(pdf_path, text_body)
         invoice.refresh_from_db()
         self.assertEqual(invoice.email_recipient, "guest@example.com")
+
+    @patch("apps.communications.invoice_email.EmailMultiAlternatives")
+    @patch("apps.communications.invoice_email._smtp_connection_for_reservation")
+    def test_send_invoice_email_to_uses_explicit_recipient(
+        self, mock_connection, mock_email_cls
+    ):
+        mock_connection.return_value = object()
+        invoice = self._invoice(email="guest@example.com")
+        result = send_invoice_email_to(invoice.pk, "company@example.com")
+        self.assertEqual(result["status"], "sent")
+        self.assertEqual(result["recipient"], "company@example.com")
+        self.assertEqual(mock_email_cls.call_args.kwargs["to"], ["company@example.com"])
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.email_recipient, "company@example.com")
