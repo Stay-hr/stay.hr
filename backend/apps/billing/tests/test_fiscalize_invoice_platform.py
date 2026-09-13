@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from django.test import TestCase, override_settings
 
 from apps.billing import tasks as billing_tasks
+from apps.billing.exceptions import FiscalizationError
 from apps.billing.models import FiscalizationAttempt, Invoice, InvoiceLine, TenantFiscalSettings
 from apps.billing.services.fisk1 import FiscalResult
 from apps.billing.tasks import fiscalize_invoice
@@ -109,3 +110,21 @@ class FiscalizeInvoiceStayNativeTests(TestCase):
         self.assertEqual(result["status"], "fiscalized")
         self.assertEqual(result["jir"], "LEGACY-JIR")
         mock_fiscalize.assert_called_once()
+
+    @patch("apps.billing.services.fisk1.connector.render_invoice_pdf")
+    @patch("apps.billing.services.fisk1.connector.Fisk1Connector.fiscalize")
+    def test_failure_stores_cis_response_snapshot(self, mock_fiscalize, _pdf):
+        mock_fiscalize.side_effect = FiscalizationError(
+            "CIS HTTP 500: s006 Sistemska pogreška prilikom obrade zahtjeva.",
+            request_snapshot="<req/>",
+            response_snapshot="<tns:Greske><tns:Greska>s006</tns:Greska></tns:Greske>",
+        )
+
+        with self.assertRaises(FiscalizationError):
+            fiscalize_invoice.run(self.invoice.pk)
+
+        attempt = FiscalizationAttempt.objects.get(invoice=self.invoice)
+        self.assertFalse(attempt.success)
+        self.assertIn("s006", attempt.error_message)
+        self.assertIn("s006", attempt.response_snapshot)
+        self.assertEqual(attempt.request_snapshot, "<req/>")

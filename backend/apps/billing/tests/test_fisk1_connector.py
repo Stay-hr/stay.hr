@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
+from apps.billing.exceptions import FiscalizationError
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
 from apps.billing.services.fisk1.connector import Fisk1Connector
 from apps.properties.models import Property
@@ -80,6 +81,17 @@ class Fisk1ConnectorTests(TestCase):
             vat_amount=Decimal("11.50"),
             line_total=Decimal("100.00"),
         )
+        InvoiceLine.objects.create(
+            invoice=invoice,
+            sort_order=2,
+            line_kind=InvoiceLine.LineKind.TOURIST_TAX_ADULT,
+            description="Turistička pristojba",
+            quantity=Decimal("1"),
+            unit_price=Decimal("15.00"),
+            vat_rate=Decimal("0.00"),
+            vat_amount=Decimal("0.00"),
+            line_total=Decimal("15.00"),
+        )
 
         cert_file = MagicMock()
         cert_file.read.return_value = b"fake-p12"
@@ -102,3 +114,66 @@ class Fisk1ConnectorTests(TestCase):
         self.assertEqual(br_rac.findtext(f"{{{ns}}}OznPosPr"), "PP1")
         self.assertEqual(racun.findtext(f"{{{ns}}}NakDost"), "false")
         self.assertEqual(racun.findtext(f"{{{ns}}}OibPrimateljaRacuna"), "87357644223")
+        self.assertEqual(racun.findtext(f"{{{ns}}}IznosNePodlOpor"), "15.00")
+
+    @patch("apps.billing.services.fisk1.connector._sign_xml", return_value=b"<signed/>")
+    def test_http_error_keeps_parsed_cis_code(self, _sign_xml):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = (
+            '<soap:Envelope xmlns:tns="http://www.apis-it.hr/fin/2012/types/f73" '
+            'xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
+            "<soap:Body><tns:Odgovor><tns:Greske><tns:Greska>"
+            "<tns:SifraGreske>s006</tns:SifraGreske>"
+            "<tns:PorukaGreske>Sistemska pogreška prilikom obrade zahtjeva.</tns:PorukaGreske>"
+            "</tns:Greska></tns:Greske></tns:Odgovor></soap:Body></soap:Envelope>"
+        )
+        mock_client.post.return_value = mock_response
+
+        tenant = Tenant.objects.create(name="CIS Err", slug="cis-err")
+        settings = TenantFiscalSettings.objects.create(
+            tenant=tenant,
+            is_vat_registered=True,
+            issuer_oib="12345678901",
+            issuer_name="Test",
+            business_premise_code="PP1",
+            payment_device_code="1",
+        )
+        reservation = Reservation.objects.create(
+            tenant=tenant,
+            property=Property.objects.create(tenant=tenant, name="P", slug="p-err"),
+            check_in=datetime(2026, 4, 15).date(),
+            check_out=datetime(2026, 4, 16).date(),
+            status=Reservation.Status.CHECKED_OUT,
+            booker_name="Guest",
+            amount=Decimal("100.00"),
+        )
+        invoice = Invoice.objects.create(
+            tenant=tenant,
+            reservation=reservation,
+            invoice_number="2-PP1-1",
+            sequence_number=2,
+            issued_at=datetime(2026, 4, 16, 10, 0, 0),
+            buyer_name="Guest",
+            subtotal=Decimal("88.50"),
+            vat_amount=Decimal("11.50"),
+            total=Decimal("100.00"),
+            zki="abc123",
+        )
+        InvoiceLine.objects.create(
+            invoice=invoice,
+            sort_order=1,
+            line_kind=InvoiceLine.LineKind.ACCOMMODATION,
+            description="Noćenje",
+            quantity=Decimal("1"),
+            unit_price=Decimal("88.50"),
+            vat_rate=Decimal("13.00"),
+            vat_amount=Decimal("11.50"),
+            line_total=Decimal("100.00"),
+        )
+
+        with self.assertRaises(FiscalizationError) as ctx:
+            Fisk1Connector(http_client=mock_client).fiscalize(invoice, settings)
+        self.assertIn("s006", str(ctx.exception))
+        self.assertIn("Greske", ctx.exception.response_snapshot)

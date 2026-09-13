@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from html import unescape
 
 from lxml import etree
 
@@ -22,6 +23,41 @@ def recipient_oib_for_f1(document_number: str) -> str:
     return digits if len(digits) == 11 else ""
 
 
+def parse_cis_errors(xml_text: str) -> list[tuple[str, str]]:
+    """Return (SifraGreske, PorukaGreske) pairs from a CIS SOAP fault."""
+    if not xml_text:
+        return []
+    try:
+        root = etree.fromstring(xml_text.encode("utf-8"))
+    except etree.XMLSyntaxError:
+        return []
+    errors: list[tuple[str, str]] = []
+    for greska in root.iter():
+        if not greska.tag.endswith("Greska"):
+            continue
+        code = ""
+        message = ""
+        for child in greska:
+            if child.tag.endswith("SifraGreske") and child.text:
+                code = child.text.strip()
+            elif child.tag.endswith("PorukaGreske") and child.text:
+                message = unescape(child.text).strip()
+        if code or message:
+            errors.append((code, message))
+    return errors
+
+
+def format_cis_http_error(status_code: int, xml_text: str) -> str:
+    errors = parse_cis_errors(xml_text)
+    if errors:
+        detail = "; ".join(
+            f"{code} {message}".strip() for code, message in errors
+        )
+        return f"CIS HTTP {status_code}: {detail}"
+    snippet = (xml_text or "").strip().replace("\n", " ")
+    return f"CIS HTTP {status_code}: {snippet[:500]}"
+
+
 def build_racun_xml(
     *,
     oib: str,
@@ -41,6 +77,7 @@ def build_racun_xml(
     in_vat_system: bool = True,
     recipient_oib: str = "",
     subsequent_delivery: bool = False,
+    nontaxable_amount: Decimal = Decimal("0.00"),
 ) -> etree._Element:
     root = etree.Element(f"{{{NS}}}RacunZahtjev", nsmap=NSMAP)
     root.set("Id", "racun")
@@ -66,6 +103,11 @@ def build_racun_xml(
         etree.SubElement(porez, f"{{{NS}}}Stopa").text = _rate(vat_rate)
         etree.SubElement(porez, f"{{{NS}}}Osnovica").text = _amount(vat_base)
         etree.SubElement(porez, f"{{{NS}}}Iznos").text = _amount(vat_amount)
+
+    if nontaxable_amount != Decimal("0.00"):
+        etree.SubElement(racun, f"{{{NS}}}IznosNePodlOpor").text = _amount(
+            nontaxable_amount
+        )
 
     etree.SubElement(racun, f"{{{NS}}}IznosUkupno").text = _amount(total)
     etree.SubElement(racun, f"{{{NS}}}NacinPlac").text = payment_code
