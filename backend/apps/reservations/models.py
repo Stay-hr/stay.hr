@@ -953,6 +953,66 @@ class GuestPaymentAccess(TenantScopedModel):
         )
 
 
+class GuestInvoiceDetailsAccessStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    REVOKED = "revoked", "Revoked"
+
+
+class GuestInvoiceDetailsAccessCreatedFrom(models.TextChoices):
+    WHATSAPP = "whatsapp", "WhatsApp"
+    EMAIL = "email", "Email"
+    BOOKING = "booking", "Booking"
+    RECEPTION_MANUAL = "reception_manual", "Reception manual"
+    SYSTEM = "system", "System"
+
+
+class GuestInvoiceDetailsAccess(TenantScopedModel):
+    """Token-scoped guest invoice-details form (one active per reservation)."""
+
+    reservation = models.ForeignKey(
+        Reservation,
+        on_delete=models.CASCADE,
+        related_name="guest_invoice_details_accesses",
+    )
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    status = models.CharField(
+        max_length=16,
+        choices=GuestInvoiceDetailsAccessStatus.choices,
+        default=GuestInvoiceDetailsAccessStatus.ACTIVE,
+    )
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_from = models.CharField(
+        max_length=32,
+        choices=GuestInvoiceDetailsAccessCreatedFrom.choices,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+        indexes = [
+            models.Index(
+                fields=["reservation", "status"],
+                name="reservation_invd_res_stat_idx",
+            ),
+            models.Index(fields=["token"], name="reservation_invd_token_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["reservation"],
+                condition=models.Q(status=GuestInvoiceDetailsAccessStatus.ACTIVE),
+                name="reservations_guest_invd_one_active_per_reservation",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"GuestInvoiceDetailsAccess #{self.pk} reservation={self.reservation_id} "
+            f"status={self.status}"
+        )
+
+
 class MonthlyStatisticsOverride(TenantScopedModel):
     """Ručni mjesečni prihod/noći/provizija; nadjačava automatski zbroj iz rezervacija."""
 

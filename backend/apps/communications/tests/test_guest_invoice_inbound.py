@@ -215,3 +215,41 @@ class GuestInvoiceInboundTests(TestCase):
         joined = "\n".join(logs.output)
         self.assertIn("invoice_email_ambiguous", joined)
         self.assertNotIn("invoice_email_received", joined)
+
+    @patch("apps.communications.guest_invoice_inbound.send_guest_invoice_details_link")
+    def test_business_request_creates_recipient_and_sends_form(self, mock_send):
+        mock_send.return_value = {"status": "sent", "hint": "guest_invoice_details_link"}
+        body = (
+            "Poštovani, molim da mi se račun pošalje na e-adresu kada se odjavim. "
+            "Ime tvrtke ovog gosta je Julianna Pihlar S.P. "
+            "PDV identifikacijski broj tvrtke ovog gosta je SI96977604"
+        )
+        result = maybe_handle_guest_invoice_inbound(
+            self.reservation,
+            body,
+            channel="booking",
+        )
+        self.assertEqual(result["buyer_kind"], "business")
+        mock_send.assert_called_once()
+        from apps.billing.models import BillingRecipient
+
+        row = BillingRecipient.objects.get(reservation=self.reservation)
+        self.assertEqual(row.status, BillingRecipient.Status.REQUESTED)
+        self.assertEqual(row.tax_id, "96977604")
+        self.assertEqual(row.tax_id_country, "SI")
+        self.assertIn("Julianna", row.company_name)
+        self.reservation.refresh_from_db()
+        self.assertIsNone(self.reservation.invoice_email_waiting_at)
+
+    @patch("apps.communications.guest_invoice_inbound.send_guest_invoice_details_link")
+    @patch("apps.communications.guest_invoice_inbound.send_guest_message")
+    def test_consumer_invoice_still_asks_email(self, mock_send, mock_form):
+        ask = maybe_handle_guest_invoice_inbound(
+            self.reservation,
+            "Please send invoice",
+            channel="booking",
+        )
+        self.assertIsNotNone(ask)
+        mock_form.assert_not_called()
+        self.reservation.refresh_from_db()
+        self.assertIsNotNone(self.reservation.invoice_email_waiting_at)

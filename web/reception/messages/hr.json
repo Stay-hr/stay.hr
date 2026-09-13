@@ -329,6 +329,19 @@
       "failed": "Slanje uplatnih uputa nije uspjelo.",
       "paymentUrl": "Link za uplatu"
     },
+    "invoiceDetailsSend": {
+      "title": "Obrazac za podatke računa",
+      "hint": "Pošaljite gostu link za unos tvrtke, OIB/PDV, adrese i e-maila (isti token pri ponovnom slanju).",
+      "channel": "Kanal",
+      "channelWhatsapp": "WhatsApp",
+      "channelEmail": "Email",
+      "channelBooking": "Booking.com",
+      "submit": "Pošalji obrazac za račun",
+      "sending": "Šaljem…",
+      "success": "Poslano ({status}).",
+      "failed": "Slanje obrasca nije uspjelo.",
+      "formUrl": "Link obrasca"
+    },
     "offer": {
       "title": "Ponuda na firmu",
       "hint": "Generira PDF ponudu s B2B kupcem, stavkama i PDV-om (immutable snapshot).",

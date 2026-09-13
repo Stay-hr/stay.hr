@@ -219,3 +219,35 @@ def update_open_recipient(
         locked.requested_at = requested_at
         locked.save()
         return locked
+
+
+def get_open_recipient(reservation: Reservation) -> BillingRecipient | None:
+    return _open_qs(reservation).order_by("-requested_at", "-pk").first()
+
+
+def upsert_open_recipient(
+    reservation: Reservation,
+    fields: dict[str, Any],
+    *,
+    source: str = "",
+    source_ref: str = "",
+    source_excerpt: str = "",
+) -> BillingRecipient:
+    """Create or merge an open recipient. Empty incoming values do not wipe filled fields."""
+    extras = {name: value for name, value in fields.items() if str(value or "").strip()}
+    existing = get_open_recipient(reservation)
+    if existing is None:
+        return create_open_recipient(
+            reservation,
+            extras,
+            source=source,
+            source_ref=source_ref,
+            source_excerpt=source_excerpt,
+        )
+    if source:
+        extras.setdefault("source", source)
+    if source_ref:
+        extras.setdefault("source_ref", source_ref)
+    if source_excerpt and not (existing.source_excerpt or "").strip():
+        extras.setdefault("source_excerpt", source_excerpt)
+    return update_open_recipient(existing, extras)

@@ -6,14 +6,24 @@ import logging
 
 from django.utils import timezone
 
+from apps.billing.exceptions import BillingRecipientError
+from apps.billing.services.billing_recipient import RecipientSource
+from apps.billing.services.billing_recipient_service import (
+    get_open_recipient,
+    update_open_recipient,
+    upsert_open_recipient,
+)
 from apps.communications.guest_compose import (
     FOOTER,
     GREETING,
+    HINT_GUEST_INVOICE_DETAILS_LINK,
     HINT_INVOICE_AMBIGUOUS,
     HINT_INVOICE_ASK_EMAIL,
     HINT_INVOICE_CONFIRM,
     SIGN_OFF,
 )
+from apps.communications.guest_invoice_details_distribute import send_guest_invoice_details_link
+from apps.communications.guest_invoice_intent import classify_invoice_request
 from apps.communications.guest_email_quality import extract_usable_invoice_emails
 from apps.communications.guest_invoice_patterns import guest_message_requests_invoice
 from apps.communications.guest_language_context import LanguageMode
@@ -216,6 +226,71 @@ def _send_invoice_auto_reply(
     return {"status": "sent", "channel": channel, "hint": hint}
 
 
+def _recipient_source_for_channel(channel: str) -> str:
+    if channel == "whatsapp":
+        return RecipientSource.WHATSAPP.value
+    return RecipientSource.BOOKING_MESSAGE.value
+
+
+def _apply_email_to_open_recipient(reservation: Reservation, email: str) -> None:
+    row = get_open_recipient(reservation)
+    if row is None or not (email or "").strip():
+        return
+    try:
+        update_open_recipient(row, {"email": email})
+    except BillingRecipientError:
+        logger.info(
+            "invoice inbound could not copy email onto billing recipient reservation_id=%s",
+            reservation.pk,
+        )
+
+
+def _handle_business_invoice_request(
+    reservation: Reservation,
+    *,
+    channel: str,
+    body: str,
+) -> dict:
+    classification = classify_invoice_request(body)
+    open_row = get_open_recipient(reservation)
+    if not classification.is_business and open_row is None:
+        return {"status": "not_business"}
+
+    fields = classification.extracted_fields()
+    excerpt = fields.pop("source_excerpt", "") or body[:240]
+    try:
+        upsert_open_recipient(
+            reservation,
+            fields,
+            source=_recipient_source_for_channel(channel),
+            source_excerpt=excerpt,
+        )
+    except BillingRecipientError:
+        logger.info(
+            "invoice inbound billing recipient upsert skipped reservation_id=%s",
+            reservation.pk,
+        )
+
+    if _reply_sent_today(reservation, HINT_GUEST_INVOICE_DETAILS_LINK):
+        return {
+            "status": "guest_invoice_handled",
+            "reply": {"status": "dedup_skipped"},
+            "buyer_kind": "business",
+        }
+
+    reply = send_guest_invoice_details_link(
+        reservation,
+        channel=channel,
+        created_from="invoice_inbound",
+    )
+    return {
+        "status": "guest_invoice_handled",
+        "reply": reply,
+        "buyer_kind": "business",
+        "waiting": False,
+    }
+
+
 def _handle_capture_result(
     reservation: Reservation,
     *,
@@ -242,6 +317,18 @@ def _handle_capture_result(
         return {"status": "guest_invoice_handled", "capture": capture, "reply": reply}
 
     if capture.get("status") == "updated":
+        email = (capture.get("email") or "").strip()
+        _apply_email_to_open_recipient(reservation, email)
+        if get_open_recipient(reservation) is not None:
+            if _reply_sent_today(reservation, HINT_GUEST_INVOICE_DETAILS_LINK):
+                reply = {"status": "dedup_skipped"}
+            else:
+                reply = send_guest_invoice_details_link(
+                    reservation,
+                    channel=channel,
+                    created_from="invoice_inbound",
+                )
+            return {"status": "guest_invoice_handled", "capture": capture, "reply": reply}
         if not _reply_sent_today(reservation, HINT_INVOICE_CONFIRM):
             reply = _send_invoice_auto_reply(
                 reservation,
@@ -290,6 +377,12 @@ def maybe_handle_guest_invoice_inbound(
             )
 
     if guest_message_requests_invoice(text):
+        business = _handle_business_invoice_request(
+            reservation, channel=channel, body=text
+        )
+        if business.get("status") == "guest_invoice_handled":
+            return business
+
         ctx = GuestLanguageResolver.resolve(
             reservation, mode=LanguageMode.REACTIVE, message_text=text
         )

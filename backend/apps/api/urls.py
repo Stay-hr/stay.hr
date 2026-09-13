@@ -26,6 +26,7 @@ from apps.api.guest_checkin_views import (
     GuestCheckInSlotCommitView,
     GuestCheckInSlotView,
 )
+from apps.api.guest_invoice_details_views import GuestInvoiceDetailsView
 from apps.api.guest_payment_views import GuestPaymentView
 from apps.api.offer_views import PublicOfferPdfView
 from apps.api.guest_portal_views import (
@@ -126,6 +127,11 @@ urlpatterns = [
         "public/payment/<uuid:token>/",
         GuestPaymentView.as_view(),
         name="public-guest-payment",
+    ),
+    path(
+        "public/invoice-details/<uuid:token>/",
+        GuestInvoiceDetailsView.as_view(),
+        name="public-guest-invoice-details",
     ),
     path(
         "public/guest-portal/<uuid:token>/",

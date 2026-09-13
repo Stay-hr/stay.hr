@@ -33,6 +33,10 @@ export function reservationPaymentInstructionsSendPath(reservationId: number): s
   return `/api/stay/reception/reservations/${reservationId}/payment-instructions/send/`;
 }
 
+export function reservationInvoiceDetailsSendPath(reservationId: number): string {
+  return `/api/stay/reception/reservations/${reservationId}/invoice-details/send/`;
+}
+
 export function reservationOfferPath(reservationId: number): string {
   return `/api/stay/reception/reservations/${reservationId}/offer/`;
 }

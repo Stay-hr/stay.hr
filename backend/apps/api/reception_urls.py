@@ -94,6 +94,7 @@ from apps.api.reception_property_settings_views import (
     ReceptionPropertySettingsShareView,
     ReceptionSettingsCapabilitiesView,
 )
+from apps.api.reception_invoice_details_views import ReservationInvoiceDetailsSendView
 from apps.api.reception_payment_views import ReservationPaymentInstructionsSendView
 from apps.api.reception_views import (
     BookingPdfImportView,
@@ -330,6 +331,11 @@ urlpatterns = [
         "reservations/<int:pk>/payment-instructions/send/",
         ReservationPaymentInstructionsSendView.as_view(),
         name="reception-reservation-payment-instructions-send",
+    ),
+    path(
+        "reservations/<int:pk>/invoice-details/send/",
+        ReservationInvoiceDetailsSendView.as_view(),
+        name="reception-reservation-invoice-details-send",
     ),
     path(
         "reservations/<int:pk>/offer/",
