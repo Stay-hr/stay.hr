@@ -3,6 +3,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.billing.models import Invoice
 from apps.communications.invoice_email import send_invoice_email, send_invoice_email_to
@@ -94,3 +95,42 @@ class InvoiceEmailTests(TestCase):
         self.assertEqual(mock_email_cls.call_args.kwargs["to"], ["company@example.com"])
         invoice.refresh_from_db()
         self.assertEqual(invoice.email_recipient, "company@example.com")
+
+    @patch("apps.communications.invoice_email.EmailMultiAlternatives")
+    @patch("apps.communications.invoice_email._smtp_connection_for_reservation")
+    def test_send_invoice_email_skips_invented_primary(
+        self, mock_connection, mock_email_cls
+    ):
+        mock_connection.return_value = object()
+        invoice = self._invoice()
+        Guest.objects.create(
+            tenant=self.tenant,
+            reservation=invoice.reservation,
+            first_name="Guest",
+            last_name="Guest",
+            is_primary=True,
+            evisitor_identity_invented_at=timezone.now(),
+        )
+        result = send_invoice_email(invoice.pk)
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "invented_identity")
+        mock_email_cls.assert_not_called()
+
+    @patch("apps.communications.invoice_email.EmailMultiAlternatives")
+    @patch("apps.communications.invoice_email._smtp_connection_for_reservation")
+    def test_send_invoice_email_to_ignores_invented_primary(
+        self, mock_connection, mock_email_cls
+    ):
+        mock_connection.return_value = object()
+        invoice = self._invoice(email="guest@example.com")
+        Guest.objects.create(
+            tenant=self.tenant,
+            reservation=invoice.reservation,
+            first_name="Guest",
+            last_name="Guest",
+            is_primary=True,
+            evisitor_identity_invented_at=timezone.now(),
+        )
+        result = send_invoice_email_to(invoice.pk, "company@example.com")
+        self.assertEqual(result["status"], "sent")
+        self.assertEqual(result["recipient"], "company@example.com")

@@ -12,7 +12,7 @@ from apps.communications.invoice_link_distribute import (
 )
 from apps.communications.models import GuestMessageChannel
 from apps.properties.models import Property
-from apps.reservations.models import Reservation
+from apps.reservations.models import Guest, Reservation
 from apps.tenants.models import Tenant
 
 
@@ -186,6 +186,67 @@ class DeliverInvoiceLinkTests(TestCase):
         body = mock_send.call_args.kwargs["body_text"]
         self.assertIn("11111111-1111-1111-1111-111111111111", body)
         self.assertNotIn("/pdf/", body)
+
+    def test_skips_when_primary_identity_invented(self):
+        Guest.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            first_name="Marcel",
+            last_name="Droste",
+            is_primary=True,
+            evisitor_identity_invented_at=datetime(2026, 9, 13, 10, 0, 0),
+        )
+        with (
+            patch(
+                "apps.communications.invoice_link_distribute.build_message_channels"
+            ) as mock_channels,
+            patch(
+                "apps.communications.invoice_link_distribute.send_invoice_email"
+            ) as mock_email,
+        ):
+            result = deliver_invoice_link(self.invoice)
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "invented_identity")
+        mock_channels.assert_not_called()
+        mock_email.assert_not_called()
+
+    def test_sends_when_only_secondary_identity_invented(self):
+        Guest.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            first_name="Marcel",
+            last_name="Droste",
+            is_primary=True,
+        )
+        Guest.objects.create(
+            tenant=self.tenant,
+            reservation=self.reservation,
+            first_name="Other",
+            last_name="Guest",
+            is_primary=False,
+            evisitor_identity_invented_at=datetime(2026, 9, 13, 10, 0, 0),
+        )
+        with (
+            patch(
+                "apps.communications.invoice_link_distribute.build_message_channels",
+                return_value={
+                    "reply_channel": GuestMessageChannel.BOOKING,
+                    "booking": {"available": True},
+                    "whatsapp": {"session_open": False},
+                },
+            ),
+            patch(
+                "apps.communications.invoice_link_distribute.send_invoice_email",
+                return_value={"status": "sent", "invoice_id": self.invoice.pk},
+            ) as mock_email,
+            patch(
+                "apps.communications.invoice_link_distribute.send_guest_message",
+            ) as mock_send,
+        ):
+            mock_send.return_value.status = "sent"
+            result = deliver_invoice_link(self.invoice)
+        self.assertEqual(result["status"], "sent")
+        mock_email.assert_called_once_with(self.invoice.pk)
 
     def test_message_uses_portal_url(self):
         text = render_invoice_link_message(self.invoice)
