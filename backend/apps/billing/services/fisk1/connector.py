@@ -12,6 +12,7 @@ from signxml import XMLSigner, methods
 from apps.billing.exceptions import FiscalizationError
 from apps.billing.models import FiscalizationAttempt, Invoice, InvoiceLine, TenantFiscalSettings
 from apps.billing.services.fisk1 import FiscalResult, FiscalizationConnector
+from apps.billing.services.fisk1.cis_tls import cis_verify_path
 from apps.billing.services.fisk1.timing import (
     format_f73_datetime,
     issued_at_for_f1,
@@ -125,7 +126,10 @@ class Fisk1Connector(FiscalizationConnector):
         soap_payload = _wrap_soap(signed_xml)
         endpoint = FISK1_TEST_URL if settings.use_test_endpoint else FISK1_PROD_URL
 
-        client = self._http_client or httpx.Client(timeout=30.0, verify=True)
+        client = self._http_client or httpx.Client(
+            timeout=30.0,
+            verify=cis_verify_path(),
+        )
         close_client = self._http_client is None
         try:
             response = client.post(
