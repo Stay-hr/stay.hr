@@ -197,6 +197,7 @@ jobs:
               apps.billing.tests.test_fisk1_cis_tls
               apps.billing.tests.test_fiscalize_invoice_platform
               apps.billing.tests.test_zki
+              apps.billing.tests.test_invoice_pdf
               apps.api.tests.test_reception_eporezna
             )
           }

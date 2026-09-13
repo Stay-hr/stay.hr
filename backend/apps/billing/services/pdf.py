@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import io
 import re
+import tempfile
 from decimal import Decimal
 from pathlib import Path
 
 import qrcode
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.template.loader import render_to_string
 from reportlab.pdfbase import pdfmetrics
@@ -23,6 +26,10 @@ from apps.billing.services.qr import build_invoice_qr_url
 
 _STYLE_RE = re.compile(r"<style[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
 _BODY_RE = re.compile(r"<body[^>]*>(.*?)</body>", re.IGNORECASE | re.DOTALL)
+_DATA_IMAGE_URI_RE = re.compile(
+    r"^data:image/(?P<kind>png|jpe?g|gif);base64,(?P<data>.+)$",
+    re.IGNORECASE | re.DOTALL,
+)
 
 FONTS_DIR = Path(__file__).resolve().parent.parent / "static" / "fonts"
 FONT_REGULAR = FONTS_DIR / "DejaVuSans.ttf"
@@ -41,8 +48,44 @@ def _ensure_dejavu_fonts() -> None:
     _DEJAVU_REGISTERED = True
 
 
-def _link_callback(uri: str, rel: str) -> str:
+def _decode_data_image_uri(uri: str) -> bytes | None:
+    match = _DATA_IMAGE_URI_RE.match((uri or "").strip())
+    if match is None:
+        return None
+    payload = re.sub(r"\s+", "", match.group("data"))
+    try:
+        return base64.b64decode(payload, validate=True)
+    except binascii.Error:
+        return None
+
+
+def _qr_temp_dir() -> Path:
+    # xhtml2pdf only reads files under the Django project (BASE_DIR).
+    path = Path(settings.BASE_DIR) / "media" / "invoice-qr-tmp"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _write_temp_image(data: bytes, temp_files: list[Path]) -> str:
+    handle = tempfile.NamedTemporaryFile(
+        prefix="stay-invoice-qr-",
+        suffix=".png",
+        delete=False,
+        dir=_qr_temp_dir(),
+    )
+    handle.write(data)
+    handle.close()
+    path = Path(handle.name)
+    temp_files.append(path)
+    return str(path)
+
+
+def _link_callback(uri: str, rel: str, temp_files: list[Path] | None = None) -> str:
     del rel
+    files = temp_files if temp_files is not None else []
+    decoded = _decode_data_image_uri(uri)
+    if decoded is not None:
+        return _write_temp_image(decoded, files)
     name = Path(uri).name
     font_path = FONTS_DIR / name
     if font_path.is_file():
@@ -63,17 +106,26 @@ def resolve_reservation_number(invoice: Invoice) -> str:
     return reservation_reference_for(invoice.reservation)
 
 
-def _qr_data_uri(invoice: Invoice) -> str:
+def _qr_png_bytes(invoice: Invoice) -> bytes:
     url = build_invoice_qr_url(invoice)
     if not url:
-        return ""
+        return b""
     qr = qrcode.QRCode(border=1, box_size=4)
     qr.add_data(url)
     qr.make(fit=True)
     image = qr.make_image(fill_color="black", back_color="white")
+    if hasattr(image, "convert"):
+        image = image.convert("RGB")
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return buffer.getvalue()
+
+
+def _qr_data_uri(invoice: Invoice) -> str:
+    png = _qr_png_bytes(invoice)
+    if not png:
+        return ""
+    encoded = base64.b64encode(png).decode("ascii")
     return f"data:image/png;base64,{encoded}"
 
 
@@ -128,9 +180,15 @@ def _replacement_document_display(invoice: Invoice) -> dict:
     }
 
 
-def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -> dict:
+def invoice_template_context(
+    invoice: Invoice,
+    settings: TenantFiscalSettings,
+    *,
+    qr_image_src: str | None = None,
+) -> dict:
     lines = list(invoice.lines.order_by("sort_order", "id"))
     issuer_display = _issuer_document_display(invoice, settings)
+    qr_src = _qr_data_uri(invoice) if qr_image_src is None else qr_image_src
     return {
         "invoice": invoice,
         "settings": settings,
@@ -156,7 +214,7 @@ def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -
         "issued_at_display": invoice.issued_at.strftime("%d.%m.%Y %H:%M"),
         "jir_display": invoice.jir or "u obradi",
         "zki_display": invoice.zki,
-        "qr_data_uri": _qr_data_uri(invoice),
+        "qr_data_uri": qr_src,
         "tourist_tax_clause": (
             "Turistička pristojba ne podliježe oporezivanju sukladno čl. 33. st. 3. Zakona o PDV-u."
         ),
@@ -165,8 +223,17 @@ def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -
     }
 
 
-def render_invoice_html(invoice: Invoice, settings: TenantFiscalSettings) -> str:
-    context = invoice_template_context(invoice, settings)
+def render_invoice_html(
+    invoice: Invoice,
+    settings: TenantFiscalSettings,
+    *,
+    qr_image_src: str | None = None,
+) -> str:
+    context = invoice_template_context(
+        invoice,
+        settings,
+        qr_image_src=qr_image_src,
+    )
     return render_to_string("billing/invoice.html", context)
 
 
@@ -184,15 +251,32 @@ def split_rendered_invoice_html(html: str) -> tuple[str, str]:
 
 def render_invoice_pdf(invoice: Invoice, settings: TenantFiscalSettings) -> None:
     _ensure_dejavu_fonts()
-    html = render_invoice_html(invoice, settings)
     buffer = io.BytesIO()
-    pdf = pisa.CreatePDF(
-        html,
-        dest=buffer,
-        encoding="UTF-8",
-        link_callback=_link_callback,
+    temp_files: list[Path] = []
+    qr_image_src = ""
+    png = _qr_png_bytes(invoice)
+    if png:
+        qr_image_src = _write_temp_image(png, temp_files)
+    html = render_invoice_html(
+        invoice,
+        settings,
+        qr_image_src=qr_image_src,
     )
-    if pdf.err:
-        raise RuntimeError("Failed to generate invoice PDF.")
-    filename = f"invoice-{invoice.invoice_number.replace('/', '-')}.pdf"
-    invoice.pdf_file.save(filename, ContentFile(buffer.getvalue()), save=True)
+
+    def link_callback(uri: str, rel: str) -> str:
+        return _link_callback(uri, rel, temp_files=temp_files)
+
+    try:
+        pdf = pisa.CreatePDF(
+            html,
+            dest=buffer,
+            encoding="UTF-8",
+            link_callback=link_callback,
+        )
+        if pdf.err:
+            raise RuntimeError("Failed to generate invoice PDF.")
+        filename = f"invoice-{invoice.invoice_number.replace('/', '-')}.pdf"
+        invoice.pdf_file.save(filename, ContentFile(buffer.getvalue()), save=True)
+    finally:
+        for path in temp_files:
+            path.unlink(missing_ok=True)
