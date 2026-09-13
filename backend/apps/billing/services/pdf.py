@@ -9,6 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import qrcode
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.template.loader import render_to_string
 from reportlab.pdfbase import pdfmetrics
@@ -58,11 +59,19 @@ def _decode_data_image_uri(uri: str) -> bytes | None:
         return None
 
 
+def _qr_temp_dir() -> Path:
+    # xhtml2pdf only reads files under the Django project (BASE_DIR).
+    path = Path(settings.BASE_DIR) / "media" / "invoice-qr-tmp"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _write_temp_image(data: bytes, temp_files: list[Path]) -> str:
     handle = tempfile.NamedTemporaryFile(
         prefix="stay-invoice-qr-",
         suffix=".png",
         delete=False,
+        dir=_qr_temp_dir(),
     )
     handle.write(data)
     handle.close()

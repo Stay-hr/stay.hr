@@ -6,6 +6,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pymupdf
+from django.conf import settings
 from django.test import TestCase
 
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
@@ -161,6 +162,7 @@ class InvoicePdfTests(TestCase):
             self.assertTrue(path.is_file())
             self.assertEqual(path.read_bytes(), png)
             self.assertEqual(temp_files, [path])
+            self.assertTrue(path.is_relative_to(Path(settings.BASE_DIR)))
         finally:
             path.unlink(missing_ok=True)
 
