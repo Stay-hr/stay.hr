@@ -40,6 +40,7 @@ urlpatterns = [
     path("auth/reception-session/", ReceptionSessionView.as_view(), name="reception-session"),
     path("integrations/", include("apps.api.integrations_urls")),
     path("platform/", include("apps.api.platform_urls")),
+    path("admin/", include("apps.api.admin_urls")),
     path("reception/", include("apps.api.reception_urls")),
     path("rooms/", include("apps.api.rooms_urls")),
     path("app/config", AppConfigView.as_view(), name="app-config"),

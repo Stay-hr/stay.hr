@@ -1,0 +1,61 @@
+from django.urls import path
+
+from apps.api.admin_invoice_replacement_views import (
+    InvoiceReplacementCancelView,
+    InvoiceReplacementCompleteView,
+    InvoiceReplacementDetailView,
+    InvoiceReplacementListCreateView,
+    InvoiceReplacementRecipientView,
+    InvoiceReplacementSendReplacementView,
+    InvoiceReplacementSendStornoView,
+    InvoiceReplacementStornoView,
+    InvoiceReplacementVerifyView,
+)
+
+urlpatterns = [
+    path(
+        "invoice-replacements/",
+        InvoiceReplacementListCreateView.as_view(),
+        name="admin-invoice-replacement-list",
+    ),
+    path(
+        "invoice-replacements/<int:case_id>/",
+        InvoiceReplacementDetailView.as_view(),
+        name="admin-invoice-replacement-detail",
+    ),
+    path(
+        "invoice-replacements/<int:case_id>/recipient/",
+        InvoiceReplacementRecipientView.as_view(),
+        name="admin-invoice-replacement-recipient",
+    ),
+    path(
+        "invoice-replacements/<int:case_id>/verify/",
+        InvoiceReplacementVerifyView.as_view(),
+        name="admin-invoice-replacement-verify",
+    ),
+    path(
+        "invoice-replacements/<int:case_id>/cancel/",
+        InvoiceReplacementCancelView.as_view(),
+        name="admin-invoice-replacement-cancel",
+    ),
+    path(
+        "invoice-replacements/<int:case_id>/storno/",
+        InvoiceReplacementStornoView.as_view(),
+        name="admin-invoice-replacement-storno",
+    ),
+    path(
+        "invoice-replacements/<int:case_id>/complete/",
+        InvoiceReplacementCompleteView.as_view(),
+        name="admin-invoice-replacement-complete",
+    ),
+    path(
+        "invoice-replacements/<int:case_id>/send-storno/",
+        InvoiceReplacementSendStornoView.as_view(),
+        name="admin-invoice-replacement-send-storno",
+    ),
+    path(
+        "invoice-replacements/<int:case_id>/send-replacement/",
+        InvoiceReplacementSendReplacementView.as_view(),
+        name="admin-invoice-replacement-send-replacement",
+    ),
+]

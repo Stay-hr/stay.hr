@@ -42,6 +42,7 @@ class ReplacementRejectReason(StrEnum):
     RECIPIENT_NOT_VERIFIED = "recipient_not_verified"
     STORNO_ALREADY_EXISTS = "storno_already_exists"
     STORNO_MISSING = "storno_missing"
+    REPLACEMENT_MISSING = "replacement_missing"
     REPLACEMENT_ALREADY_EXISTS = "replacement_already_exists"
     CANCEL_AFTER_STORNO = "cancel_after_storno"
     CASE_REASON_REQUIRED = "case_reason_required"
