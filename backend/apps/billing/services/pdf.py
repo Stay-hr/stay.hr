@@ -13,7 +13,8 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from xhtml2pdf import pisa
 
-from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
+from apps.billing.models import Invoice, InvoiceLine, InvoiceReplacement, TenantFiscalSettings
+from apps.billing.services.invoice_replacement import InvoiceDocumentRole
 from apps.billing.services.issuer_context import (
     has_frozen_issuer_context,
     reservation_reference_for,
@@ -96,6 +97,37 @@ def _issuer_document_display(invoice: Invoice, settings: TenantFiscalSettings) -
     }
 
 
+def _replacement_document_display(invoice: Invoice) -> dict:
+    storno_case = (
+        InvoiceReplacement.objects.filter(storno_invoice_id=invoice.pk)
+        .select_related("original_invoice")
+        .first()
+    )
+    if storno_case is not None:
+        return {
+            "document_role": InvoiceDocumentRole.STORNO.value,
+            "referenced_invoice_number": storno_case.original_invoice.invoice_number,
+            "referenced_storno_number": "",
+        }
+    replacement_case = (
+        InvoiceReplacement.objects.filter(replacement_invoice_id=invoice.pk)
+        .select_related("original_invoice", "storno_invoice")
+        .first()
+    )
+    if replacement_case is not None:
+        storno = replacement_case.storno_invoice
+        return {
+            "document_role": InvoiceDocumentRole.REPLACEMENT.value,
+            "referenced_invoice_number": replacement_case.original_invoice.invoice_number,
+            "referenced_storno_number": storno.invoice_number if storno is not None else "",
+        }
+    return {
+        "document_role": InvoiceDocumentRole.STANDALONE.value,
+        "referenced_invoice_number": "",
+        "referenced_storno_number": "",
+    }
+
+
 def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -> dict:
     lines = list(invoice.lines.order_by("sort_order", "id"))
     issuer_display = _issuer_document_display(invoice, settings)
@@ -103,6 +135,7 @@ def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -
         "invoice": invoice,
         "settings": settings,
         **issuer_display,
+        **_replacement_document_display(invoice),
         "lines": lines,
         "formatted_lines": [
             {

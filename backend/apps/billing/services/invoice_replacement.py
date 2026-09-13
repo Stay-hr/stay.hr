@@ -264,6 +264,14 @@ def can_edit_recipient(
     return None
 
 
+def expected_issuer_oib(*, original_issuer_oib: str, recorded_issuer_oib: str) -> str:
+    """Frozen original OIB wins; legacy originals use write-once case evidence."""
+    frozen = (original_issuer_oib or "").strip()
+    if frozen:
+        return frozen
+    return (recorded_issuer_oib or "").strip()
+
+
 def can_issue_storno(
     *,
     status: ReplacementCaseStatus,

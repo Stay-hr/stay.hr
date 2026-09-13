@@ -35,6 +35,11 @@
 <body>
   <div class="invoice-document">
     <h1>Račun {{ invoice.invoice_number }}</h1>
+    {% if document_role == "storno" %}
+    <p><strong>STORNO računa {{ referenced_invoice_number }}</strong></p>
+    {% elif document_role == "replacement" %}
+    <p class="muted">Zamjenjuje račun {{ referenced_invoice_number }}{% if referenced_storno_number %}; storno {{ referenced_storno_number }}{% endif %}</p>
+    {% endif %}
     <p class="muted">Datum izdavanja: {{ issued_at_display }}</p>
     {% if reservation_number %}
     <p class="muted">Broj rezervacije: {{ reservation_number }}</p>
