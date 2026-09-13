@@ -1,8 +1,11 @@
+import base64
 from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+import pymupdf
 from django.test import TestCase
 
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
@@ -11,6 +14,7 @@ from apps.billing.services.invoice_builder import (
     resolve_buyer_identity,
 )
 from apps.billing.services.pdf import (
+    _link_callback,
     invoice_template_context,
     render_invoice_html,
     render_invoice_pdf,
@@ -141,6 +145,38 @@ class InvoicePdfTests(TestCase):
         context = invoice_template_context(self.invoice, self.settings)
         self.assertIn("Turistička", context["tourist_tax_clause"])
         self.assertIn("čl.", context["tourist_tax_clause"])
+        self.assertEqual(context["qr_data_uri"], "")
+
+    def test_link_callback_resolves_png_data_uri(self):
+        png = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+            b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00"
+            b"\x00\x0cIDATx\x9cc``\x00\x00\x00\x04\x00\x01\xf6\x178U"
+            b"\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        uri = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+        temp_files: list[Path] = []
+        path = Path(_link_callback(uri, "", temp_files=temp_files))
+        try:
+            self.assertTrue(path.is_file())
+            self.assertEqual(path.read_bytes(), png)
+            self.assertEqual(temp_files, [path])
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_render_invoice_pdf_embeds_qr_when_jir_present(self):
+        self.invoice.jir = "cfa9227e-2e4f-41f5-ae05-3a0919705b5c"
+        self.invoice.save(update_fields=["jir"])
+
+        render_invoice_pdf(self.invoice, self.settings)
+        self.invoice.refresh_from_db()
+        self.assertTrue(self.invoice.pdf_file)
+
+        doc = pymupdf.open(self.invoice.pdf_file.path)
+        text = "\n".join(page.get_text() for page in doc)
+        self.assertIn(self.invoice.jir, text)
+        self.assertNotIn("u obradi", text)
+        self.assertGreater(sum(len(page.get_images()) for page in doc), 0)
 
     @patch("apps.billing.services.pdf.pisa.CreatePDF")
     def test_render_invoice_pdf_registers_fonts(self, mock_create_pdf):

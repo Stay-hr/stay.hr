@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import io
 import re
+import tempfile
 from decimal import Decimal
 from pathlib import Path
 
@@ -23,6 +25,10 @@ from apps.billing.services.qr import build_invoice_qr_url
 
 _STYLE_RE = re.compile(r"<style[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
 _BODY_RE = re.compile(r"<body[^>]*>(.*?)</body>", re.IGNORECASE | re.DOTALL)
+_DATA_IMAGE_URI_RE = re.compile(
+    r"^data:image/(?P<kind>png|jpe?g|gif);base64,(?P<data>.+)$",
+    re.IGNORECASE | re.DOTALL,
+)
 
 FONTS_DIR = Path(__file__).resolve().parent.parent / "static" / "fonts"
 FONT_REGULAR = FONTS_DIR / "DejaVuSans.ttf"
@@ -41,8 +47,36 @@ def _ensure_dejavu_fonts() -> None:
     _DEJAVU_REGISTERED = True
 
 
-def _link_callback(uri: str, rel: str) -> str:
+def _decode_data_image_uri(uri: str) -> bytes | None:
+    match = _DATA_IMAGE_URI_RE.match((uri or "").strip())
+    if match is None:
+        return None
+    payload = re.sub(r"\s+", "", match.group("data"))
+    try:
+        return base64.b64decode(payload, validate=True)
+    except binascii.Error:
+        return None
+
+
+def _write_temp_image(data: bytes, temp_files: list[Path]) -> str:
+    handle = tempfile.NamedTemporaryFile(
+        prefix="stay-invoice-qr-",
+        suffix=".png",
+        delete=False,
+    )
+    handle.write(data)
+    handle.close()
+    path = Path(handle.name)
+    temp_files.append(path)
+    return str(path)
+
+
+def _link_callback(uri: str, rel: str, temp_files: list[Path] | None = None) -> str:
     del rel
+    files = temp_files if temp_files is not None else []
+    decoded = _decode_data_image_uri(uri)
+    if decoded is not None:
+        return _write_temp_image(decoded, files)
     name = Path(uri).name
     font_path = FONTS_DIR / name
     if font_path.is_file():
@@ -186,13 +220,22 @@ def render_invoice_pdf(invoice: Invoice, settings: TenantFiscalSettings) -> None
     _ensure_dejavu_fonts()
     html = render_invoice_html(invoice, settings)
     buffer = io.BytesIO()
-    pdf = pisa.CreatePDF(
-        html,
-        dest=buffer,
-        encoding="UTF-8",
-        link_callback=_link_callback,
-    )
-    if pdf.err:
-        raise RuntimeError("Failed to generate invoice PDF.")
-    filename = f"invoice-{invoice.invoice_number.replace('/', '-')}.pdf"
-    invoice.pdf_file.save(filename, ContentFile(buffer.getvalue()), save=True)
+    temp_files: list[Path] = []
+
+    def link_callback(uri: str, rel: str) -> str:
+        return _link_callback(uri, rel, temp_files=temp_files)
+
+    try:
+        pdf = pisa.CreatePDF(
+            html,
+            dest=buffer,
+            encoding="UTF-8",
+            link_callback=link_callback,
+        )
+        if pdf.err:
+            raise RuntimeError("Failed to generate invoice PDF.")
+        filename = f"invoice-{invoice.invoice_number.replace('/', '-')}.pdf"
+        invoice.pdf_file.save(filename, ContentFile(buffer.getvalue()), save=True)
+    finally:
+        for path in temp_files:
+            path.unlink(missing_ok=True)
