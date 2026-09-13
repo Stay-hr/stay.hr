@@ -329,6 +329,19 @@
       "failed": "Could not send payment instructions.",
       "paymentUrl": "Payment link"
     },
+    "invoiceDetailsSend": {
+      "title": "Invoice details form",
+      "hint": "Send the guest a form for company name, VAT/tax ID, address, and email (same token on resend).",
+      "channel": "Channel",
+      "channelWhatsapp": "WhatsApp",
+      "channelEmail": "Email",
+      "channelBooking": "Booking.com",
+      "submit": "Send invoice form",
+      "sending": "Sending…",
+      "success": "Sent ({status}).",
+      "failed": "Could not send the invoice form.",
+      "formUrl": "Form link"
+    },
     "offer": {
       "title": "Company offer",
       "hint": "Generate a PDF offer with B2B buyer, line items, and VAT (immutable snapshot).",

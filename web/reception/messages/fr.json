@@ -199,6 +199,19 @@
       "hrTaxId": "L’OIB croate doit comporter 11 chiffres.",
       "countryIso": "Le pays doit être un code ISO à 2 lettres (ex. HR).",
       "emailInvalid": "Saisissez une adresse e-mail valide."
+    },
+    "invoiceDetailsSend": {
+      "title": "Formulaire de facturation",
+      "hint": "Envoyez au client un lien pour la société, le n° de TVA, l’adresse et l’e-mail.",
+      "channel": "Canal",
+      "channelWhatsapp": "WhatsApp",
+      "channelEmail": "E-mail",
+      "channelBooking": "Booking.com",
+      "submit": "Envoyer le formulaire de facture",
+      "sending": "Envoi…",
+      "success": "Envoyé ({status}).",
+      "failed": "Impossible d’envoyer le formulaire.",
+      "formUrl": "Lien du formulaire"
     }
   },
   "guest": {

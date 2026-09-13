@@ -199,6 +199,19 @@
       "hrTaxId": "Eine kroatische OIB muss 11 Ziffern haben.",
       "countryIso": "Land muss ein 2-stelliger ISO-Code sein (z. B. HR).",
       "emailInvalid": "Gültige E-Mail-Adresse eingeben."
+    },
+    "invoiceDetailsSend": {
+      "title": "Formular für Rechnungsdaten",
+      "hint": "Senden Sie dem Gast einen Link für Firma, USt-IdNr., Adresse und E-Mail.",
+      "channel": "Kanal",
+      "channelWhatsapp": "WhatsApp",
+      "channelEmail": "E-Mail",
+      "channelBooking": "Booking.com",
+      "submit": "Rechnungsformular senden",
+      "sending": "Sende…",
+      "success": "Gesendet ({status}).",
+      "failed": "Formular konnte nicht gesendet werden.",
+      "formUrl": "Formular-Link"
     }
   },
   "guest": {

@@ -19,12 +19,38 @@ from apps.communications.guest_email_quality import (
     first_usable_invoice_email,
     invoice_email_candidates,
     is_ota_relay_email,
+    is_usable_invoice_email,
 )
 
 logger = logging.getLogger(__name__)
 
 
+def _billing_recipient_email(reservation) -> str | None:
+    from apps.billing.models import BillingRecipient
+
+    rows = list(
+        BillingRecipient.objects.filter(reservation=reservation).exclude(email="")
+    )
+    if not rows:
+        return None
+
+    def _rank(row: BillingRecipient) -> tuple[int, str]:
+        if row.status == BillingRecipient.Status.READY:
+            return (0, row.ready_at.isoformat() if row.ready_at else "")
+        if row.status == BillingRecipient.Status.APPLIED:
+            return (1, row.applied_at.isoformat() if row.applied_at else "")
+        return (2, row.requested_at.isoformat() if row.requested_at else "")
+
+    for row in sorted(rows, key=_rank):
+        if is_usable_invoice_email(row.email):
+            return row.email
+    return None
+
+
 def resolve_invoice_recipient(reservation) -> str | None:
+    recipient_email = _billing_recipient_email(reservation)
+    if recipient_email:
+        return recipient_email
     usable = first_usable_invoice_email(reservation)
     if usable:
         return usable
