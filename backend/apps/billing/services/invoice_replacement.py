@@ -9,7 +9,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
-from apps.billing.services.billing_recipient import RecipientSource
+from apps.billing.services.billing_recipient import (
+    InvoiceBuyerSnapshot,
+    RecipientSource,
+    format_invoice_buyer_address,
+)
+from apps.billing.services.country_names_hr import country_display_name_hr
 from apps.billing.services.fiscal_routing import BuyerStatusConfidence
 
 
@@ -192,6 +197,20 @@ def negate_invoice_snapshot(snapshot: InvoiceDocumentSnapshot) -> InvoiceDocumen
             )
             for line in snapshot.lines
         ),
+    )
+
+
+def snapshot_replacement_recipient_buyer(draft: ReplacementRecipientDraft) -> InvoiceBuyerSnapshot:
+    """Printable Invoice.buyer_* from the frozen replacement recipient."""
+    return InvoiceBuyerSnapshot(
+        buyer_name=_strip(draft.company_name),
+        buyer_document_number=_strip(draft.tax_id),
+        buyer_address=format_invoice_buyer_address(
+            address=draft.address,
+            postal_code=draft.postal_code,
+            city=draft.city,
+        ),
+        buyer_country=country_display_name_hr(draft.country),
     )
 
 
