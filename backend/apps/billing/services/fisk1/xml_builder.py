@@ -80,7 +80,7 @@ def build_racun_xml(
     nontaxable_amount: Decimal = Decimal("0.00"),
 ) -> etree._Element:
     root = etree.Element(f"{{{NS}}}RacunZahtjev", nsmap=NSMAP)
-    root.set("Id", "racun")
+    root.set("Id", "RacunZahtjev")
 
     zaglavlje = etree.SubElement(root, f"{{{NS}}}Zaglavlje")
     etree.SubElement(zaglavlje, f"{{{NS}}}IdPoruke").text = message_id
