@@ -49,7 +49,7 @@ class Fisk1XmlBuilderTests(SimpleTestCase):
         racun = root.find(f"{{{NS}}}Racun")
         br_rac = racun.find(f"{{{NS}}}BrRac")
 
-        self.assertEqual(root.get("Id"), "racun")
+        self.assertEqual(root.get("Id"), "RacunZahtjev")
         self.assertEqual(
             zaglavlje.findtext(f"{{{NS}}}IdPoruke"),
             "11111111-1111-1111-1111-111111111111",
@@ -136,13 +136,26 @@ class CisF1SignTests(TestCase):
 
         signed = _sign_xml(_sample_racun(), settings)
         tree = etree.fromstring(signed)
+        serialized = signed.decode("utf-8")
         signatures = [
             elem for elem in tree.iter() if elem.tag.endswith("Signature")
         ]
         self.assertTrue(signatures)
+        self.assertEqual(tree.get("Id"), "RacunZahtjev")
+        self.assertNotIn("ds:Signature", serialized)
+        self.assertIn('<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">', serialized)
+        self.assertIn('URI="#RacunZahtjev"', serialized)
         methods = [
             elem.get("Algorithm", "")
             for elem in tree.iter()
             if elem.tag.endswith("SignatureMethod")
         ]
         self.assertTrue(any("rsa-sha1" in alg for alg in methods))
+        c14n = [
+            elem.get("Algorithm", "")
+            for elem in tree.iter()
+            if elem.tag.endswith("CanonicalizationMethod")
+        ]
+        self.assertTrue(
+            any(alg == "http://www.w3.org/2001/10/xml-exc-c14n#" for alg in c14n)
+        )

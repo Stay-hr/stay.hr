@@ -8,7 +8,7 @@ import httpx
 from cryptography.hazmat.primitives.serialization import pkcs12
 from django.utils import timezone
 from lxml import etree
-from signxml import XMLSigner, methods
+from signxml import XMLSigner, methods, namespaces
 
 from apps.billing.exceptions import FiscalizationError
 from apps.billing.models import FiscalizationAttempt, Invoice, InvoiceLine, TenantFiscalSettings
@@ -84,13 +84,15 @@ def _sign_xml(root: etree._Element, settings: TenantFiscalSettings) -> bytes:
         method=methods.enveloped,
         signature_algorithm="rsa-sha1",
         digest_algorithm="sha1",
-        c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
+        c14n_algorithm="http://www.w3.org/2001/10/xml-exc-c14n#",
     )
+    # Porezna F73 sample uses a default xmldsig namespace, not ds:.
+    signer.namespaces = {None: namespaces.ds}
     signed = signer.sign(
         root,
         key=private_key,
         cert=[certificate],
-        reference_uri="#racun",
+        reference_uri="#RacunZahtjev",
     )
     return etree.tostring(signed, encoding="UTF-8")
 
