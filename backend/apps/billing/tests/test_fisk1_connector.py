@@ -6,7 +6,7 @@ from django.test import TestCase
 
 from apps.billing.exceptions import FiscalizationError
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
-from apps.billing.services.fisk1.connector import Fisk1Connector
+from apps.billing.services.fisk1.connector import SOAP_ACTION, Fisk1Connector, _wrap_soap
 from apps.properties.models import Property
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
@@ -25,7 +25,7 @@ class Fisk1ConnectorTests(TestCase):
         mock_response.text = (
             '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
             "<soap:Body>"
-            '<tns:RacunOdgovor xmlns:tns="http://www.apis-it.hr/fin/2012/types/F73">'
+            '<tns:RacunOdgovor xmlns:tns="http://www.apis-it.hr/fin/2012/types/f73">'
             "<tns:Jir>ABC-DEF-123</tns:Jir>"
             "</tns:RacunOdgovor>"
             "</soap:Body>"
@@ -104,9 +104,23 @@ class Fisk1ConnectorTests(TestCase):
         result = connector.fiscalize(invoice, settings)
         self.assertEqual(result.jir, "ABC-DEF-123")
         mock_client.post.assert_called_once()
+        posted = mock_client.post.call_args
+        self.assertEqual(
+            posted.kwargs["headers"]["SOAPAction"],
+            f'"{SOAP_ACTION}"',
+        )
+        self.assertTrue(
+            SOAP_ACTION.startswith(
+                "http://e-porezna.porezna-uprava.hr/fiskalizacija/2012/services/"
+            )
+        )
+        payload = posted.kwargs["content"].decode("utf-8")
+        self.assertIn("soapenv:Envelope", payload)
+        self.assertIn('xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"', payload)
+        self.assertIn("<signed/>", payload)
 
         root = _sign_xml.call_args[0][0]
-        ns = "http://www.apis-it.hr/fin/2012/types/F73"
+        ns = "http://www.apis-it.hr/fin/2012/types/f73"
         racun = root.find(f"{{{ns}}}Racun")
         br_rac = racun.find(f"{{{ns}}}BrRac")
         self.assertIsNotNone(root.find(f"{{{ns}}}Zaglavlje"))

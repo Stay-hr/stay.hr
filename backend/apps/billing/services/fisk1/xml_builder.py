@@ -5,7 +5,8 @@ from html import unescape
 
 from lxml import etree
 
-NS = "http://www.apis-it.hr/fin/2012/types/F73"
+# Official FiskalizacijaSchema.xsd targetNamespace (WSDL-PROD v1.10).
+NS = "http://www.apis-it.hr/fin/2012/types/f73"
 NSMAP = {"tns": NS}
 
 

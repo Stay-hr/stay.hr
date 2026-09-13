@@ -55,7 +55,7 @@ class Fisk1CisTlsConnectorTests(TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.text = (
-            '<tns:RacunOdgovor xmlns:tns="http://www.apis-it.hr/fin/2012/types/F73">'
+            '<tns:RacunOdgovor xmlns:tns="http://www.apis-it.hr/fin/2012/types/f73">'
             "<tns:Jir>TLS-JIR</tns:Jir>"
             "</tns:RacunOdgovor>"
         )
