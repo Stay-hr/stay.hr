@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from uuid import uuid4
 
 import httpx
 from cryptography.hazmat.primitives.serialization import pkcs12
@@ -11,16 +11,32 @@ from signxml import XMLSigner, methods
 
 from apps.billing.exceptions import FiscalizationError
 from apps.billing.models import FiscalizationAttempt, Invoice, InvoiceLine, TenantFiscalSettings
-from apps.billing.services.fisk1.xml_builder import build_racun_xml, parse_jir_from_response
+from apps.billing.services.fisk1 import FiscalResult, FiscalizationConnector
+from apps.billing.services.fisk1.timing import (
+    format_f73_datetime,
+    issued_at_for_f1,
+    message_at_for_f1,
+)
+from apps.billing.services.fisk1.xml_builder import (
+    build_racun_xml,
+    parse_jir_from_response,
+    recipient_oib_for_f1,
+)
 from apps.billing.services.payment import fisk1_payment_code
 from apps.billing.services.pdf import render_invoice_pdf
-from apps.billing.services.fisk1 import FiscalResult, FiscalizationConnector
 
 logger = logging.getLogger(__name__)
 
 FISK1_TEST_URL = "https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest"
 FISK1_PROD_URL = "https://cis.porezna-uprava.hr:8449/FiskalizacijaService"
 SOAP_ACTION = "http://www.apis-it.hr/fin/2012/services/FiskalizacijaService/racuni"
+
+
+class CisF1XMLSigner(XMLSigner):
+    """CIS F1 still mandates RSA-SHA1. signxml 4 rejects SHA1 in the constructor."""
+
+    def check_deprecated_methods(self) -> None:
+        return None
 
 
 def _operator_oib(settings: TenantFiscalSettings) -> str:
@@ -46,7 +62,7 @@ def _load_private_key_and_cert(settings: TenantFiscalSettings):
 
 def _sign_xml(root: etree._Element, settings: TenantFiscalSettings) -> bytes:
     private_key, certificate = _load_private_key_and_cert(settings)
-    signer = XMLSigner(
+    signer = CisF1XMLSigner(
         method=methods.enveloped,
         signature_algorithm="rsa-sha1",
         digest_algorithm="sha1",
@@ -55,14 +71,16 @@ def _sign_xml(root: etree._Element, settings: TenantFiscalSettings) -> bytes:
     signed = signer.sign(
         root,
         key=private_key,
-        cert=certificate,
+        cert=[certificate],
         reference_uri="#racun",
     )
-    return etree.tostring(signed, xml_declaration=True, encoding="UTF-8")
+    return etree.tostring(signed, encoding="UTF-8")
 
 
 def _wrap_soap(body_xml: bytes) -> str:
     body = body_xml.decode("utf-8")
+    if body.startswith("<?xml"):
+        body = body.split("?>", 1)[1].lstrip()
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">'
@@ -84,11 +102,7 @@ class Fisk1Connector(FiscalizationConnector):
         if accommodation is None:
             raise FiscalizationError("Invoice has no accommodation line.")
 
-        issued_at = invoice.issued_at
-        if timezone.is_naive(issued_at):
-            issued_at = timezone.make_aware(issued_at, timezone.get_current_timezone())
-
-        issued_at_iso = issued_at.strftime("%d.%m.%YT%H:%M:%S")
+        issued_at_iso = format_f73_datetime(issued_at_for_f1(invoice))
         root = build_racun_xml(
             oib=settings.issuer_oib,
             issued_at_iso=issued_at_iso,
@@ -102,6 +116,10 @@ class Fisk1Connector(FiscalizationConnector):
             zki=invoice.zki,
             business_premise_code=settings.business_premise_code,
             payment_device_code=settings.payment_device_code,
+            message_id=str(uuid4()),
+            message_at_iso=format_f73_datetime(message_at_for_f1(invoice)),
+            in_vat_system=settings.is_vat_registered,
+            recipient_oib=recipient_oib_for_f1(invoice.buyer_document_number),
         )
         signed_xml = _sign_xml(root, settings)
         soap_payload = _wrap_soap(signed_xml)

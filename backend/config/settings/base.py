@@ -263,7 +263,8 @@ MESSAGING_ALERT_THROTTLE_SECONDS = env.float("MESSAGING_ALERT_THROTTLE_SECONDS",
 # Property Settings shell (ADR 0008). False → all capabilities/tabs off + reception nav hidden.
 RECEPTION_PROPERTY_SETTINGS = env.bool("RECEPTION_PROPERTY_SETTINGS", default=True)
 
-# Fiskal Platform v2 Execution API (guest invoice F1 via pu_cis)
+# Leftover fiskal-api client settings. Stay fiscalizes F1 itself (tenant P12 → CIS).
+# fiscalize_invoice does not read these flags.
 FISKAL_PLATFORM_URL = env("FISKAL_PLATFORM_URL", default="http://fiskal-api:8000")
 FISKAL_PLATFORM_API_KEY = env("FISKAL_PLATFORM_API_KEY", default="")
 FISKAL_EXECUTION_ENABLED = env.bool("FISKAL_EXECUTION_ENABLED", default=False)
