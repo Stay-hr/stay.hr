@@ -51,6 +51,15 @@ class InvoiceIssuerContextMissing(BillingError):
 class FiscalizationError(BillingError):
     """Fiskalizacija 1.0 request failed."""
 
-    def __init__(self, message: str, *, fiskal_request_id=None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        fiskal_request_id=None,
+        request_snapshot: str = "",
+        response_snapshot: str = "",
+    ) -> None:
         super().__init__(message)
         self.fiskal_request_id = fiskal_request_id
+        self.request_snapshot = request_snapshot
+        self.response_snapshot = response_snapshot

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 from uuid import uuid4
 
 import httpx
@@ -20,6 +21,7 @@ from apps.billing.services.fisk1.timing import (
 )
 from apps.billing.services.fisk1.xml_builder import (
     build_racun_xml,
+    format_cis_http_error,
     parse_jir_from_response,
     recipient_oib_for_f1,
 )
@@ -31,6 +33,21 @@ logger = logging.getLogger(__name__)
 FISK1_TEST_URL = "https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest"
 FISK1_PROD_URL = "https://cis.porezna-uprava.hr:8449/FiskalizacijaService"
 SOAP_ACTION = "http://www.apis-it.hr/fin/2012/services/FiskalizacijaService/racuni"
+_TOURIST_TAX_KINDS = frozenset(
+    {
+        InvoiceLine.LineKind.TOURIST_TAX_ADULT,
+        InvoiceLine.LineKind.TOURIST_TAX_CHILD,
+    }
+)
+_SNAPSHOT_LIMIT = 20000
+
+
+def _nontaxable_amount(invoice: Invoice) -> Decimal:
+    total = Decimal("0.00")
+    for line in invoice.lines.all():
+        if line.line_kind in _TOURIST_TAX_KINDS:
+            total += line.line_total
+    return total
 
 
 class CisF1XMLSigner(XMLSigner):
@@ -121,6 +138,7 @@ class Fisk1Connector(FiscalizationConnector):
             message_at_iso=format_f73_datetime(message_at_for_f1(invoice)),
             in_vat_system=settings.is_vat_registered,
             recipient_oib=recipient_oib_for_f1(invoice.buyer_document_number),
+            nontaxable_amount=_nontaxable_amount(invoice),
         )
         signed_xml = _sign_xml(root, settings)
         soap_payload = _wrap_soap(signed_xml)
@@ -147,17 +165,23 @@ class Fisk1Connector(FiscalizationConnector):
         response_text = response.text
         if response.status_code >= 400:
             raise FiscalizationError(
-                f"Fiscalization HTTP {response.status_code}: {response_text[:500]}"
+                format_cis_http_error(response.status_code, response_text),
+                request_snapshot=soap_payload[:_SNAPSHOT_LIMIT],
+                response_snapshot=response_text[:_SNAPSHOT_LIMIT],
             )
         try:
             jir = parse_jir_from_response(response_text)
         except ValueError as exc:
-            raise FiscalizationError(response_text[:1000]) from exc
+            raise FiscalizationError(
+                format_cis_http_error(response.status_code, response_text),
+                request_snapshot=soap_payload[:_SNAPSHOT_LIMIT],
+                response_snapshot=response_text[:_SNAPSHOT_LIMIT],
+            ) from exc
 
         return FiscalResult(
             jir=jir,
-            request_snapshot=soap_payload[:4000],
-            response_snapshot=response_text[:4000],
+            request_snapshot=soap_payload[:_SNAPSHOT_LIMIT],
+            response_snapshot=response_text[:_SNAPSHOT_LIMIT],
         )
 
 
@@ -186,8 +210,8 @@ def apply_fiscalization_result(
         invoice=invoice,
         attempt_no=attempt_no,
         success=True,
-        request_snapshot=result.request_snapshot,
-        response_snapshot=result.response_snapshot,
+        request_snapshot=result.request_snapshot[:_SNAPSHOT_LIMIT],
+        response_snapshot=result.response_snapshot[:_SNAPSHOT_LIMIT],
         fiskal_request_id=fiskal_request_id or result.fiskal_request_id,
     )
     render_invoice_pdf(invoice, settings)
@@ -210,7 +234,7 @@ def record_fiscalization_failure(
         attempt_no=attempt_no,
         success=False,
         error_message=error_message[:2000],
-        request_snapshot=request_snapshot[:4000],
-        response_snapshot=response_snapshot[:4000],
+        request_snapshot=request_snapshot[:_SNAPSHOT_LIMIT],
+        response_snapshot=response_snapshot[:_SNAPSHOT_LIMIT],
         fiskal_request_id=fiskal_request_id,
     )

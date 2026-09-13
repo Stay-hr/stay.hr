@@ -7,6 +7,8 @@ from apps.billing.services.fisk1.connector import _sign_xml
 from apps.billing.services.fisk1.xml_builder import (
     NS,
     build_racun_xml,
+    format_cis_http_error,
+    parse_cis_errors,
     recipient_oib_for_f1,
 )
 from apps.billing.tests.helpers import make_test_p12
@@ -67,16 +69,53 @@ class Fisk1XmlBuilderTests(SimpleTestCase):
     def test_negative_storno_total_and_recipient_oib(self):
         root = _sample_racun(
             sequence_number=261,
-            vat_base=Decimal("-263.11"),
+            vat_base=Decimal("-248.11"),
             vat_amount=Decimal("-32.25"),
             total=Decimal("-295.36"),
             recipient_oib="87357644223",
+            nontaxable_amount=Decimal("-15.00"),
         )
         racun = root.find(f"{{{NS}}}Racun")
         self.assertEqual(racun.findtext(f"{{{NS}}}IznosUkupno"), "-295.36")
+        self.assertEqual(racun.findtext(f"{{{NS}}}IznosNePodlOpor"), "-15.00")
         self.assertEqual(
             racun.findtext(f"{{{NS}}}OibPrimateljaRacuna"),
             "87357644223",
+        )
+
+    def test_tourist_tax_is_nontaxable_amount(self):
+        root = _sample_racun(
+            vat_base=Decimal("248.11"),
+            nontaxable_amount=Decimal("15.00"),
+        )
+        racun = root.find(f"{{{NS}}}Racun")
+        pdv = racun.find(f"{{{NS}}}Pdv")
+        self.assertEqual(pdv.find(f"{{{NS}}}Porez").findtext(f"{{{NS}}}Osnovica"), "248.11")
+        self.assertEqual(racun.findtext(f"{{{NS}}}IznosNePodlOpor"), "15.00")
+        self.assertEqual(racun.findtext(f"{{{NS}}}IznosUkupno"), "295.36")
+
+    def test_omits_nontaxable_when_zero(self):
+        racun = _sample_racun().find(f"{{{NS}}}Racun")
+        self.assertIsNone(racun.find(f"{{{NS}}}IznosNePodlOpor"))
+
+    def test_parse_cis_errors_from_soap_fault(self):
+        xml = (
+            '<soap:Envelope xmlns:tns="http://www.apis-it.hr/fin/2012/types/f73" '
+            'xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
+            "<soap:Body><tns:Odgovor>"
+            "<tns:Greske><tns:Greska>"
+            "<tns:SifraGreske>s006</tns:SifraGreske>"
+            "<tns:PorukaGreske>Sistemska pogre&#353;ka prilikom obrade zahtjeva.</tns:PorukaGreske>"
+            "</tns:Greska></tns:Greske>"
+            "</tns:Odgovor></soap:Body></soap:Envelope>"
+        )
+        self.assertEqual(
+            parse_cis_errors(xml),
+            [("s006", "Sistemska pogreška prilikom obrade zahtjeva.")],
+        )
+        self.assertEqual(
+            format_cis_http_error(500, xml),
+            "CIS HTTP 500: s006 Sistemska pogreška prilikom obrade zahtjeva.",
         )
 
 

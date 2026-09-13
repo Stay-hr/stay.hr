@@ -53,6 +53,9 @@ def fiscalize_invoice(self, invoice_id: int) -> dict:
             invoice,
             attempt_no=attempt_no,
             error_message=str(exc),
+            request_snapshot=getattr(exc, "request_snapshot", "") or "",
+            response_snapshot=getattr(exc, "response_snapshot", "") or "",
+            fiskal_request_id=getattr(exc, "fiskal_request_id", None),
         )
         raise self.retry(exc=exc) from exc
 
