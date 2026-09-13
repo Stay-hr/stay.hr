@@ -3,7 +3,7 @@ from lxml import etree
 from django.test import SimpleTestCase, TestCase
 
 from apps.billing.models import TenantFiscalSettings
-from apps.billing.services.fisk1.connector import _sign_xml
+from apps.billing.services.fisk1.connector import _sign_xml, _wrap_soap
 from apps.billing.services.fisk1.xml_builder import (
     NS,
     build_racun_xml,
@@ -49,7 +49,12 @@ class Fisk1XmlBuilderTests(SimpleTestCase):
         racun = root.find(f"{{{NS}}}Racun")
         br_rac = racun.find(f"{{{NS}}}BrRac")
 
+        self.assertEqual(NS, "http://www.apis-it.hr/fin/2012/types/f73")
         self.assertEqual(root.get("Id"), "RacunZahtjev")
+        self.assertEqual(
+            root.tag,
+            "{http://www.apis-it.hr/fin/2012/types/f73}RacunZahtjev",
+        )
         self.assertEqual(
             zaglavlje.findtext(f"{{{NS}}}IdPoruke"),
             "11111111-1111-1111-1111-111111111111",
@@ -159,3 +164,16 @@ class CisF1SignTests(TestCase):
         self.assertTrue(
             any(alg == "http://www.w3.org/2001/10/xml-exc-c14n#" for alg in c14n)
         )
+
+
+class Fisk1SoapEnvelopeTests(SimpleTestCase):
+    def test_wrap_soap_uses_soap11_envelope(self):
+        payload = _wrap_soap(b'<tns:RacunZahtjev xmlns:tns="http://www.apis-it.hr/fin/2012/types/f73"/>')
+        self.assertTrue(payload.startswith('<?xml version="1.0" encoding="UTF-8"?>'))
+        self.assertIn(
+            '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">',
+            payload,
+        )
+        self.assertIn("<soapenv:Body>", payload)
+        self.assertIn("tns:RacunZahtjev", payload)
+        self.assertNotIn("<?xml", payload.split("?>", 1)[1])

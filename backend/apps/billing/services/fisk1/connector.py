@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 
 FISK1_TEST_URL = "https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest"
 FISK1_PROD_URL = "https://cis.porezna-uprava.hr:8449/FiskalizacijaService"
-SOAP_ACTION = "http://www.apis-it.hr/fin/2012/services/FiskalizacijaService/racuni"
+# Official WSDL-PROD v1.10 soap:operation for racuni. SOAP 1.1 quotes the header.
+SOAP_ACTION = (
+    "http://e-porezna.porezna-uprava.hr/fiskalizacija/2012/services/"
+    "FiskalizacijaService/racuni"
+)
 _TOURIST_TAX_KINDS = frozenset(
     {
         InvoiceLine.LineKind.TOURIST_TAX_ADULT,
@@ -157,7 +161,7 @@ class Fisk1Connector(FiscalizationConnector):
                 content=soap_payload.encode("utf-8"),
                 headers={
                     "Content-Type": "text/xml; charset=utf-8",
-                    "SOAPAction": SOAP_ACTION,
+                    "SOAPAction": f'"{SOAP_ACTION}"',
                 },
             )
         finally:
