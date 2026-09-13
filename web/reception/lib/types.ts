@@ -103,6 +103,8 @@ export type GuestLite = {
   evisitor_status: string;
   evisitor_error: string;
   evisitor_required?: boolean;
+  evisitor_identity_invented?: boolean;
+  evisitor_identity_invented_at?: string | null;
   face_photo_url: string;
 };
 

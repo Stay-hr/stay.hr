@@ -303,6 +303,7 @@
     "invoiceSendFailed": "Slanje računa nije uspjelo.",
     "invoiceSendNoSmtp": "SMTP nije konfiguriran — račun se ne može poslati.",
     "invoiceNoPrimaryGuest": "Nema primarnog gosta — email se ne može spremiti.",
+    "invoiceSendInventedIdentity": "Račun se ne šalje — primarni gost ima izmisljene eVisitor podatke.",
     "createInvoice": "Kreiraj račun",
     "invoiceCreateSuccess": "Račun {number} je kreiran.",
     "invoiceCreateFailed": "Kreiranje računa nije uspjelo.",
@@ -424,7 +425,10 @@
     "evisitorFieldFacility": "Šifra objekta",
     "evisitorFieldStayDates": "Datumi boravka",
     "evisitorFieldAddress": "Adresa",
-    "evisitorFieldDateOfExpiry": "Datum isteka dokumenta"
+    "evisitorFieldDateOfExpiry": "Datum isteka dokumenta",
+    "evisitorIdentityInvented": "eVisitor podaci izmisljeni",
+    "evisitorIdentityInventedBadge": "izmisljeni podaci",
+    "evisitorIdentityInventedSaveFailed": "Spremanje oznake nije uspjelo."
   },
   "source": {
     "stay": "stay.hr"

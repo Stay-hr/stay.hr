@@ -167,6 +167,7 @@ jobs:
               apps.reservations.tests.test_phone_validation
               apps.reservations.tests.test_nationality_display
               apps.reservations.tests.test_evisitor_identity
+              apps.api.tests.test_reception_evisitor_identity
             )
           }
           add_billing() {
@@ -217,7 +218,10 @@ jobs:
             [[ "${{ needs.changes.outputs.reservations }}" == "true" ]] && add_reservations
             [[ "${{ needs.changes.outputs.billing }}" == "true" ]] && add_billing
             if [[ "${{ needs.changes.outputs.api }}" == "true" ]]; then
-              echo "api paths changed — full apps.api.tests still local until Actions parity"
+              suites+=(
+                apps.api.tests.test_reception_evisitor_identity
+              )
+              echo "api paths changed — reception eVisitor identity plus local apps.api.tests"
             fi
             if [[ "${{ needs.changes.outputs.integrations }}" == "true" ]]; then
               echo "integrations paths changed — apps.integrations.tests still local/nightly"
