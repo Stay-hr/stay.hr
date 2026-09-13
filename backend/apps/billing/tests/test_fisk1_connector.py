@@ -85,7 +85,20 @@ class Fisk1ConnectorTests(TestCase):
         cert_file.read.return_value = b"fake-p12"
         settings.certificate_file = cert_file
 
+        invoice.buyer_document_number = "87357644223"
+        invoice.save(update_fields=["buyer_document_number"])
+
         connector = Fisk1Connector(http_client=mock_client)
         result = connector.fiscalize(invoice, settings)
         self.assertEqual(result.jir, "ABC-DEF-123")
         mock_client.post.assert_called_once()
+
+        root = _sign_xml.call_args[0][0]
+        ns = "http://www.apis-it.hr/fin/2012/types/F73"
+        racun = root.find(f"{{{ns}}}Racun")
+        br_rac = racun.find(f"{{{ns}}}BrRac")
+        self.assertIsNotNone(root.find(f"{{{ns}}}Zaglavlje"))
+        self.assertEqual(br_rac.findtext(f"{{{ns}}}BrOznRac"), "1")
+        self.assertEqual(br_rac.findtext(f"{{{ns}}}OznPosPr"), "PP1")
+        self.assertEqual(racun.findtext(f"{{{ns}}}NakDost"), "false")
+        self.assertEqual(racun.findtext(f"{{{ns}}}OibPrimateljaRacuna"), "87357644223")

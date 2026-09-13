@@ -1,10 +1,11 @@
-import uuid
+import inspect
 from datetime import datetime
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 
+from apps.billing import tasks as billing_tasks
 from apps.billing.models import FiscalizationAttempt, Invoice, InvoiceLine, TenantFiscalSettings
 from apps.billing.services.fisk1 import FiscalResult
 from apps.billing.tasks import fiscalize_invoice
@@ -13,7 +14,7 @@ from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
 
 
-class FiscalizeInvoicePlatformTests(TestCase):
+class FiscalizeInvoiceStayNativeTests(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Platform Tenant", slug="uzorita")
         self.settings = TenantFiscalSettings.objects.create(
@@ -68,31 +69,34 @@ class FiscalizeInvoicePlatformTests(TestCase):
         cert_file.read.return_value = b"fake-p12"
         self.settings.certificate_file = cert_file
 
+    def test_task_source_does_not_call_fiskal_platform(self):
+        source = inspect.getsource(billing_tasks.fiscalize_invoice)
+        self.assertNotIn("fiscalize_via_platform", source)
+        self.assertNotIn("FISKAL_EXECUTION_ENABLED", source)
+        self.assertIn("Fisk1Connector", source)
+
     @override_settings(FISKAL_EXECUTION_ENABLED=True)
     @patch("apps.billing.services.fisk1.connector.render_invoice_pdf")
     @patch("apps.billing.services.fiskal_platform.submit.fiscalize_via_platform")
-    def test_fiscalize_invoice_uses_platform_when_enabled(self, mock_fiscalize, _pdf):
-        request_id = uuid.uuid4()
-        mock_fiscalize.return_value = FiscalResult(
-            jir="ABC-DEF-123",
-            request_snapshot=f"fiskal_request_id={request_id}",
-            response_snapshot="status=accepted",
-            fiskal_request_id=request_id,
-        )
+    @patch("apps.billing.services.fisk1.connector.Fisk1Connector.fiscalize")
+    def test_fiscalize_invoice_uses_fisk1_when_platform_flag_enabled(
+        self, mock_fisk1, mock_platform, _pdf
+    ):
+        mock_fisk1.return_value = FiscalResult(jir="STAY-JIR-1")
 
         result = fiscalize_invoice.run(self.invoice.pk)
 
         self.assertEqual(result["status"], "fiscalized")
-        self.assertEqual(result["jir"], "ABC-DEF-123")
-        mock_fiscalize.assert_called_once()
+        self.assertEqual(result["jir"], "STAY-JIR-1")
+        mock_fisk1.assert_called_once()
+        mock_platform.assert_not_called()
 
         self.invoice.refresh_from_db()
-        self.assertEqual(self.invoice.jir, "ABC-DEF-123")
+        self.assertEqual(self.invoice.jir, "STAY-JIR-1")
         self.assertEqual(self.invoice.fiscal_status, Invoice.FiscalStatus.FISCALIZED)
 
         attempt = FiscalizationAttempt.objects.get(invoice=self.invoice)
         self.assertTrue(attempt.success)
-        self.assertEqual(attempt.fiskal_request_id, request_id)
 
     @override_settings(FISKAL_EXECUTION_ENABLED=False)
     @patch("apps.billing.services.fisk1.connector.render_invoice_pdf")
