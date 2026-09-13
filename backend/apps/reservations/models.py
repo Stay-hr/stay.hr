@@ -282,6 +282,14 @@ class Guest(TenantScopedModel):
     is_primary = models.BooleanField(default=False)
     evisitor_status = models.CharField(max_length=16, blank=True, default="")
     evisitor_registration_id = models.UUIDField(null=True, blank=True)
+    evisitor_identity_invented_at = models.DateTimeField(null=True, blank=True)
+    evisitor_identity_invented_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="evisitor_identity_invented_guests",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

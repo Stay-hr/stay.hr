@@ -162,6 +162,15 @@ def deliver_invoice_link(invoice: Invoice) -> dict:
         return {"status": "skipped", "reason": "no_jir", "invoice_id": invoice_id}
 
     reservation: Reservation = invoice.reservation
+    from apps.reservations.evisitor_identity import invoice_delivery_blocked_guest
+
+    if invoice_delivery_blocked_guest(reservation) is not None:
+        return {
+            "status": "skipped",
+            "reason": "invented_identity",
+            "invoice_id": invoice_id,
+        }
+
     channels_info = build_message_channels(reservation)
     last = (channels_info.get("reply_channel") or "").strip()
     usable = bool(resolve_invoice_recipient(reservation))

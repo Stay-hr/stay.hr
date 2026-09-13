@@ -166,6 +166,7 @@ jobs:
               apps.reservations.tests.test_mrz_parse
               apps.reservations.tests.test_phone_validation
               apps.reservations.tests.test_nationality_display
+              apps.reservations.tests.test_evisitor_identity
             )
           }
           add_billing() {
@@ -202,6 +203,7 @@ jobs:
               apps.billing.tests.test_fiskal_payload
               apps.billing.tests.test_checkout_invoice_hook
               apps.communications.tests.test_invoice_link_distribute
+              apps.billing.tests.test_invoice_email
               apps.api.tests.test_reception_eporezna
             )
           }

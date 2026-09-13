@@ -114,6 +114,14 @@ def send_invoice_email(invoice_id: int) -> dict:
     invoice = _load_invoice(invoice_id)
     if invoice is None:
         return {"status": "missing", "invoice_id": invoice_id}
+    from apps.reservations.evisitor_identity import invoice_delivery_blocked_guest
+
+    if invoice_delivery_blocked_guest(invoice.reservation) is not None:
+        return {
+            "status": "skipped",
+            "reason": "invented_identity",
+            "invoice_id": invoice_id,
+        }
     return _deliver_invoice_email(invoice, resolve_invoice_recipient(invoice.reservation))
 
 
