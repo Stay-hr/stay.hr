@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.integrations.evisitor.exceptions import (
@@ -32,6 +33,13 @@ from apps.reservations.channels import reservation_channel
 from apps.reservations.reservation_units import joined_room_names
 
 
+def _evisitor_invented_by(request):
+    user = getattr(request, "user", None) if request is not None else None
+    if user is not None and getattr(user, "is_authenticated", False):
+        return user
+    return None
+
+
 def payment_status_key(raw: str) -> str:
     value = (raw or "").strip().lower()
     if not value:
@@ -53,6 +61,7 @@ class GuestLiteSerializer(serializers.ModelSerializer):
     evisitor_status = serializers.SerializerMethodField()
     evisitor_error = serializers.SerializerMethodField()
     evisitor_required = serializers.SerializerMethodField()
+    evisitor_identity_invented = serializers.SerializerMethodField()
     face_photo_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -77,8 +86,13 @@ class GuestLiteSerializer(serializers.ModelSerializer):
             "evisitor_status",
             "evisitor_error",
             "evisitor_required",
+            "evisitor_identity_invented",
+            "evisitor_identity_invented_at",
             "face_photo_url",
         )
+
+    def get_evisitor_identity_invented(self, obj) -> bool:
+        return obj.evisitor_identity_invented_at is not None
 
     def get_evisitor_status(self, obj) -> str:
         return evisitor_status_for_guest(obj)
@@ -626,17 +640,36 @@ _GUEST_WRITABLE_FIELDS = (
 
 class GuestDetailSerializer(serializers.ModelSerializer):
     face_photo_url = serializers.SerializerMethodField()
+    evisitor_identity_invented = serializers.BooleanField(required=False)
+    evisitor_identity_invented_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
     class Meta:
         model = Guest
-        fields = ("id", "reservation", "face_photo_url", *_GUEST_WRITABLE_FIELDS)
-        read_only_fields = ("id", "reservation", "face_photo_url")
+        fields = (
+            "id",
+            "reservation",
+            "face_photo_url",
+            "evisitor_identity_invented",
+            "evisitor_identity_invented_at",
+            *_GUEST_WRITABLE_FIELDS,
+        )
+        read_only_fields = (
+            "id",
+            "reservation",
+            "face_photo_url",
+            "evisitor_identity_invented_at",
+        )
 
     def get_face_photo_url(self, obj) -> str:
         request = self.context.get("request")
         if not request:
             return ""
         return guest_face_photo_url(obj, request)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["evisitor_identity_invented"] = instance.evisitor_identity_invented_at is not None
+        return data
 
     def validate_address(self, value):
         raw = (value or "").strip()
@@ -652,13 +685,42 @@ class GuestDetailSerializer(serializers.ModelSerializer):
         return result.normalized_address
 
     def update(self, instance, validated_data):
+        invented = validated_data.pop("evisitor_identity_invented", None)
         if validated_data.get("is_primary", False):
             (
                 Guest.objects.filter(reservation=instance.reservation)
                 .exclude(pk=instance.pk)
                 .update(is_primary=False)
             )
-        return super().update(instance, validated_data)
+        instance = super().update(instance, validated_data)
+        if invented is None:
+            return instance
+        actor = _evisitor_invented_by(self.context.get("request"))
+        if invented:
+            if instance.evisitor_identity_invented_at is None:
+                instance.evisitor_identity_invented_at = timezone.now()
+                instance.evisitor_identity_invented_by = actor
+                instance.save(
+                    update_fields=[
+                        "evisitor_identity_invented_at",
+                        "evisitor_identity_invented_by",
+                        "updated_at",
+                    ]
+                )
+        elif (
+            instance.evisitor_identity_invented_at is not None
+            or instance.evisitor_identity_invented_by_id
+        ):
+            instance.evisitor_identity_invented_at = None
+            instance.evisitor_identity_invented_by = None
+            instance.save(
+                update_fields=[
+                    "evisitor_identity_invented_at",
+                    "evisitor_identity_invented_by",
+                    "updated_at",
+                ]
+            )
+        return instance
 
 
 class GuestCreateSerializer(serializers.ModelSerializer):

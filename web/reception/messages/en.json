@@ -303,6 +303,7 @@
     "invoiceSendFailed": "Failed to send invoice.",
     "invoiceSendNoSmtp": "SMTP is not configured — invoice cannot be sent.",
     "invoiceNoPrimaryGuest": "No primary guest — email cannot be saved.",
+    "invoiceSendInventedIdentity": "Invoice is not sent — the primary guest has invented eVisitor data.",
     "createInvoice": "Create invoice",
     "invoiceCreateSuccess": "Invoice {number} created.",
     "invoiceCreateFailed": "Failed to create invoice.",
@@ -424,7 +425,10 @@
     "evisitorFieldFacility": "Facility code",
     "evisitorFieldStayDates": "Stay dates",
     "evisitorFieldAddress": "Address",
-    "evisitorFieldDateOfExpiry": "Document expiry date"
+    "evisitorFieldDateOfExpiry": "Document expiry date",
+    "evisitorIdentityInvented": "eVisitor data invented",
+    "evisitorIdentityInventedBadge": "invented data",
+    "evisitorIdentityInventedSaveFailed": "Could not save the invented-identity flag."
   },
   "source": {
     "stay": "stay.hr"

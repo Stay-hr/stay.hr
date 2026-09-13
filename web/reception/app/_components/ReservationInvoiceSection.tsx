@@ -81,6 +81,9 @@ export function ReservationInvoiceSection({ reservation, onReservationUpdated }:
   }, [reservation.invoice_summary, loadInvoice]);
 
   const recipientEmail = invoiceRecipientEmail(reservation);
+  const primaryInvented = Boolean(
+    reservation.guests?.some((guest) => guest.is_primary && guest.evisitor_identity_invented),
+  );
 
   async function postSendEmail(email?: string) {
     setSending(true);
@@ -107,6 +110,9 @@ export function ReservationInvoiceSection({ reservation, onReservationUpdated }:
         }
         if (data?.reason === "no_primary_guest") {
           throw new Error(t("invoiceNoPrimaryGuest"));
+        }
+        if (data?.reason === "invented_identity") {
+          throw new Error(t("invoiceSendInventedIdentity"));
         }
         if (data?.reason === "invalid_email") {
           throw new Error(t("invoiceEmailInvalid"));
@@ -243,7 +249,9 @@ export function ReservationInvoiceSection({ reservation, onReservationUpdated }:
         </p>
       ) : null}
 
-      {!recipientEmail ? (
+      {primaryInvented ? (
+        <p className="text-sm text-amber-800">{t("invoiceSendInventedIdentity")}</p>
+      ) : !recipientEmail ? (
         <p className="text-sm text-amber-800">{t("invoiceNoEmailHint")}</p>
       ) : null}
 
@@ -256,14 +264,16 @@ export function ReservationInvoiceSection({ reservation, onReservationUpdated }:
         >
           {t("downloadInvoicePdf")}
         </a>
-        <button
-          type="button"
-          className="btn btn-sm"
-          disabled={sending}
-          onClick={handleSendClick}
-        >
-          {sending ? tc("loading") : t("sendInvoiceEmail")}
-        </button>
+        {primaryInvented ? null : (
+          <button
+            type="button"
+            className="btn btn-sm"
+            disabled={sending}
+            onClick={handleSendClick}
+          >
+            {sending ? tc("loading") : t("sendInvoiceEmail")}
+          </button>
+        )}
       </div>
 
       <InvoiceEmailModal
