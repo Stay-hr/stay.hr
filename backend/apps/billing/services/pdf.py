@@ -97,17 +97,26 @@ def resolve_reservation_number(invoice: Invoice) -> str:
     return reservation_reference_for(invoice.reservation)
 
 
-def _qr_data_uri(invoice: Invoice) -> str:
+def _qr_png_bytes(invoice: Invoice) -> bytes:
     url = build_invoice_qr_url(invoice)
     if not url:
-        return ""
+        return b""
     qr = qrcode.QRCode(border=1, box_size=4)
     qr.add_data(url)
     qr.make(fit=True)
     image = qr.make_image(fill_color="black", back_color="white")
+    if hasattr(image, "convert"):
+        image = image.convert("RGB")
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return buffer.getvalue()
+
+
+def _qr_data_uri(invoice: Invoice) -> str:
+    png = _qr_png_bytes(invoice)
+    if not png:
+        return ""
+    encoded = base64.b64encode(png).decode("ascii")
     return f"data:image/png;base64,{encoded}"
 
 
@@ -162,9 +171,15 @@ def _replacement_document_display(invoice: Invoice) -> dict:
     }
 
 
-def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -> dict:
+def invoice_template_context(
+    invoice: Invoice,
+    settings: TenantFiscalSettings,
+    *,
+    qr_image_src: str | None = None,
+) -> dict:
     lines = list(invoice.lines.order_by("sort_order", "id"))
     issuer_display = _issuer_document_display(invoice, settings)
+    qr_src = _qr_data_uri(invoice) if qr_image_src is None else qr_image_src
     return {
         "invoice": invoice,
         "settings": settings,
@@ -190,7 +205,7 @@ def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -
         "issued_at_display": invoice.issued_at.strftime("%d.%m.%Y %H:%M"),
         "jir_display": invoice.jir or "u obradi",
         "zki_display": invoice.zki,
-        "qr_data_uri": _qr_data_uri(invoice),
+        "qr_data_uri": qr_src,
         "tourist_tax_clause": (
             "Turistička pristojba ne podliježe oporezivanju sukladno čl. 33. st. 3. Zakona o PDV-u."
         ),
@@ -199,8 +214,17 @@ def invoice_template_context(invoice: Invoice, settings: TenantFiscalSettings) -
     }
 
 
-def render_invoice_html(invoice: Invoice, settings: TenantFiscalSettings) -> str:
-    context = invoice_template_context(invoice, settings)
+def render_invoice_html(
+    invoice: Invoice,
+    settings: TenantFiscalSettings,
+    *,
+    qr_image_src: str | None = None,
+) -> str:
+    context = invoice_template_context(
+        invoice,
+        settings,
+        qr_image_src=qr_image_src,
+    )
     return render_to_string("billing/invoice.html", context)
 
 
@@ -218,9 +242,17 @@ def split_rendered_invoice_html(html: str) -> tuple[str, str]:
 
 def render_invoice_pdf(invoice: Invoice, settings: TenantFiscalSettings) -> None:
     _ensure_dejavu_fonts()
-    html = render_invoice_html(invoice, settings)
     buffer = io.BytesIO()
     temp_files: list[Path] = []
+    qr_image_src = ""
+    png = _qr_png_bytes(invoice)
+    if png:
+        qr_image_src = _write_temp_image(png, temp_files)
+    html = render_invoice_html(
+        invoice,
+        settings,
+        qr_image_src=qr_image_src,
+    )
 
     def link_callback(uri: str, rel: str) -> str:
         return _link_callback(uri, rel, temp_files=temp_files)

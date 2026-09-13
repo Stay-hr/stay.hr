@@ -171,12 +171,16 @@ class InvoicePdfTests(TestCase):
         render_invoice_pdf(self.invoice, self.settings)
         self.invoice.refresh_from_db()
         self.assertTrue(self.invoice.pdf_file)
+        pdf_bytes = Path(self.invoice.pdf_file.path).read_bytes()
+        self.assertTrue(
+            b"/Subtype /Image" in pdf_bytes or b"/Subtype/Image" in pdf_bytes,
+            "PDF must embed the QR as an image XObject",
+        )
 
         doc = pymupdf.open(self.invoice.pdf_file.path)
         text = "\n".join(page.get_text() for page in doc)
         self.assertIn(self.invoice.jir, text)
         self.assertNotIn("u obradi", text)
-        self.assertGreater(sum(len(page.get_images()) for page in doc), 0)
 
     @patch("apps.billing.services.pdf.pisa.CreatePDF")
     def test_render_invoice_pdf_registers_fonts(self, mock_create_pdf):
