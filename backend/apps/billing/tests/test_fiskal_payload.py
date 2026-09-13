@@ -74,7 +74,7 @@ class GuestInvoiceF1PayloadTests(TestCase):
         self.assertEqual(payload["zki"], "abc123zki")
         self.assertEqual(payload["business_premise_code"], "PP1")
         self.assertEqual(payload["payment_device_code"], "1")
-        self.assertEqual(payload["payment_code"], "T")
+        self.assertEqual(payload["payment_code"], "K")
         self.assertTrue(payload["in_vat_system"])
         self.assertEqual(payload["vat_rate"], "13.00")
         self.assertEqual(payload["vat_base"], "88.50")

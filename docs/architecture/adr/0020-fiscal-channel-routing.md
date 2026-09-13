@@ -29,7 +29,7 @@ Legal basis — [Zakon o fiskalizaciji, NN 89/2025](https://narodne-novine.nn.hr
 Existing code that must not be treated as the legal model:
 
 - `resolve_payment_method()` in [backend/apps/billing/services/payment.py](../../../backend/apps/billing/services/payment.py) infers `TRANSFER` from any unrecognized `payment_status` text, and treats `booking` in `source` / `payment_provider` as a payment method.
-- `fisk1_payment_code` maps both `BOOKING` and `TRANSFER` to CIS `NacinPlac=T`. The CIS payment code is **not** a channel discriminator.
+- `fisk1_payment_code` maps `TRANSFER` to CIS `NacinPlac=T`. Stay policy maps prepaid Booking.com (`Invoice.PaymentMethod.BOOKING`) to `NacinPlac=K` (card). The CIS payment code is **not** a channel discriminator.
 - Channex `payment_collect` is not persisted. `Invoice.PaymentMethod.BOOKING` is a collection channel, not a legal payment method.
 
 ## Decision
@@ -44,7 +44,7 @@ The three axes are:
 | Territory | ISO 3166-1 alpha-2 `buyer_country` (`HR` vs a known foreign country vs unknown) |
 | Legal payment | `CASH` / `CARD` / `TRANSFER` / `UNKNOWN`, plus `PaymentSignalConfidence` (`EXPLICIT` / `INFERRED` / `UNKNOWN`) |
 
-`booking` is **not** a legal payment method. Translation (`Booking + proven guest card → CARD + EXPLICIT`) stays outside this function and is blocked until a structured `payment_collect` is stored.
+`booking` is **not** a legal payment method. Stay policy translates prepaid Booking.com (`Payments by Booking.com`) to F73 `K` in `fisk1_payment_code`. The routing function still does not accept `booking`; a later adapter may pass `CARD + EXPLICIT`. Structured `payment_collect` remains a follow-up, not a blocker for this F73 mapping.
 
 ### Decision table
 
@@ -102,7 +102,7 @@ When the result is domestic B2B → `F1`, `requires_recipient_tax_id=True`. The 
 - `OibPrimateljaRacuna` on the F1 payload for domestic B2B (Art. 15(6)).
 - Freeze the chosen channel on `Invoice` at issue time so an issued document cannot be re-routed.
 - Wider `billing_recipient` (`tax_id`, `tax_id_country`, structured address) and a source for `BuyerStatusConfidence`.
-- Persist Channex `payment_collect` before any `Booking → CARD + EXPLICIT` translation.
+- Persist Channex `payment_collect` so routing can pass `CARD + EXPLICIT` instead of inferring from `source` / `payment_provider`. F73 already sends Booking prepaid as `K`.
 
 ## Implementation
 
