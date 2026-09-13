@@ -77,11 +77,12 @@ class FiscalizeInvoiceStayNativeTests(TestCase):
         self.assertIn("Fisk1Connector", source)
 
     @override_settings(FISKAL_EXECUTION_ENABLED=True)
+    @patch("apps.communications.invoice_link_distribute.deliver_invoice_link")
     @patch("apps.billing.services.fisk1.connector.render_invoice_pdf")
     @patch("apps.billing.services.fiskal_platform.submit.fiscalize_via_platform")
     @patch("apps.billing.services.fisk1.connector.Fisk1Connector.fiscalize")
     def test_fiscalize_invoice_uses_fisk1_when_platform_flag_enabled(
-        self, mock_fisk1, mock_platform, _pdf
+        self, mock_fisk1, mock_platform, _pdf, mock_deliver
     ):
         mock_fisk1.return_value = FiscalResult(jir="STAY-JIR-1")
 
@@ -91,6 +92,7 @@ class FiscalizeInvoiceStayNativeTests(TestCase):
         self.assertEqual(result["jir"], "STAY-JIR-1")
         mock_fisk1.assert_called_once()
         mock_platform.assert_not_called()
+        mock_deliver.assert_called_once()
 
         self.invoice.refresh_from_db()
         self.assertEqual(self.invoice.jir, "STAY-JIR-1")
@@ -100,9 +102,10 @@ class FiscalizeInvoiceStayNativeTests(TestCase):
         self.assertTrue(attempt.success)
 
     @override_settings(FISKAL_EXECUTION_ENABLED=False)
+    @patch("apps.communications.invoice_link_distribute.deliver_invoice_link")
     @patch("apps.billing.services.fisk1.connector.render_invoice_pdf")
     @patch("apps.billing.services.fisk1.connector.Fisk1Connector.fiscalize")
-    def test_fiscalize_invoice_uses_fisk1_when_disabled(self, mock_fiscalize, _pdf):
+    def test_fiscalize_invoice_uses_fisk1_when_disabled(self, mock_fiscalize, _pdf, mock_deliver):
         mock_fiscalize.return_value = FiscalResult(jir="LEGACY-JIR")
 
         result = fiscalize_invoice.run(self.invoice.pk)
@@ -110,10 +113,12 @@ class FiscalizeInvoiceStayNativeTests(TestCase):
         self.assertEqual(result["status"], "fiscalized")
         self.assertEqual(result["jir"], "LEGACY-JIR")
         mock_fiscalize.assert_called_once()
+        mock_deliver.assert_called_once()
 
+    @patch("apps.communications.invoice_link_distribute.deliver_invoice_link")
     @patch("apps.billing.services.fisk1.connector.render_invoice_pdf")
     @patch("apps.billing.services.fisk1.connector.Fisk1Connector.fiscalize")
-    def test_failure_stores_cis_response_snapshot(self, mock_fiscalize, _pdf):
+    def test_failure_stores_cis_response_snapshot(self, mock_fiscalize, _pdf, mock_deliver):
         mock_fiscalize.side_effect = FiscalizationError(
             "CIS HTTP 500: s006 Sistemska pogreška prilikom obrade zahtjeva.",
             request_snapshot="<req/>",
@@ -128,3 +133,4 @@ class FiscalizeInvoiceStayNativeTests(TestCase):
         self.assertIn("s006", attempt.error_message)
         self.assertIn("s006", attempt.response_snapshot)
         self.assertEqual(attempt.request_snapshot, "<req/>")
+        mock_deliver.assert_not_called()

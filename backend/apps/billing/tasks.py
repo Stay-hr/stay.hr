@@ -42,10 +42,23 @@ def fiscalize_invoice(self, invoice_id: int) -> dict:
     try:
         result = Fisk1Connector().fiscalize(invoice, settings)
         apply_fiscalization_result(invoice, settings, result, attempt_no=attempt_no)
+        delivery = {"status": "skipped", "reason": "not_attempted"}
+        try:
+            from apps.communications.invoice_link_distribute import deliver_invoice_link
+
+            invoice.refresh_from_db()
+            delivery = deliver_invoice_link(invoice)
+        except Exception:
+            logger.exception(
+                "invoice link delivery failed invoice_id=%s",
+                invoice_id,
+            )
+            delivery = {"status": "failed", "invoice_id": invoice_id}
         return {
             "status": "fiscalized",
             "invoice_id": invoice_id,
             "jir": result.jir,
+            "delivery": delivery,
         }
     except Exception as exc:
         logger.exception("Fiscalization failed invoice_id=%s", invoice_id)

@@ -129,8 +129,7 @@ class ReservationInvoiceView(TenantAPIView, InvoiceSerializerMixin, APIView):
             ReplacementInProgress,
         )
         from apps.billing.services.issue import issue_guest_invoice
-        from apps.billing.tasks import fiscalize_invoice, send_invoice_email_task
-        from apps.communications.invoice_email import resolve_invoice_recipient
+        from apps.billing.tasks import fiscalize_invoice
 
         try:
             invoice = issue_guest_invoice(reservation)
@@ -172,8 +171,6 @@ class ReservationInvoiceView(TenantAPIView, InvoiceSerializerMixin, APIView):
             )
 
         fiscalize_invoice.delay(invoice.pk)
-        if resolve_invoice_recipient(reservation):
-            send_invoice_email_task.delay(invoice.pk)
 
         return Response(self.serialize_invoice(invoice), status=status.HTTP_201_CREATED)
 

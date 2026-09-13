@@ -15,7 +15,7 @@ Public invoice portal is the **canonical guest entry point**. The PDF endpoint i
 |-------|----------------|
 | Guest portal | UX wrapper (summary, Download, Print, 404) |
 | `render_invoice_html()` / `billing/invoice.html` | Legal invoice layout (single source for HTML and PDF) |
-| Checkout / fiscalize | Unchanged — issue and fiscalize remain separate |
+| Checkout / fiscalize | Issue and fiscalize stay separate; delivery waits for JIR |
 
 Outbound templates must pass only `invoice_url`. Do not put absolute PDF URLs in email or WhatsApp messages.
 
@@ -28,5 +28,6 @@ Outbound templates must pass only `invoice_url`. Do not put absolute PDF URLs in
 | `billing/invoice_guest_portal.html` | Portal chrome |
 | `billing/invoice.html` | Legal document (PDF + portal body) |
 | `communications/invoice_email.py` | Builds portal URL only |
+| `communications/invoice_link_distribute.py` | After JIR: last inbound channel + usable email |
 
 Vanity URL (`stay.hr/invoices/{token}`) is deferred; token stays the same.

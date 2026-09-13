@@ -98,7 +98,7 @@ class CheckoutInvoiceHookTests(TestCase):
         self.assertEqual(reservation.status, Reservation.Status.CHECKED_OUT)
         self.assertIsNotNone(resolve_effective_invoice(reservation))
         mock_fiscalize.assert_called_once()
-        mock_email.assert_called_once()
+        mock_email.assert_not_called()
 
     @patch("apps.reservations.checkout.checkout_reservation_guests_in_evisitor")
     def test_checkout_without_vat_does_not_create_invoice(self, mock_evisitor_checkout):

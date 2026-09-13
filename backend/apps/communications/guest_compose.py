@@ -71,6 +71,7 @@ HINT_GUEST_WEB_CHECKIN_REMINDER = "guest web checkin reminder"
 HINT_GUEST_PORTAL_LINK = "guest_portal_link"
 HINT_GUEST_PORTAL_LINK_URL = "guest_portal_link url"
 HINT_GUEST_PAYMENT_LINK = "guest_payment_link"
+HINT_INVOICE_LINK = "invoice_link"
 
 FOOTER = "Managed by stay.hr — https://stay.hr/"
 

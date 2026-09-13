@@ -78,15 +78,12 @@ def perform_reservation_checkout(
         ReplacementInProgress,
     )
     from apps.billing.services.issue import issue_guest_invoice, should_issue_invoice_on_checkout
-    from apps.billing.tasks import fiscalize_invoice, send_invoice_email_task
-    from apps.communications.invoice_email import resolve_invoice_recipient
+    from apps.billing.tasks import fiscalize_invoice
 
     if should_issue_invoice_on_checkout(reservation):
         try:
             invoice = issue_guest_invoice(reservation)
             fiscalize_invoice.delay(invoice.pk)
-            if resolve_invoice_recipient(reservation):
-                send_invoice_email_task.delay(invoice.pk)
         except BillingRecipientIssuanceDeferred:
             logger.info(
                 "Checkout invoice deferred reservation_id=%s reason=%s",
