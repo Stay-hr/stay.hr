@@ -198,6 +198,8 @@ jobs:
               apps.billing.tests.test_fiscalize_invoice_platform
               apps.billing.tests.test_zki
               apps.billing.tests.test_invoice_pdf
+              apps.billing.tests.test_payment
+              apps.billing.tests.test_fiskal_payload
               apps.billing.tests.test_checkout_invoice_hook
               apps.communications.tests.test_invoice_link_distribute
               apps.api.tests.test_reception_eporezna

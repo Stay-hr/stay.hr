@@ -26,8 +26,8 @@ def build_payment_note(reservation: Reservation, payment_method: Invoice.Payment
     if payment_method == Invoice.PaymentMethod.BOOKING:
         provider = reservation.payment_provider or "Booking.com"
         return (
-            f"Plaćeno u cijelosti online putem posrednika {provider}. "
-            "Način plaćanja: TRANSAKCIJSKI RAČUN."
+            f"Plaćeno karticom putem posrednika {provider}. "
+            "Način plaćanja: KARTICE."
         )
     if payment_method == Invoice.PaymentMethod.CASH:
         return "Plaćeno gotovinom."
@@ -43,7 +43,7 @@ def fisk1_payment_code(payment_method: Invoice.PaymentMethod) -> str:
         Invoice.PaymentMethod.CASH: "G",
         Invoice.PaymentMethod.CARD: "K",
         Invoice.PaymentMethod.TRANSFER: "T",
-        Invoice.PaymentMethod.BOOKING: "T",
+        Invoice.PaymentMethod.BOOKING: "K",
         Invoice.PaymentMethod.OTHER: "O",
     }
     return mapping[payment_method]
