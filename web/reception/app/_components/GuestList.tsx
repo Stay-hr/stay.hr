@@ -63,6 +63,7 @@ export function GuestList({
   const t = useTranslations("guest");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [submittingGuestId, setSubmittingGuestId] = useState<number | null>(null);
+  const [savingInventedGuestId, setSavingInventedGuestId] = useState<number | null>(null);
   const [guestMessages, setGuestMessages] = useState<Record<number, GuestMessage>>({});
 
   function evisitorStatusLabel(status: string): string {
@@ -314,6 +315,39 @@ export function GuestList({
     }
   }
 
+  async function handleInventedToggle(guest: GuestLite, invented: boolean) {
+    setSavingInventedGuestId(guest.id);
+    setGuestMessages((current) => {
+      const next = { ...current };
+      delete next[guest.id];
+      return next;
+    });
+
+    try {
+      const res = await fetch(
+        `/api/stay/reception/reservations/${reservationId}/guests/${guest.id}/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ evisitor_identity_invented: invented }),
+        },
+      );
+      if (!res.ok) {
+        setGuestMessages({
+          [guest.id]: { type: "error", text: t("evisitorIdentityInventedSaveFailed") },
+        });
+        return;
+      }
+      await onGuestUpdated?.();
+    } catch {
+      setGuestMessages({
+        [guest.id]: { type: "error", text: t("evisitorIdentityInventedSaveFailed") },
+      });
+    } finally {
+      setSavingInventedGuestId(null);
+    }
+  }
+
   return (
     <ul className="divide-y divide-stay-border rounded-xl border border-stay-border">
       {guests.map((guest) => {
@@ -326,8 +360,10 @@ export function GuestList({
         const showCheckoutRetry = canShowEvisitorCheckoutRetry(guest, evisitorStatus);
         const showBadge = showEvisitorBadge(guest, evisitorStatus);
         const isSubmitting = submittingGuestId === guest.id;
+        const isSavingInvented = savingInventedGuestId === guest.id;
         const guestMessage = guestMessages[guest.id];
         const isHighlighted = Boolean(highlightGuestIds?.includes(guest.id));
+        const invented = Boolean(guest.evisitor_identity_invented);
 
         return (
           <li
@@ -357,6 +393,11 @@ export function GuestList({
                 {showBadge ? (
                   <span className={evisitorStatusBadgeClass(guest, evisitorStatus)}>
                     {evisitorDisplayStatus(guest, evisitorStatus)}
+                  </span>
+                ) : null}
+                {invented ? (
+                  <span className="badge text-xs bg-amber-50 text-amber-800 ring-1 ring-amber-200">
+                    {t("evisitorIdentityInventedBadge")}
                   </span>
                 ) : null}
               </span>
@@ -402,6 +443,20 @@ export function GuestList({
                 ) : (
                   <p className="text-sm text-muted">{t("noExtraData")}</p>
                 )}
+
+                <label className="mt-3 flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={invented}
+                    disabled={isSavingInvented}
+                    onChange={(event) => {
+                      event.stopPropagation();
+                      void handleInventedToggle(guest, event.target.checked);
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                  {t("evisitorIdentityInvented")}
+                </label>
 
                 {guestMessage ? (
                   <div

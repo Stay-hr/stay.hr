@@ -316,6 +316,10 @@ class Guest(TenantScopedModel):
     def __str__(self) -> str:
         return self.name or f"{self.first_name} {self.last_name}".strip()
 
+    @property
+    def evisitor_identity_invented(self) -> bool:
+        return self.evisitor_identity_invented_at is not None
+
     def save(self, *args, **kwargs):
         full = f"{self.first_name} {self.last_name}".strip()
         if full:
