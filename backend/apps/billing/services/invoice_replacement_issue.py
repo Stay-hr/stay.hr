@@ -1,7 +1,8 @@
 """Privileged replacement invoice writers (ADR 0022).
 
-Storno is a new negative Invoice in the normal tenant sequence.
-No CIS submit and no email inside the transaction.
+Storno is a new negative Invoice; completion is a new positive Invoice.
+Both use the normal tenant sequence. No CIS submit and no email inside
+the transaction.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import uuid
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from apps.billing.exceptions import InvoiceReplacementError
 from apps.billing.models import Invoice, InvoiceLine, InvoiceReplacement
@@ -17,10 +19,13 @@ from apps.billing.services.invoice_replacement import (
     InvoiceLineSnapshot,
     ReplacementCaseStatus,
     ReplacementRejectReason,
+    can_complete,
     can_issue_storno,
     expected_issuer_oib,
     is_structurally_ready,
+    mirror_invoice_snapshot,
     negate_invoice_snapshot,
+    snapshot_replacement_recipient_buyer,
 )
 from apps.billing.services.invoice_replacement_service import (
     _lock_case,
@@ -179,4 +184,111 @@ def issue_replacement_storno(*, case) -> Invoice:
         raise InvoiceReplacementError(
             "Storno invoice could not be persisted.",
             reason=ReplacementRejectReason.STORNO_ALREADY_EXISTS.value,
+        ) from exc
+
+
+def complete_replacement(*, case, actor) -> Invoice:
+    if actor is None or getattr(actor, "pk", None) is None:
+        _raise(ReplacementRejectReason.INVALID_RECIPIENT, "Complete requires an actor.")
+    try:
+        with transaction.atomic():
+            reservation = Reservation.objects.select_for_update().get(pk=case.reservation_id)
+            locked_case = _lock_case(case)
+            if locked_case.reservation_id != reservation.pk:
+                _raise(ReplacementRejectReason.SCOPE_MISMATCH, "Case reservation mismatch.")
+            if locked_case.replacement_invoice_id:
+                return Invoice.objects.select_related("reservation").get(
+                    pk=locked_case.replacement_invoice_id
+                )
+
+            recipient = _lock_recipient(locked_case)
+            reject = can_complete(
+                status=ReplacementCaseStatus(locked_case.status),
+                storno_invoice_id=locked_case.storno_invoice_id,
+                replacement_invoice_id=locked_case.replacement_invoice_id,
+            )
+            if reject is not None:
+                _raise(reject, "Cannot complete this replacement case.")
+            if recipient is None or not is_structurally_ready(recipient.as_draft()):
+                _raise(
+                    ReplacementRejectReason.RECIPIENT_NOT_READY,
+                    "Recipient must be structurally READY before completion.",
+                )
+            if recipient.identity_confidence != recipient.IdentityConfidence.VERIFIED:
+                _raise(
+                    ReplacementRejectReason.RECIPIENT_NOT_VERIFIED,
+                    "Recipient must be VERIFIED before completion.",
+                )
+
+            original = Invoice.objects.prefetch_related("lines").get(
+                pk=locked_case.original_invoice_id
+            )
+            expected_oib = expected_issuer_oib(
+                original_issuer_oib=original.issuer_oib,
+                recorded_issuer_oib=locked_case.original_issuer_oib,
+            )
+            if not expected_oib:
+                _raise(
+                    ReplacementRejectReason.ISSUER_OIB_EVIDENCE_REQUIRED,
+                    "Expected issuer OIB is unknown; cannot complete replacement.",
+                )
+
+            settings = get_fiscal_settings_for_reservation(reservation)
+            validate_fiscal_settings(settings)
+            issuer_context = snapshot_issuer_document_context(settings, reservation)
+            if issuer_context["issuer_oib"] != expected_oib:
+                _raise(
+                    ReplacementRejectReason.ISSUER_OIB_MISMATCH,
+                    "Current issuer OIB does not match the original legal issuer.",
+                )
+
+            economic = mirror_invoice_snapshot(_snapshot_invoice(original))
+            buyer = snapshot_replacement_recipient_buyer(recipient.as_draft())
+            issued_at = tenant_local_now(reservation.tenant)
+            seq, invoice_number = _next_invoice_number(settings)
+            zki = calculate_zki(
+                oib=expected_oib,
+                issued_at=issued_at,
+                invoice_number=str(seq),
+                business_premise_code=settings.business_premise_code,
+                payment_device_code=settings.payment_device_code,
+                total=economic.total,
+                private_key=load_fiscal_private_key(settings),
+            )
+            replacement = Invoice.objects.create(
+                tenant=reservation.tenant,
+                reservation=reservation,
+                invoice_number=invoice_number,
+                sequence_number=seq,
+                issued_at=issued_at,
+                buyer_name=buyer.buyer_name,
+                buyer_document_number=buyer.buyer_document_number,
+                buyer_address=buyer.buyer_address,
+                buyer_country=buyer.buyer_country,
+                payment_method=economic.payment_method,
+                payment_note=economic.payment_note,
+                subtotal=economic.subtotal,
+                vat_amount=economic.vat_amount,
+                total=economic.total,
+                currency=economic.currency,
+                zki=zki,
+                fiscal_status=Invoice.FiscalStatus.PENDING,
+                public_access_token=uuid.uuid4(),
+                **issuer_context,
+            )
+            _persist_snapshot_lines(replacement, economic)
+            locked_case.replacement_invoice = replacement
+            locked_case.status = InvoiceReplacement.Status.COMPLETED
+            locked_case.completed_by = actor
+            locked_case.completed_at = timezone.now()
+            locked_case.save()
+            render_invoice_pdf(replacement, settings)
+            return replacement
+    except IntegrityError as exc:
+        refreshed = InvoiceReplacement.objects.filter(pk=case.pk).first()
+        if refreshed is not None and refreshed.replacement_invoice_id:
+            return Invoice.objects.get(pk=refreshed.replacement_invoice_id)
+        raise InvoiceReplacementError(
+            "Replacement invoice could not be persisted.",
+            reason=ReplacementRejectReason.REPLACEMENT_ALREADY_EXISTS.value,
         ) from exc

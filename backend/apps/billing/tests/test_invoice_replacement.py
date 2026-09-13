@@ -26,6 +26,7 @@ from apps.billing.services.invoice_replacement import (
     mirror_invoice_snapshot,
     negate_invoice_snapshot,
     ready_missing_fields,
+    snapshot_replacement_recipient_buyer,
 )
 
 
@@ -97,6 +98,13 @@ class ReplacementRecipientCompletenessTests(SimpleTestCase):
     def test_identity_edit_is_detected(self):
         self.assertTrue(identity_changed(_hr_ready(), _hr_ready(tax_id="11111111111")))
         self.assertFalse(identity_changed(_hr_ready(), _hr_ready(phone="091")))
+
+    def test_replacement_buyer_snapshot_uses_company_identity(self):
+        snapshot = snapshot_replacement_recipient_buyer(_hr_ready())
+        self.assertEqual(snapshot.buyer_name, "PRO AUTOMATIKA")
+        self.assertEqual(snapshot.buyer_document_number, "87357644223")
+        self.assertEqual(snapshot.buyer_address, "Novo naselje 19E, 22214 Bilice")
+        self.assertEqual(snapshot.buyer_country, "Hrvatska")
 
 
 class ReplacementTransitionTests(SimpleTestCase):

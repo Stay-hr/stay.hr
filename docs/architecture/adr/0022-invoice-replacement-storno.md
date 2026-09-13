@@ -66,7 +66,7 @@ No hard delete of issued `Invoice` / case / recipient. Audit actor FKs use `PROT
 - Contract: [backend/apps/billing/services/invoice_replacement.py](../../../backend/apps/billing/services/invoice_replacement.py)
 - ORM: [backend/apps/billing/models.py](../../../backend/apps/billing/models.py)
 - Commands: [backend/apps/billing/services/invoice_replacement_service.py](../../../backend/apps/billing/services/invoice_replacement_service.py) — open / update / verify / cancel; no Invoice writes
-- Storno: [backend/apps/billing/services/invoice_replacement_issue.py](../../../backend/apps/billing/services/invoice_replacement_issue.py) — `issue_replacement_storno`; local ZKI, no CIS, no email
-- Tests: [backend/apps/billing/tests/test_invoice_replacement.py](../../../backend/apps/billing/tests/test_invoice_replacement.py), [test_invoice_replacement_model.py](../../../backend/apps/billing/tests/test_invoice_replacement_model.py), [test_invoice_replacement_service.py](../../../backend/apps/billing/tests/test_invoice_replacement_service.py), [test_invoice_replacement_storno.py](../../../backend/apps/billing/tests/test_invoice_replacement_storno.py)
+- Storno / complete: [backend/apps/billing/services/invoice_replacement_issue.py](../../../backend/apps/billing/services/invoice_replacement_issue.py) — `issue_replacement_storno`, `complete_replacement`; local ZKI, no CIS, no email
+- Tests: [backend/apps/billing/tests/test_invoice_replacement.py](../../../backend/apps/billing/tests/test_invoice_replacement.py), [test_invoice_replacement_model.py](../../../backend/apps/billing/tests/test_invoice_replacement_model.py), [test_invoice_replacement_service.py](../../../backend/apps/billing/tests/test_invoice_replacement_service.py), [test_invoice_replacement_storno.py](../../../backend/apps/billing/tests/test_invoice_replacement_storno.py), [test_invoice_replacement_complete.py](../../../backend/apps/billing/tests/test_invoice_replacement_complete.py)
 
-No replacement completion, admin API, or `#1159` write in this slice.
+No admin API or `#1159` write in this slice.
