@@ -24,6 +24,11 @@ def issued_at_for_f1(invoice: Invoice) -> datetime:
     return _tenant_wall_clock(invoice, invoice.issued_at)
 
 
+def format_issued_at_display(invoice: Invoice) -> str:
+    """Invoice document clock, same local instant CIS stored in DatVrijeme."""
+    return issued_at_for_f1(invoice).strftime("%d.%m.%Y %H:%M")
+
+
 def message_at_for_f1(invoice: Invoice) -> datetime:
     """Zaglavlje DatumVrijeme: when Stay submits the CIS message."""
     return _tenant_wall_clock(invoice, timezone.now())
