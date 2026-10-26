@@ -6,7 +6,9 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.billing.models import Invoice
+from apps.communications.guest_message_timeline import timeline_for_reservation
 from apps.communications.invoice_email import send_invoice_email, send_invoice_email_to
+from apps.communications.models import GuestMessageDraft, GuestOutboundMessage
 from apps.properties.models import Property
 from apps.reservations.models import Guest, Reservation
 from apps.tenants.models import Tenant, TenantReceptionSettings
@@ -62,6 +64,9 @@ class InvoiceEmailTests(TestCase):
         result = send_invoice_email(invoice.pk)
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "no_recipient")
+        self.assertFalse(
+            GuestOutboundMessage.objects.filter(reservation=invoice.reservation).exists()
+        )
 
     @patch("apps.communications.invoice_email.EmailMultiAlternatives")
     @patch("apps.communications.invoice_email._smtp_connection_for_reservation")
@@ -81,6 +86,17 @@ class InvoiceEmailTests(TestCase):
         self.assertNotIn(pdf_path, text_body)
         invoice.refresh_from_db()
         self.assertEqual(invoice.email_recipient, "guest@example.com")
+        outbound = GuestOutboundMessage.objects.get(reservation=invoice.reservation)
+        self.assertEqual(outbound.channel, "email")
+        self.assertEqual(outbound.status, "sent")
+        self.assertEqual(outbound.to_email, "guest@example.com")
+        self.assertIn(portal_path, outbound.body_text)
+        self.assertNotIn(pdf_path, outbound.body_text)
+        draft = GuestMessageDraft.objects.get(pk=outbound.draft_id)
+        self.assertEqual(draft.hint, "invoice_link")
+        self.assertEqual(draft.channel, "email")
+        timeline = timeline_for_reservation(invoice.reservation)
+        self.assertTrue(any(portal_path in (item.get("body_text") or "") for item in timeline))
 
     @patch("apps.communications.invoice_email.EmailMultiAlternatives")
     @patch("apps.communications.invoice_email._smtp_connection_for_reservation")
@@ -115,6 +131,9 @@ class InvoiceEmailTests(TestCase):
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "invented_identity")
         mock_email_cls.assert_not_called()
+        self.assertFalse(
+            GuestOutboundMessage.objects.filter(reservation=invoice.reservation).exists()
+        )
 
     @patch("apps.communications.invoice_email.EmailMultiAlternatives")
     @patch("apps.communications.invoice_email._smtp_connection_for_reservation")

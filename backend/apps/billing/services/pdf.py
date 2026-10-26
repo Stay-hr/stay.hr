@@ -22,6 +22,7 @@ from apps.billing.services.issuer_context import (
     has_frozen_issuer_context,
     reservation_reference_for,
 )
+from apps.billing.services.fisk1.timing import format_issued_at_display
 from apps.billing.services.qr import build_invoice_qr_url
 
 _STYLE_RE = re.compile(r"<style[^>]*>(.*?)</style>", re.IGNORECASE | re.DOTALL)
@@ -211,7 +212,7 @@ def invoice_template_context(
         "subtotal": _format_money(invoice.subtotal),
         "vat_amount": _format_money(invoice.vat_amount),
         "total": _format_money(invoice.total),
-        "issued_at_display": invoice.issued_at.strftime("%d.%m.%Y %H:%M"),
+        "issued_at_display": format_issued_at_display(invoice),
         "jir_display": invoice.jir or "u obradi",
         "zki_display": invoice.zki,
         "qr_data_uri": qr_src,

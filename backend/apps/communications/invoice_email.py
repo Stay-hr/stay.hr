@@ -74,6 +74,56 @@ def _public_invoice_url(invoice: Invoice) -> str:
     return f"{base}/api/v1/public/invoices/{invoice.public_access_token}/"
 
 
+def record_sent_invoice_email(invoice: Invoice, recipient: str, body_text: str):
+    """Write the sent invoice email into the guest message thread. Does not send."""
+    from apps.communications.canonical_store import create_with_canonical
+    from apps.communications.guest_compose import HINT_INVOICE_LINK
+    from apps.communications.guest_language_context import LanguageMode
+    from apps.communications.guest_language_resolver import GuestLanguageResolver
+    from apps.communications.models import (
+        GuestMessageChannel,
+        GuestMessageDraft,
+        GuestMessageIntent,
+        GuestOutboundMessage,
+        GuestOutboundMessageStatus,
+    )
+    from apps.reservations.models import ReservationVersionScope
+    from apps.reservations.reservation_version import touch_reservation_version
+
+    reservation = invoice.reservation
+    ctx = GuestLanguageResolver.resolve(reservation, mode=LanguageMode.PROACTIVE)
+    text = body_text or ""
+    draft = GuestMessageDraft.objects.create(
+        tenant_id=reservation.tenant_id,
+        reservation=reservation,
+        intent=GuestMessageIntent.CUSTOM,
+        hint=HINT_INVOICE_LINK,
+        llm_body_text=text,
+        final_body_text=text,
+        language=(ctx.language or "")[:8],
+        language_source=ctx.source.value,
+        language_reason=(ctx.reason or "")[:255],
+        channel=GuestMessageChannel.EMAIL,
+        sent_at=invoice.email_sent_at or timezone.now(),
+    )
+    outbound = create_with_canonical(
+        GuestOutboundMessage,
+        tenant_id=reservation.tenant_id,
+        reservation=reservation,
+        draft=draft,
+        channel=GuestMessageChannel.EMAIL,
+        body_text=text,
+        status=GuestOutboundMessageStatus.SENT,
+        to_email=recipient,
+    )
+    touch_reservation_version(
+        reservation.pk,
+        ReservationVersionScope.MESSAGES,
+        reason="invoice_email",
+    )
+    return outbound
+
+
 def _load_invoice(invoice_id: int) -> Invoice | None:
     try:
         return Invoice.objects.select_related(
@@ -121,6 +171,7 @@ def _deliver_invoice_email(invoice: Invoice, recipient: str | None) -> dict:
     invoice.email_recipient = recipient
     invoice.email_sent_at = timezone.now()
     invoice.save(update_fields=["email_recipient", "email_sent_at", "updated_at"])
+    record_sent_invoice_email(invoice, recipient, text_body)
     logger.info(
         "invoice_sent invoice_id=%s reservation_id=%s recipient=%s",
         invoice_id,

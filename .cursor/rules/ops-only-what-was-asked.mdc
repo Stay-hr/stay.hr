@@ -12,6 +12,7 @@ U ops / reception / eVisitor / WhatsApp / OCR radu:
 - Ako je traženo npr. „OCR + match + eVisitor”, stani nakon eVisitor **prijave** — ne radi checkout.
 - Checkout raditi **samo** kad korisnik kaže checkout / odjava — ne zbog `check_out` datuma, ne noću, ne „jer je danas odlazak”.
 - Ako trebaš sljedeći korak koji nije naveden: **pitaj**, ne izvršavaj.
+- Ako za goste **nema dokumenata**: prvo obriši sve placeholdere bez imena (`Novi gost` i isto takvi prazni sekundarni gosti) i spusti `adults_count` / `persons_count` na preostale. Tek onda invent, eVisitor, odjava ili račun — i to samo za goste koji su ostali. Ne izmišljaj identitet drugom gostu koji nema dokument.
 
 ## Primjeri
 
@@ -29,4 +30,12 @@ U ops / reception / eVisitor / WhatsApp / OCR radu:
 
 ✅ Traženo: stavi doc faces za #1150
    Agent samo dokumenti + face cutovi
+```
+
+```text
+❌ Nema dokumenata, a=2, drugi gost je „Novi gost”
+   Agent izmisli i drugog gosta pa ga prijavi
+
+✅ Nema dokumenata, a=2, drugi gost je „Novi gost”
+   Agent prvo obriše „Novi gost”, adults/persons=1, pa tek onda ostale tražene radnje na imenovanom gostu
 ```

@@ -17,6 +17,7 @@ from apps.api.reception_views import ReceptionReadView, ReceptionWriteView
 from apps.api.views import TenantAPIView
 from apps.billing.models import Invoice, TenantFiscalSettings
 from apps.billing.services.invoice_resolution import resolve_effective_invoice
+from apps.billing.services.fisk1.timing import format_issued_at_display
 from apps.billing.services.pdf import render_invoice_html, split_rendered_invoice_html
 from apps.communications.invoice_email import send_invoice_email
 from apps.reservations.models import Guest, Reservation
@@ -296,7 +297,7 @@ class PublicInvoiceHtmlView(InvoiceSerializerMixin, APIView):
                 "invoice_styles": invoice_styles,
                 "invoice_body_html": invoice_body_html,
                 "property_name": property_name,
-                "issued_at_display": invoice.issued_at.strftime("%d.%m.%Y %H:%M"),
+                "issued_at_display": format_issued_at_display(invoice),
                 "amount_display": f"{total_display} {invoice.currency}",
                 "page_title": page_title,
             },

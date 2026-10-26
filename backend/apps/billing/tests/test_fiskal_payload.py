@@ -6,10 +6,13 @@ from zoneinfo import ZoneInfo
 from django.test import TestCase
 
 from apps.billing.models import Invoice, InvoiceLine, TenantFiscalSettings
+from apps.billing.services.fisk1.timing import format_issued_at_display
 from apps.billing.services.fiskal_platform.payload import (
     build_guest_invoice_f1_payload,
     issued_at_for_f1,
 )
+from apps.billing.services.pdf import invoice_template_context
+from apps.billing.services.qr import build_invoice_qr_url
 from apps.properties.models import Property
 from apps.reservations.models import Reservation
 from apps.tenants.models import Tenant
@@ -103,6 +106,26 @@ class GuestInvoiceF1PayloadTests(TestCase):
             issued_at_for_f1(self.invoice).tzinfo,
             ZoneInfo("Europe/Zagreb"),
         )
+
+    def test_qr_datv_uses_local_issued_at_not_utc(self):
+        self.tenant.timezone = "Europe/Zagreb"
+        self.tenant.save(update_fields=["timezone"])
+        self.invoice.reservation.property.timezone = "Europe/Zagreb"
+        self.invoice.reservation.property.save(update_fields=["timezone"])
+        self.invoice.issued_at = datetime(2026, 10, 15, 9, 8, 37, tzinfo=dt_timezone.utc)
+        self.invoice.fiscalized_at = datetime(2026, 10, 15, 9, 8, 38, tzinfo=dt_timezone.utc)
+        self.invoice.jir = "a4b0e71e-72d1-41e2-b590-1dbd9f5a6f09"
+        self.invoice.save(update_fields=["issued_at", "fiscalized_at", "jir"])
+
+        url = build_invoice_qr_url(self.invoice)
+
+        self.assertIn("datv=15.10.2026%2011%3A08%3A37", url)
+        self.assertNotIn("09%3A08", url)
+        self.assertIn(self.invoice.jir, url)
+        self.assertIn("izn=100%2C00", url)
+        self.assertEqual(format_issued_at_display(self.invoice), "15.10.2026 11:08")
+        context = invoice_template_context(self.invoice, self.settings)
+        self.assertEqual(context["issued_at_display"], "15.10.2026 11:08")
 
     def test_operator_oib_falls_back_to_issuer(self):
         self.settings.operator_code = "short"
