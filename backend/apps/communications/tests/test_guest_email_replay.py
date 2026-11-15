@@ -385,4 +385,3 @@ class StoredUidValidityTests(ReplayCase):
         report = replay_tenant_guest_inbox(self.tenant_fresh(), from_uid=1122, to_uid=1124,
                                            connect=lambda s: FakeImap(three_messages()))
         self.assertEqual(report.blocking, [])
-
