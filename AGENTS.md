@@ -142,6 +142,10 @@ Telemetry (OCR-D, write-only): [`docs/development/document-intake-telemetry.md`]
 
 Private archive of inbound/echo WhatsApp media (`WhatsAppMediaArchive`), independent of document intake. Default **off** (`WHATSAPP_MEDIA_ARCHIVE_ENABLED=false`). Files live in `PRIVATE_MEDIA_ROOT` (`data/private_media`, **not** under public `MEDIA_ROOT`) — never serve them by URL. Images/documents are `personal_document_candidate`. Retention is recorded only; **never auto-delete** archived media without an agreed legal basis. No Meta-side deletion until PR 2 and a verified backup. Runbook: [docs/operations/whatsapp-media-archive.md](docs/operations/whatsapp-media-archive.md). Retries live only as row state + the 60 s sweeper (no countdown/ETA tasks); files are written atomically under deterministic names; deleting rows (CASCADE) cleans files through an after-commit deletion outbox, never an inline `post_delete` unlink. Host dir `data/private_media` must be `chown 1000:1000`. Ops: `manage.py whatsapp_media_archive --stats|--retry-failed|--backfill|--reconcile-orphans` (via `django-run`).
 
+## Guest IMAP replay
+
+Historical guest e-mails are recorded with `manage.py replay_guest_email` (dry-run by default; `--apply` needs `--expect-cursor`; runs via `django-run`) — **never** by lowering `guest_imap_last_uid` or running `poll_guest_email --since-uid` for old mail, which re-runs the live automation (LLM, auto-replies, language/reservation updates; `--no-notify` only silences push). Polling and replay share one per-tenant advisory lock. Runbook: [guest-messages-channels.md](docs/operations/guest-messages-channels.md#guest-e-mail-replay-historical-messages-no-automation).
+
 ## Gunicorn + SSE (Reception)
 
 **Thesis:** event **distribution** (Redis EventBus) is separate from **transport** (Gunicorn vs dedicated Uvicorn SSE). Full Django ASGI is optional (Phase 2c), not required for SSE scaling. See [ADR 0005](docs/architecture/adr/0005-gunicorn-sse-worker-evolution.md).

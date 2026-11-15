@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from apps.communications.canonical_store import record_canonical_source
 from apps.communications.conversation_ingest_status import mark_conversation_ingest
+from apps.communications.guest_imap_lock import guest_imap_single_flight
 from apps.communications.models import GuestInboundMessage, GuestMessageChannel
 from apps.reservations.models import Reservation, ReservationVersionScope
 from apps.reservations.reservation_version import touch_reservation_version
@@ -59,6 +60,8 @@ class IngestResult:
     skipped: int = 0
     errors: int = 0
     max_uid: int = 0
+    # True when another poll/replay holds the tenant's IMAP lock and this call did nothing.
+    skipped_locked: bool = False
 
 
 def _normalize_message_id(value: str) -> str:
@@ -211,7 +214,21 @@ def ingest_parsed_email(
     parsed: ParsedGuestEmail,
     *,
     notify: bool = True,
+    side_effects: bool = True,
 ) -> GuestInboundMessage | None:
+    """Store one guest email and (by default) run the live inbound automation.
+
+    ``side_effects=True`` (default, unchanged behaviour): language update, push
+    notification (``notify``), arrival/invoice/parking auto-handlers (LLM, replies,
+    reservation changes) and the reservation version bump.
+
+    ``side_effects=False`` (historical replay): persist only — dedupe, reservation
+    match, the ``GuestInboundMessage`` with its original ``received_at`` and the
+    canonical dual-write (``record_canonical_source`` never pushes). ``notify`` is
+    ignored. Nothing is sent, no LLM is reached, no reservation or conversation
+    state is modified and no version is bumped; the replay command bumps the
+    MESSAGES version once per reservation after it commits.
+    """
     if parsed.message_id:
         existing = GuestInboundMessage.objects.filter(
             tenant=tenant,
@@ -242,6 +259,9 @@ def ingest_parsed_email(
             received_at=parsed.received_at,
         )
         record_canonical_source(row)
+
+    if not side_effects:
+        return row
 
     from apps.communications.guest_language_inbound import on_guest_inbound_message
 
@@ -331,6 +351,26 @@ def poll_tenant_guest_inbox(
         return IngestResult()
 
     start_uid = since_uid if since_uid is not None else settings.guest_imap_last_uid
+
+    # Single-flight per tenant, shared with replay_guest_email: a second poll (beat tick,
+    # CLI, replay) must not race the first on the same mailbox/cursor/auto-replies.
+    with guest_imap_single_flight(tenant.pk) as acquired:
+        if not acquired:
+            logger.info(
+                "guest imap poll skipped: tenant imap lock is held",
+                extra={"tenant_slug": tenant.slug},
+            )
+            return IngestResult(max_uid=start_uid, skipped_locked=True)
+        return _poll_tenant_guest_inbox_locked(tenant, settings, start_uid, notify=notify)
+
+
+def _poll_tenant_guest_inbox_locked(
+    tenant: Tenant,
+    settings: TenantReceptionSettings,
+    start_uid: int,
+    *,
+    notify: bool,
+) -> IngestResult:
     result = IngestResult(max_uid=start_uid)
 
     try:
