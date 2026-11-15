@@ -38,6 +38,11 @@ WHATSAPP_DOCUMENT_INTAKE_LIFECYCLE_GATE = env.bool(
 )
 GUEST_CHECKIN_WEB_ONLY = env.bool("GUEST_CHECKIN_WEB_ONLY", default=True)
 
+# Celery/Beat guest IMAP poll (docs/operations/guest-messages-channels.md). Process-level kill switch,
+# separate from the per-tenant TenantReceptionSettings.guest_imap_enabled. Off by default: the task
+# returns immediately (no IMAP, no DB write, no automation) until this is explicitly enabled.
+GUEST_IMAP_CELERY_POLL_ENABLED = env.bool("GUEST_IMAP_CELERY_POLL_ENABLED", default=False)
+
 # WhatsApp inbound/echo media archive (docs/operations/whatsapp-media-archive.md).
 # Private storage lives OUTSIDE MEDIA_ROOT: MEDIA_ROOT is routed publicly by Traefik.
 PRIVATE_MEDIA_ROOT = env("PRIVATE_MEDIA_ROOT", default=str(BASE_DIR / "private_media"))

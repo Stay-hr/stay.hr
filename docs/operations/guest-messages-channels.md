@@ -94,8 +94,9 @@ docker compose --profile test-run run --rm django-run python manage.py replay_gu
 
 ## Live IMAP polling safeguards
 
-Applies to `poll_guest_email_inbox` (Celery) and the `poll_guest_email` CLI. **The Celery task is still not registered
-in the worker; do not register it or switch polling on before the checklist at the end of this section.**
+Applies to `poll_guest_email_inbox` (Celery) and the `poll_guest_email` CLI. **The Celery task is registered in the
+worker but gated by `GUEST_IMAP_CELERY_POLL_ENABLED` (default `false`): it does nothing until the flag is switched on
+following [Enabling the Celery poll](#enabling-the-celery-poll-guest_imap_celery_poll_enabled).**
 
 | Safeguard | Behaviour |
 |---|---|
@@ -130,8 +131,54 @@ no longer matches that mailbox: decide the cursor deliberately (replay) before p
 if the server UIDVALIDITY differs from the stored one and holds the tenant lock while applying. Issues recorded under another
 UIDVALIDITY are reported `stale_uidvalidity` and left alone.
 
-**Checklist before registering the Celery task or enabling polling:** (1) UIDVALIDITY initialised and verified;
-(2) approved real dry-run + `replay_guest_email --apply` of the backlog done, cursor = last UID; (3) then PR-3 (task registration).
+**Checklist before enabling the Celery poll:** (1) UIDVALIDITY initialised and verified;
+(2) approved real dry-run + `replay_guest_email --apply` of the backlog done, cursor = last UID; (3) task registered and
+flag still off (PR-3); (4) follow the procedure below.
+
+### Enabling the Celery poll (`GUEST_IMAP_CELERY_POLL_ENABLED`)
+
+Two independent switches, both must be on for a tenant to be polled by Celery:
+
+| Switch | Scope | Default |
+|---|---|---|
+| `GUEST_IMAP_CELERY_POLL_ENABLED` (env) | whole worker process | `false` |
+| `TenantReceptionSettings.guest_imap_enabled` (+ SMTP password, tenant `active`) | per tenant | per tenant |
+
+With the flag off the task returns `{"disabled": true}` as its first statement: no DB query, no IMAP connection, no lock,
+no cursor write, no automation. The Beat entry `guest-email-imap-poll` (every 120 s, `tenant_slug=uzorita`) keeps firing;
+that is harmless and logs `guest email imap poll skipped: GUEST_IMAP_CELERY_POLL_ENABLED is off` at INFO. The CLI
+`poll_guest_email` is **not** gated by the flag. Registration is not activation: the other Beat entries that are not
+registered in the worker (Channex feeds/reviews, overbooking scans, the two report e-mails) are untouched by PR-3.
+
+**0. Verify the production worker after the deploy (flag still off)**
+
+```bash
+docker compose exec -T celery-worker celery -A config inspect registered | grep poll_guest_email_inbox   # must list it
+docker compose exec -T celery-worker printenv GUEST_IMAP_CELERY_POLL_ENABLED                              # empty or false
+docker compose logs --since 10m celery-worker | grep -c "Received unregistered task"                      # 0 for this task
+docker compose logs --since 10m celery-worker | grep "imap poll skipped"                                  # one line per 120 s
+```
+
+**1. Pre-flight (read-only):** `init_guest_imap_uidvalidity` dry-run reports `stored_uidvalidity` = server value and the
+cursor present on the server; `guest_imap_enabled` is set only for the tenants that should be polled.
+
+**2. Switch on:** set `GUEST_IMAP_CELERY_POLL_ENABLED=true` in `.env`, then recreate (never `restart`, it keeps the stale env):
+
+```bash
+docker compose up -d django celery-worker
+docker compose exec -T celery-worker printenv GUEST_IMAP_CELERY_POLL_ENABLED   # true
+```
+
+**3. Watch the first polls:** `docker compose logs -f celery-worker | grep "imap poll"` shows `guest email imap poll finished`
+with `blocked_reason`, `issues_open`, `quarantined`; `GET …/system/status/` → `conversation.channels.email` should show a
+fresh `last_poll_at` and falling `ingest_lag_seconds`. A `REFUSED` ERROR log means a guard fired (UIDVALIDITY / cursor):
+**stop**, do not reset anything by hand (see the sections above).
+
+**Switch off (rollback):** set `GUEST_IMAP_CELERY_POLL_ENABLED=false` (or remove it) and run
+`docker compose up -d django celery-worker`. A poll already running finishes under its lock; the next Beat tick is a no-op.
+To stop a single tenant without touching the process, set its `guest_imap_enabled=false`. Verify with the step-0 commands
+(`printenv` empty/false, `imap poll skipped` back in the log). Cursor, UIDVALIDITY and the issue ledger are never changed
+by switching the flag.
 
 ### Single-flight IMAP lock
 

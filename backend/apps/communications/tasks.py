@@ -3,6 +3,10 @@ from celery import shared_task
 # Register WhatsApp autocheck-in beat tasks (module is not named tasks.py).
 from apps.communications import whatsapp_autocheckin_tasks  # noqa: F401
 
+# Guest IMAP poll beat task (module is not named tasks.py). Registration is NOT activation:
+# the task is a no-op unless GUEST_IMAP_CELERY_POLL_ENABLED=true.
+from apps.communications import email_ingest_tasks  # noqa: F401
+
 # Late-booking Channex check-in link (create enqueue).
 from apps.communications import guest_checkin_channex  # noqa: F401
 
