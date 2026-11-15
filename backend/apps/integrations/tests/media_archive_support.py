@@ -90,7 +90,7 @@ def fake_fetch(content: bytes = b"binary-media", mime: str = "image/jpeg"):
     """Side effect for fetch_whatsapp_media_to_file: writes ``content`` into dest."""
     import hashlib
 
-    def _fetch(*, media_id, dest, max_bytes, access_token=None, api_version=None):
+    def _fetch(*, media_id, dest, max_bytes, access_token=None, api_version=None, deadline_seconds=None):
         dest.write(content)
         return MediaDownloadResult(
             mime_type=mime,

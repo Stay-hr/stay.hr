@@ -11,3 +11,4 @@ __pycache__
 .ruff_cache
 *.md
 !README.md
+data/private_media

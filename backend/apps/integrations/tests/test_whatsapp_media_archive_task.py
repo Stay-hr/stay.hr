@@ -71,7 +71,7 @@ class MediaArchiveTaskTests(ArchiveTestBase):
         self.assertIn("/standard/", archive.file.name)
         self.assertEqual(archive.sensitivity, "standard")
 
-    def test_transient_error_schedules_retry_with_backoff(self):
+    def test_transient_error_records_backoff_and_leaves_scheduling_to_the_sweeper(self):
         archive = self.make_archive()
         with patch(FETCH, side_effect=WhatsAppMediaError("boom", status_code=503)):
             result = archive_media(archive.pk)
@@ -79,8 +79,9 @@ class MediaArchiveTaskTests(ArchiveTestBase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual((archive.status, archive.attempts), (Status.FAILED, 1))
         self.assertIn("boom", archive.last_error)
-        self.assertGreater(archive.next_retry_at, timezone.now())
-        self.enqueue.assert_called_once_with(archive.pk, countdown=BACKOFF_SECONDS[0])
+        delta = (archive.next_retry_at - timezone.now()).total_seconds()
+        self.assertTrue(BACKOFF_SECONDS[0] - 5 <= delta <= BACKOFF_SECONDS[0] + 5)
+        self.enqueue.assert_not_called()  # no countdown/ETA task: the sweeper is the only scheduler
 
     def test_404_is_permanent(self):
         archive = self.make_archive()
@@ -110,6 +111,9 @@ class MediaArchiveTaskTests(ArchiveTestBase):
         archive = self.make_archive()  # MAX_ATTEMPTS=3
         with patch(FETCH, side_effect=WhatsAppMediaError("x", status_code=500)):
             for _ in range(3):
+                WhatsAppMediaArchive.objects.filter(pk=archive.pk, status=Status.FAILED).update(
+                    next_retry_at=timezone.now()
+                )
                 archive_media(archive.pk)
         archive.refresh_from_db()
         self.assertEqual((archive.status, archive.attempts), (Status.PERMANENT_FAILED, 3))
@@ -142,10 +146,10 @@ class MediaArchiveTaskTests(ArchiveTestBase):
         self.assertEqual(archive.file.name, "")
         self.assertIn("disk full", archive.last_error)
 
-    def test_superseded_download_discards_its_file(self):
+    def test_superseded_attempt_never_deletes_the_shared_final_file(self):
         archive = self.make_archive()
 
-        def steal_claim(*, media_id, dest, max_bytes, access_token=None, api_version=None):
+        def steal_claim(*, media_id, dest, max_bytes, access_token=None, api_version=None, deadline_seconds=None):
             WhatsAppMediaArchive.objects.filter(pk=archive.pk).update(attempts=99)
             return fake_fetch()(media_id=media_id, dest=dest, max_bytes=max_bytes)
 
@@ -154,7 +158,10 @@ class MediaArchiveTaskTests(ArchiveTestBase):
         archive.refresh_from_db()
         self.assertEqual(archive.file.name, "")
         stored = [f for _, _, fs in os.walk(self.private_root) for f in fs]
-        self.assertEqual(stored, [])
+        # The deterministic final file stays (the winning attempt would use the very same
+        # path); no .part leftovers. True orphans are an explicit operator reconcile.
+        self.assertEqual(len(stored), 1)
+        self.assertFalse(stored[0].endswith(".part"))
 
     def test_total_size_quota_defers_without_burning_attempt(self):
         WhatsAppMediaArchive.objects.create(

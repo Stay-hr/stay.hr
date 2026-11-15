@@ -322,8 +322,15 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.core.tasks.ping",
         "schedule": 3600.0,
     },
+    # Sole retry scheduler for the media archive. Interval pinned to
+    # media_archive.SWEEP_INTERVAL_SECONDS by a test.
     "whatsapp-media-archive-sweep": {
         "task": "apps.integrations.whatsapp.media_archive_tasks.sweep_whatsapp_media_archive",
+        "schedule": 60.0,
+    },
+    # Deletion outbox safety net (media_file_cleanup.SWEEP_INTERVAL_SECONDS).
+    "whatsapp-media-file-cleanup-sweep": {
+        "task": "apps.integrations.whatsapp.media_file_cleanup.sweep_whatsapp_media_file_deletions",
         "schedule": 300.0,
     },
     "auto-checkout": {
@@ -435,5 +442,11 @@ LOGGING = {
     "root": {
         "handlers": ["console"],
         "level": "INFO",
+    },
+    "loggers": {
+        # httpx logs every request line at INFO, including Meta's signed media download
+        # URLs (lookaside.fbsbx.com/...?hash=...). Keep those out of the logs.
+        "httpx": {"level": "WARNING"},
+        "httpcore": {"level": "WARNING"},
     },
 }

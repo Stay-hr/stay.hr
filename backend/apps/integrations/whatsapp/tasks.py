@@ -36,6 +36,7 @@ from apps.integrations.whatsapp import operator_arrival_confirm  # noqa: F401 �
 from apps.integrations.whatsapp import whatsapp_operator_batch  # noqa: F401 — register operator quiet timer task
 from apps.integrations.whatsapp import guest_document_batch_reconcile  # noqa: F401 — register reconcile beat task
 from apps.integrations.whatsapp import media_archive_tasks  # noqa: F401 — register media archive tasks
+from apps.integrations.whatsapp import media_file_cleanup  # noqa: F401 — register media file cleanup tasks
 from apps.integrations.whatsapp.reply import build_greeting
 from apps.integrations.whatsapp.reservation_lookup import find_reservation_for_wa_id
 from apps.integrations.whatsapp.runtime_config import WhatsAppRuntimeConfig

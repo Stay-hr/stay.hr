@@ -15,7 +15,14 @@ from django.core.files.storage import FileSystemStorage
 
 class PrivateMediaStorage(FileSystemStorage):
     def __init__(self) -> None:
-        super().__init__(file_permissions_mode=0o600, directory_permissions_mode=0o700)
+        # allow_overwrite: archive file names are deterministic ({archive_id}-{sha12}.ext), so
+        # a retry after a crash rewrites the same path instead of leaving a suffixed
+        # duplicate behind. Publication is atomic (part file + os.replace), see media_archive.
+        super().__init__(
+            file_permissions_mode=0o600,
+            directory_permissions_mode=0o700,
+            allow_overwrite=True,
+        )
 
     @property
     def base_location(self) -> str:

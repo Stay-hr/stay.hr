@@ -2,6 +2,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.core.models import TenantScopedModel
 from apps.integrations.media_storage import get_private_media_storage
@@ -486,6 +487,41 @@ class WhatsAppMediaArchive(TenantScopedModel):
 
     def __str__(self) -> str:
         return f"{self.kind} {self.media_id} [{self.status}]"
+
+
+class WhatsAppMediaFileDeletion(models.Model):
+    """Deletion outbox: a file whose archive row was deleted and must be removed from disk.
+
+    Written in the SAME database transaction as the row deletion (so a rollback leaves
+    neither a deletion request nor a deleted file) and processed by a Celery task after
+    commit; a beat sweeper retries whatever the broker lost. Deliberately has no foreign
+    keys: it must outlive the tenant/message/archive rows whose deletion created it.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        DONE = "done", "Done"
+        SKIPPED_IN_USE = "skipped_in_use", "Skipped (file still referenced)"
+        DEAD = "dead", "Gave up (needs operator)"
+
+    file_name = models.CharField(max_length=255, unique=True)
+    archive_id = models.BigIntegerField(null=True, blank=True)
+    tenant_id = models.BigIntegerField(null=True, blank=True)
+    reason = models.CharField(max_length=32, default="archive_deleted")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    next_attempt_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "next_attempt_at"], name="wa_media_del_status_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.file_name} [{self.status}]"
 
 
 class WhatsAppInboundRouting(TenantScopedModel):

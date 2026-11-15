@@ -115,6 +115,14 @@ class MediaArchiveWebhookTests(ArchiveTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(WhatsAppMediaArchive.objects.get().status, "pending")
 
+    def test_invalid_media_id_stores_message_but_creates_no_archive_row(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.post(_payload(message=_image(wamid="wamid.bad", media_id="../../v1/me")))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(WhatsAppMessage.objects.filter(wamid="wamid.bad").count(), 1)
+        self.assertEqual(WhatsAppMediaArchive.objects.count(), 0)
+        self.enqueue.assert_not_called()
+
     def test_flag_off_creates_nothing(self):
         with override_settings(WHATSAPP_MEDIA_ARCHIVE_ENABLED=False):
             with self.captureOnCommitCallbacks(execute=True):

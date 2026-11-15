@@ -16,7 +16,7 @@ FETCH = "apps.integrations.whatsapp.media_archive.fetch_whatsapp_media_to_file"
 
 class MediaArchiveSweeperTests(ArchiveTestBase):
     def _row(self, n: int, **fields) -> WhatsAppMediaArchive:
-        message = self.make_message(wamid=f"w.{n}", media_id=f"m.{n}")
+        message = self.make_message(wamid=f"w.{n}", media_id=f"m{n}")
         return self.make_archive(message=message, **fields)
 
     def _age(self, row, seconds: int):

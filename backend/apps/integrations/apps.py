@@ -9,6 +9,11 @@ class IntegrationsConfig(AppConfig):
     def ready(self) -> None:
         from apps.integrations import admin  # noqa: F401
 
+        # Always register (before the early return below): the media file cleanup receiver
+        # and the system checks must exist under `test`, `migrate` and `check` too.
+        from apps.integrations import checks  # noqa: F401
+        from apps.integrations.whatsapp import media_file_cleanup  # noqa: F401
+
         # Avoid fail-fast validation during schema operations / bare checks.
         import sys
 
