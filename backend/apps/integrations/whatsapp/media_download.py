@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import logging
-from typing import Any
+import re
+import time
+from dataclasses import dataclass
+from typing import Any, BinaryIO
 
 import httpx
 
@@ -10,23 +14,64 @@ from apps.integrations.whatsapp.config import access_token_from_env, api_version
 
 logger = logging.getLogger(__name__)
 
+# HTTP statuses where retrying cannot help (media expired / gone on Meta's side).
+_PERMANENT_STATUSES = frozenset({404, 410})
+
+# Meta media ids are opaque numeric strings. The id becomes a URL path segment, so
+# anything else (slashes, dots, whitespace, query chars) is rejected before any HTTP.
+_MEDIA_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def is_valid_media_id(media_id: str) -> bool:
+    return bool(_MEDIA_ID_RE.fullmatch(media_id or ""))
+
 
 class WhatsAppMediaError(Exception):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retryable: bool | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        if retryable is None:
+            retryable = status_code not in _PERMANENT_STATUSES
+        self.retryable = retryable
 
 
-def fetch_whatsapp_media(
+class WhatsAppMediaTooLarge(WhatsAppMediaError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, retryable=False)
+
+
+@dataclass(frozen=True)
+class MediaMetadata:
+    download_url: str
+    mime_type: str
+    sha256: str
+    file_size: int | None
+
+
+@dataclass(frozen=True)
+class MediaDownloadResult:
+    mime_type: str
+    size: int
+    sha256: str
+
+
+def _resolve_media_metadata(
     *,
     media_id: str,
-    access_token: str | None = None,
-    api_version: str | None = None,
-) -> tuple[bytes, str]:
-    """Download WhatsApp media binary via Meta Graph API."""
+    access_token: str | None,
+    api_version: str | None,
+) -> tuple[MediaMetadata, dict[str, str]]:
     token = (access_token or access_token_from_env()).strip()
     if not token:
         raise WhatsAppMediaError("WHATSAPP_ACCESS_TOKEN missing")
     if not media_id:
-        raise WhatsAppMediaError("media_id missing")
+        raise WhatsAppMediaError("media_id missing", retryable=False)
 
     version = (api_version or api_version_from_env()).strip() or "v23.0"
     meta_url = f"https://graph.facebook.com/{version}/{media_id.strip()}"
@@ -39,7 +84,8 @@ def fetch_whatsapp_media(
 
     if meta_response.status_code >= 400:
         raise WhatsAppMediaError(
-            f"media metadata error {meta_response.status_code}: {meta_response.text[:500]}"
+            f"media metadata error {meta_response.status_code}: {meta_response.text[:500]}",
+            status_code=meta_response.status_code,
         )
 
     meta = meta_response.json()
@@ -52,8 +98,34 @@ def fetch_whatsapp_media(
         raise WhatsAppMediaError("media metadata missing url")
 
     try:
+        file_size = int(meta.get("file_size")) if meta.get("file_size") not in (None, "") else None
+    except (TypeError, ValueError):
+        file_size = None
+    return (
+        MediaMetadata(
+            download_url=download_url,
+            mime_type=mime_type,
+            sha256=str(meta.get("sha256") or "").strip().lower(),
+            file_size=file_size,
+        ),
+        headers,
+    )
+
+
+def fetch_whatsapp_media(
+    *,
+    media_id: str,
+    access_token: str | None = None,
+    api_version: str | None = None,
+) -> tuple[bytes, str]:
+    """Download WhatsApp media binary via Meta Graph API (in memory)."""
+    metadata, headers = _resolve_media_metadata(
+        media_id=media_id, access_token=access_token, api_version=api_version
+    )
+
+    try:
         file_response = httpx.get(
-            download_url,
+            metadata.download_url,
             headers=headers,
             timeout=60.0,
             follow_redirects=True,
@@ -63,10 +135,76 @@ def fetch_whatsapp_media(
 
     if file_response.status_code >= 400:
         raise WhatsAppMediaError(
-            f"media download error {file_response.status_code}: {file_response.text[:200]}"
+            f"media download error {file_response.status_code}: {file_response.text[:200]}",
+            status_code=file_response.status_code,
         )
 
-    return file_response.content, mime_type
+    return file_response.content, metadata.mime_type
+
+
+def fetch_whatsapp_media_to_file(
+    *,
+    media_id: str,
+    dest: BinaryIO,
+    max_bytes: int,
+    access_token: str | None = None,
+    api_version: str | None = None,
+    deadline_seconds: float | None = None,
+) -> MediaDownloadResult:
+    """Stream media into ``dest`` with a size cap; verify Meta's sha256/file_size.
+
+    Same Graph API steps as :func:`fetch_whatsapp_media`, but never holds the whole
+    file in memory (video/audio/large documents). ``deadline_seconds`` bounds the
+    *total* streaming time (httpx's timeout is per read, so a trickling server could
+    otherwise hold a worker indefinitely).
+    """
+    if not is_valid_media_id(media_id):
+        raise WhatsAppMediaError("media_id has invalid format", retryable=False)
+    metadata, headers = _resolve_media_metadata(
+        media_id=media_id, access_token=access_token, api_version=api_version
+    )
+    if max_bytes and metadata.file_size is not None and metadata.file_size > max_bytes:
+        raise WhatsAppMediaTooLarge(
+            f"media size {metadata.file_size} exceeds limit {max_bytes}"
+        )
+
+    digest = hashlib.sha256()
+    size = 0
+    started = time.monotonic()
+    try:
+        with httpx.stream(
+            "GET",
+            metadata.download_url,
+            headers=headers,
+            timeout=60.0,
+            follow_redirects=True,
+        ) as response:
+            if response.status_code >= 400:
+                raise WhatsAppMediaError(
+                    f"media download error {response.status_code}",
+                    status_code=response.status_code,
+                )
+            for chunk in response.iter_bytes(chunk_size=64 * 1024):
+                if deadline_seconds and time.monotonic() - started > deadline_seconds:
+                    raise WhatsAppMediaError(
+                        f"media download exceeded {deadline_seconds:.0f}s deadline"
+                    )
+                size += len(chunk)
+                if max_bytes and size > max_bytes:
+                    raise WhatsAppMediaTooLarge(f"media exceeds limit {max_bytes}")
+                digest.update(chunk)
+                dest.write(chunk)
+    except httpx.HTTPError as exc:
+        raise WhatsAppMediaError(f"media download HTTP error: {exc}") from exc
+
+    sha256 = digest.hexdigest()
+    if metadata.file_size is not None and metadata.file_size != size:
+        raise WhatsAppMediaError(
+            f"media size mismatch: expected {metadata.file_size}, got {size}"
+        )
+    if metadata.sha256 and metadata.sha256 != sha256:
+        raise WhatsAppMediaError("media sha256 mismatch with Meta metadata")
+    return MediaDownloadResult(mime_type=metadata.mime_type, size=size, sha256=sha256)
 
 
 def extract_media_from_message(raw_message: dict[str, Any]) -> tuple[str, str, str]:
@@ -87,3 +225,50 @@ def extract_media_from_message(raw_message: dict[str, Any]) -> tuple[str, str, s
             str(payload.get("caption") or "").strip(),
         )
     return "", "", ""
+
+
+@dataclass(frozen=True)
+class MediaDescriptor:
+    kind: str  # image | document | video | audio | voice | sticker
+    media_id: str
+    mime_type: str
+    caption: str
+    filename: str
+    sha256: str
+
+
+_ARCHIVABLE_TYPES = ("image", "document", "video", "audio", "sticker")
+
+
+def extract_media_descriptor(raw_message: dict[str, Any]) -> MediaDescriptor | None:
+    """Describe any archivable media in an inbound message or Business App echo.
+
+    Separate from :func:`extract_media_from_message`, which intake code relies on.
+    """
+    message_type = str(raw_message.get("type") or "").strip().lower()
+    if message_type not in _ARCHIVABLE_TYPES:
+        return None
+    payload = raw_message.get(message_type)
+    if not isinstance(payload, dict):
+        return None
+    media_id = str(payload.get("id") or "").strip()
+    if not media_id:
+        return None
+    if not is_valid_media_id(media_id):
+        logger.warning(
+            "whatsapp media descriptor rejected: invalid media id format type=%s len=%s",
+            message_type,
+            len(media_id),
+        )
+        return None
+    kind = message_type
+    if message_type == "audio" and payload.get("voice"):
+        kind = "voice"
+    return MediaDescriptor(
+        kind=kind,
+        media_id=media_id,
+        mime_type=str(payload.get("mime_type") or "").strip(),
+        caption=str(payload.get("caption") or "").strip(),
+        filename=str(payload.get("filename") or "").strip(),
+        sha256=str(payload.get("sha256") or "").strip().lower(),
+    )

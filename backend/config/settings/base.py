@@ -37,6 +37,20 @@ WHATSAPP_DOCUMENT_INTAKE_LIFECYCLE_GATE = env.bool(
     default=True,
 )
 GUEST_CHECKIN_WEB_ONLY = env.bool("GUEST_CHECKIN_WEB_ONLY", default=True)
+
+# WhatsApp inbound/echo media archive (docs/operations/whatsapp-media-archive.md).
+# Private storage lives OUTSIDE MEDIA_ROOT: MEDIA_ROOT is routed publicly by Traefik.
+PRIVATE_MEDIA_ROOT = env("PRIVATE_MEDIA_ROOT", default=str(BASE_DIR / "private_media"))
+WHATSAPP_MEDIA_ARCHIVE_ENABLED = env.bool("WHATSAPP_MEDIA_ARCHIVE_ENABLED", default=False)
+WHATSAPP_MEDIA_MAX_BYTES = env.int("WHATSAPP_MEDIA_MAX_BYTES", default=100 * 1024 * 1024)
+WHATSAPP_MEDIA_MAX_ATTEMPTS = env.int("WHATSAPP_MEDIA_MAX_ATTEMPTS", default=8)
+# Disk guards. 0 disables the total cap; the free-space guard is skipped when 0.
+WHATSAPP_MEDIA_MAX_TOTAL_BYTES = env.int("WHATSAPP_MEDIA_MAX_TOTAL_BYTES", default=50 * 1024**3)
+WHATSAPP_MEDIA_MIN_FREE_BYTES = env.int("WHATSAPP_MEDIA_MIN_FREE_BYTES", default=20 * 1024**3)
+# Retention is only *recorded* (retention_until) and reported. Nothing is deleted
+# automatically; 0 = keep indefinitely. Personal documents need a legal basis first.
+WHATSAPP_MEDIA_RETENTION_DAYS_STANDARD = env.int("WHATSAPP_MEDIA_RETENTION_DAYS_STANDARD", default=0)
+WHATSAPP_MEDIA_RETENTION_DAYS_PERSONAL = env.int("WHATSAPP_MEDIA_RETENTION_DAYS_PERSONAL", default=0)
 # OCR residence address: FR postal street-first → City, street (fail-closed via eVisitor validator)
 OCR_ADDRESS_NORMALIZATION_ENABLED = env.bool(
     "OCR_ADDRESS_NORMALIZATION_ENABLED",
@@ -308,6 +322,17 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.core.tasks.ping",
         "schedule": 3600.0,
     },
+    # Sole retry scheduler for the media archive. Interval pinned to
+    # media_archive.SWEEP_INTERVAL_SECONDS by a test.
+    "whatsapp-media-archive-sweep": {
+        "task": "apps.integrations.whatsapp.media_archive_tasks.sweep_whatsapp_media_archive",
+        "schedule": 60.0,
+    },
+    # Deletion outbox safety net (media_file_cleanup.SWEEP_INTERVAL_SECONDS).
+    "whatsapp-media-file-cleanup-sweep": {
+        "task": "apps.integrations.whatsapp.media_file_cleanup.sweep_whatsapp_media_file_deletions",
+        "schedule": 300.0,
+    },
     "auto-checkout": {
         "task": "apps.reservations.tasks.run_auto_checkouts",
         "schedule": 900.0,
@@ -417,5 +442,11 @@ LOGGING = {
     "root": {
         "handlers": ["console"],
         "level": "INFO",
+    },
+    "loggers": {
+        # httpx logs every request line at INFO, including Meta's signed media download
+        # URLs (lookaside.fbsbx.com/...?hash=...). Keep those out of the logs.
+        "httpx": {"level": "WARNING"},
+        "httpcore": {"level": "WARNING"},
     },
 }

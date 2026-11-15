@@ -31,6 +31,7 @@ services:
     command: ["/app/scripts/run-gunicorn.sh"]
     volumes:
       - ./data/media:/app/backend/media
+      - ./data/private_media:/app/backend/private_media
       - ./hospira-fc0dc-f77596470912.json:/run/secrets/firebase-service-account.json:ro
     networks:
       postgis: {}
@@ -79,6 +80,7 @@ services:
       - .env
     volumes:
       - ./data/media:/app/backend/media
+      - ./data/private_media:/app/backend/private_media
       - ./hospira-fc0dc-f77596470912.json:/run/secrets/firebase-service-account.json:ro
     networks:
       postgis: {}
@@ -97,6 +99,7 @@ services:
       STARTUP_MODE: worker
     volumes:
       - ./data/media:/app/backend/media
+      - ./data/private_media:/app/backend/private_media
       - ./hospira-fc0dc-f77596470912.json:/run/secrets/firebase-service-account.json:ro
     networks:
       - postgis

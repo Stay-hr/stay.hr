@@ -12,6 +12,7 @@ from apps.communications.canonical_store import record_canonical_source
 from apps.communications.conversation_ingest_status import mark_conversation_ingest
 from apps.communications.models import GuestOutboundDeliveryStatus, GuestOutboundMessage
 from apps.integrations.models import IntegrationConfig, WhatsAppMessage
+from apps.integrations.whatsapp.media_archive import record_media_for_message
 from apps.integrations.whatsapp.media_download import extract_media_from_message
 from apps.integrations.whatsapp.platform_inbound_router import (
     resolve_business_app_echo_reservation,
@@ -176,14 +177,18 @@ def record_inbound_whatsapp_message(
         existing = WhatsAppMessage.objects.filter(wamid=parsed.wamid).first()
         if existing is not None and existing.reservation_id:
             record_canonical_source(existing)
+        if existing is not None:
+            record_media_for_message(existing)
         return {"status": "duplicate", "wamid": parsed.wamid}
 
     mark_conversation_ingest("whatsapp", "webhook")
     if not created:
         if row.reservation_id:
             record_canonical_source(row)
+        record_media_for_message(row)  # idempotent: heals a missing archive row
         return {"status": "duplicate", "wamid": parsed.wamid}
 
+    record_media_for_message(row)
     routing = route_inbound_message(message=row, integration=integration_row)
     process_inbound_message.delay(row.pk, profile_name=parsed.profile_name)
     return {
@@ -241,6 +246,7 @@ def record_business_app_echo(
                 return {"status": "duplicate", "wamid": parsed.wamid}
 
             record_canonical_source(row)
+            record_media_for_message(row)
             if reservation is not None:
                 touch_reservation_version(
                     reservation.pk,

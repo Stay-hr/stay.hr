@@ -32,3 +32,6 @@ web/**/next-env.d.ts
 racun-1-ROOMS-1.pdf
 scripts/remote-deploy.ps1
 docs/operations/domain-setup.md
+
+# Private WhatsApp media archive (never served publicly; back this up!)
+data/private_media/
