@@ -64,6 +64,43 @@ Detalj rezervacije → sekcija **Poruke gostu** (`#messages`, [`GuestMessagesPan
 
 ---
 
+## Guest e-mail replay (historical messages, no automation)
+
+Use when the IMAP poll was not running and the missed messages must be recorded **without** re-running the live
+automation (LLM, auto-replies, push, language/reservation updates). Code: `apps/communications/guest_email_replay.py`.
+Always run one-offs through `django-run` (see AGENTS.md).
+
+```bash
+# 1. Dry-run (default). Reads the mailbox read-only, writes NOTHING. Output = uid, date, outcome only.
+docker compose --profile test-run run --rm django-run python manage.py replay_guest_email \
+  --tenant uzorita --from-uid 1122 --to-uid 1128 --expect-uidvalidity <UIDVALIDITY>
+
+# 2. Apply (only after reviewing the dry-run). One DB transaction: messages + cursor move, or nothing.
+docker compose --profile test-run run --rm django-run python manage.py replay_guest_email \
+  --tenant uzorita --from-uid 1122 --to-uid 1128 --apply --expect-cursor 1121 --expect-uidvalidity <UIDVALIDITY>
+```
+
+| Guard | Behaviour |
+|---|---|
+| Mailbox access | `EXAMINE` (read-only), bodies via `BODY.PEEK[]`: no flags change, nothing is moved/deleted. Content stays in memory, never logged, never printed. |
+| Default mode | Dry-run. `--apply` is refused without `--expect-cursor`. |
+| Cursor | `--expect-cursor` must equal `guest_imap_last_uid` (re-checked under a row lock); `--from-uid` must be `cursor + 1`; `--to-uid` must be ≤ `UIDNEXT-1`. The cursor moves only if the whole range was fetched and every message resolved. |
+| Blocking outcomes | `fetch_error`, `parse_error` always; `no_reservation` unless `--accept-unmatched` (those emails are skipped for good once the cursor passes them). Dry-run lists them as "apply would be REFUSED". |
+| Stored data | `GuestInboundMessage` + canonical dual-write via `ingest_parsed_email(side_effects=False)`, with the original `Date` (fallback: IMAP INTERNALDATE, never "now"). |
+| Never happens | LLM, auto-replies (e-mail/WhatsApp/Booking), push, language/thread-state update, arrival/invoice/parking handlers, reservation field changes. |
+| After commit | One `touch_reservation_version(MESSAGES)` per affected reservation (a failed bump is reported; the data stays). |
+| Concurrency | `--apply` holds the tenant IMAP lock; it is refused while a poll runs, and polls skip while it runs. Dry-run takes no lock. |
+| Size | Range limited to 200 UIDs unless `--allow-large-range`. |
+
+### Single-flight IMAP lock
+
+`poll_tenant_guest_inbox` (Celery task **and** `poll_guest_email` CLI) and `replay_guest_email --apply` share a
+non-blocking Postgres session advisory lock per tenant (`apps/communications/guest_imap_lock.py`). A second caller
+skips (`locked=1` in the task summary / CLI output; no IMAP session, no ingest stamp). The lock is released in
+`finally` and by Postgres if the process dies. Do not run the replay and a live poll "side by side" by working around it.
+
+---
+
 ## CLI
 
 ```bash

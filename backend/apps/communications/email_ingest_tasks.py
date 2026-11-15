@@ -32,6 +32,7 @@ def poll_guest_email_inbox(
         "ingested": 0,
         "skipped": 0,
         "errors": 0,
+        "locked": 0,
     }
 
     for tenant in tenants:
@@ -46,6 +47,7 @@ def poll_guest_email_inbox(
         summary["ingested"] += result.ingested
         summary["skipped"] += result.skipped
         summary["errors"] += result.errors
+        summary["locked"] += int(result.skipped_locked)
 
         logger.info(
             "guest email imap poll finished",
@@ -54,6 +56,7 @@ def poll_guest_email_inbox(
                 "ingested": result.ingested,
                 "skipped": result.skipped,
                 "errors": result.errors,
+                "locked": result.skipped_locked,
                 "max_uid": result.max_uid,
             },
         )

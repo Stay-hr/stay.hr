@@ -48,4 +48,5 @@ class Command(BaseCommand):
         self.stdout.write(
             f"ingested={result.ingested} skipped={result.skipped} "
             f"errors={result.errors} max_uid={result.max_uid}"
+            + (" locked=1 (another poll/replay holds the tenant lock)" if result.skipped_locked else "")
         )
