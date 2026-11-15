@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from celery import shared_task
+from django.conf import settings as django_settings
 
 from apps.communications.guest_email_ingest import poll_tenant_guest_inbox
 from apps.tenants.models import Tenant
@@ -18,7 +19,16 @@ def poll_guest_email_inbox(
     *,
     tenant_slug: str | None = None,
 ) -> dict:
-    """Poll IMAP inboxes for tenants with guest IMAP enabled."""
+    """Poll IMAP inboxes for tenants with guest IMAP enabled.
+
+    Gated by the process-level ``GUEST_IMAP_CELERY_POLL_ENABLED`` flag (default off). The flag is read
+    first: when it is off the task returns before touching the database or opening any IMAP session.
+    ``TenantReceptionSettings.guest_imap_enabled`` stays the per-tenant control on top of it.
+    """
+    if not getattr(django_settings, "GUEST_IMAP_CELERY_POLL_ENABLED", False):
+        logger.info("guest email imap poll skipped: GUEST_IMAP_CELERY_POLL_ENABLED is off")
+        return {"disabled": True}
+
     tenants = Tenant.objects.filter(status=Tenant.Status.ACTIVE).select_related(
         "reception_settings"
     )

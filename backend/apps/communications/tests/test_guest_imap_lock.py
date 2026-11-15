@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.communications import guest_imap_lock
 from apps.communications.email_ingest_tasks import poll_guest_email_inbox
@@ -81,6 +81,8 @@ class NonPostgresTests(SimpleTestCase):
         fake_conn.cursor.assert_not_called()
 
 
+# The Celery task is gated by GUEST_IMAP_CELERY_POLL_ENABLED (default off); these tests exercise the lock.
+@override_settings(GUEST_IMAP_CELERY_POLL_ENABLED=True)
 class SingleFlightIntegrationTests(ReplayTxCase):
     def replay_apply(self, tenant, imap):
         return replay_tenant_guest_inbox(
