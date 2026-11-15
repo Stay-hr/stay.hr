@@ -92,6 +92,47 @@ docker compose --profile test-run run --rm django-run python manage.py replay_gu
 | Concurrency | `--apply` holds the tenant IMAP lock; it is refused while a poll runs, and polls skip while it runs. Dry-run takes no lock. |
 | Size | Range limited to 200 UIDs unless `--allow-large-range`. |
 
+## Live IMAP polling safeguards
+
+Applies to `poll_guest_email_inbox` (Celery) and the `poll_guest_email` CLI. **The Celery task is still not registered
+in the worker; do not register it or switch polling on before the checklist at the end of this section.**
+
+| Safeguard | Behaviour |
+|---|---|
+| UIDVALIDITY | `TenantReceptionSettings.guest_imap_uidvalidity` (nullable, 32-bit values). Every poll reads `STATUS (UIDVALIDITY UIDNEXT)` **before** selecting INBOX. A different value ⇒ the poll **refuses**, logs `ERROR … REFUSED`, records a `GuestImapIssue` (uid=0) and leaves cursor and stored value untouched. Nothing is ever reset automatically. A refused poll leaves no ingest stamp, so the lag in system status keeps growing. |
+| Not initialised | A tenant with a cursor but **no** stored UIDVALIDITY is refused (not auto-adopted: the server's current value could belong to a replaced mailbox). Only a tenant with cursor 0 adopts the value on its first poll. |
+| Cursor sanity | Cursor > `UIDNEXT-1` (mailbox smaller than the cursor) ⇒ refused. Missing STATUS ⇒ refused. |
+| UID search | Bounded `UID cursor+1:UIDNEXT-1` (never `n:*`; IMAP returns the *highest* UID for `n:*` when `n` is above it) and the reply is filtered again. A caught-up cursor does no SEARCH and no FETCH (before, the last message was re-fetched every poll). |
+| Cursor movement | The cursor follows the longest prefix of messages that are processed, legitimately skipped, or **quarantined**. A failed FETCH / parse / store, or a booking without a reservation, is written to the `GuestImapIssue` ledger and **holds the cursor** while it is retried by the next polls; it never stops the messages after it (those are stored; dedupe makes re-polls safe, automation runs once per message). After the attempt limit (fetch/store/no-reservation 10, parse 2) the issue is `quarantined`: the cursor moves on, the UID stays in the ledger. Cursor is saved per message, so a killed poll resumes where it died. A ledger write failure stops the poll without moving the cursor. |
+| Batch | At most 100 messages per poll (the lock is held for shorter), the rest on the next poll. |
+| Ledger content | UID, UIDVALIDITY, kind, status, attempts, exception *type* only: never subjects, addresses or bodies. |
+
+Inspect the ledger: `GuestImapIssue` (`status` = `open` / `quarantined` / `resolved`). Poll CLI output shows
+`BLOCKED=…`, `issues_open=`, `quarantined=`; the task summary has `blocked`, `issues_open`, `quarantined`.
+
+### Initialise UIDVALIDITY for an existing cursor (operator, once)
+
+```bash
+# 1. Dry-run: reads the mailbox read-only and prints the server values. Compare the cursor message's INTERNALDATE
+#    with the newest ingested e-mail's received_at: they should be about the same moment.
+docker compose --profile test-run run --rm django-run python manage.py init_guest_imap_uidvalidity \
+  --tenant uzorita --expect-uidvalidity <UIDVALIDITY> --expect-cursor <CURSOR>
+# 2. Same command with --apply (stores it; the server must confirm the asserted value, cursor must not be beyond the mailbox).
+```
+
+A different stored value is never overwritten unless `--replace-from <old>` is given — and replacing it means the cursor
+no longer matches that mailbox: decide the cursor deliberately (replay) before polling.
+
+### Retrying recorded messages
+
+`retry_guest_imap_issues [--uid N] [--apply] [--with-automation]` re-fetches `open`/`quarantined` UIDs read-only, stores them
+**without** the live automation by default (they are late) and marks the issue `resolved`; it never moves the cursor, refuses
+if the server UIDVALIDITY differs from the stored one and holds the tenant lock while applying. Issues recorded under another
+UIDVALIDITY are reported `stale_uidvalidity` and left alone.
+
+**Checklist before registering the Celery task or enabling polling:** (1) UIDVALIDITY initialised and verified;
+(2) approved real dry-run + `replay_guest_email --apply` of the backlog done, cursor = last UID; (3) then PR-3 (task registration).
+
 ### Single-flight IMAP lock
 
 `poll_tenant_guest_inbox` (Celery task **and** `poll_guest_email` CLI) and `replay_guest_email --apply` share a

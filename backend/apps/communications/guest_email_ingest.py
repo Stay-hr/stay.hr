@@ -16,7 +16,14 @@ from django.utils import timezone
 
 from apps.communications.canonical_store import record_canonical_source
 from apps.communications.conversation_ingest_status import mark_conversation_ingest
+from apps.communications.guest_imap_issues import (
+    check_mailbox_state,
+    mark_resolved,
+    record_failure,
+)
 from apps.communications.guest_imap_lock import guest_imap_single_flight
+from apps.communications.guest_imap_protocol import mailbox_status, search_new_uids
+from apps.communications.models import GuestImapIssueKind, GuestImapIssueStatus
 from apps.communications.models import GuestInboundMessage, GuestMessageChannel
 from apps.reservations.models import Reservation, ReservationVersionScope
 from apps.reservations.reservation_version import touch_reservation_version
@@ -62,6 +69,12 @@ class IngestResult:
     max_uid: int = 0
     # True when another poll/replay holds the tenant's IMAP lock and this call did nothing.
     skipped_locked: bool = False
+    # Set when the poll refused to run (UIDVALIDITY changed/uninitialised/unavailable, cursor
+    # ahead of the mailbox). The cursor was not touched; see GuestImapIssue (uid=0).
+    blocked_reason: str = ""
+    # Messages that hold the cursor (open) / were released but kept in the ledger (quarantined).
+    issues_open: int = 0
+    quarantined: int = 0
 
 
 def _normalize_message_id(value: str) -> str:
@@ -364,6 +377,26 @@ def poll_tenant_guest_inbox(
         return _poll_tenant_guest_inbox_locked(tenant, settings, start_uid, notify=notify)
 
 
+# Upper bound of messages handled per poll: keeps one poll (and the tenant lock) short after a
+# long outage; the rest is picked up by the next poll. Per-message logic is unchanged.
+POLL_BATCH_LIMIT = 100
+
+_PASS = "pass"  # the cursor may move past this message
+_HOLD = "hold"  # the cursor must wait: recorded in the ledger, retried by the next poll
+
+
+def _message_already_stored(tenant: Tenant, parsed: ParsedGuestEmail) -> bool:
+    return bool(parsed.message_id) and GuestInboundMessage.objects.filter(
+        tenant=tenant, message_id=parsed.message_id
+    ).exists()
+
+
+def _advance_cursor(settings: TenantReceptionSettings, uid: int) -> None:
+    if uid > settings.guest_imap_last_uid:
+        settings.guest_imap_last_uid = uid
+        settings.save(update_fields=["guest_imap_last_uid", "updated_at"])
+
+
 def _poll_tenant_guest_inbox_locked(
     tenant: Tenant,
     settings: TenantReceptionSettings,
@@ -384,52 +417,38 @@ def _poll_tenant_guest_inbox_locked(
         return result
 
     try:
+        # 1. Mailbox identity first: UIDs are only comparable within one UIDVALIDITY.
+        numbers = mailbox_status(client)
+        blocked = check_mailbox_state(tenant, settings, numbers)
+        if blocked:
+            result.blocked_reason = blocked
+            result.errors += 1
+            return result  # cursor and UIDVALIDITY untouched; no ingest stamp
+
         client.select("INBOX")
         mark_conversation_ingest("email", "poll")
-        search_from = max(start_uid, 0) + 1
-        status, data = client.uid("SEARCH", None, f"UID {search_from}:*")
-        if status != "OK" or not data or not data[0]:
-            return result
+        uidvalidity = numbers["UIDVALIDITY"]
 
-        uid_list = [int(item) for item in data[0].split() if item]
+        # 2. Only UIDs above the starting point, never an open-ended ``n:*`` range.
+        uid_list = search_new_uids(client, after_uid=start_uid, uidnext=numbers["UIDNEXT"])
         if not uid_list:
             return result
 
-        for uid in uid_list:
-            result.max_uid = max(result.max_uid, uid)
-            status, fetched = client.uid("FETCH", str(uid), "(RFC822)")
-            if status != "OK" or not fetched or not fetched[0]:
-                result.errors += 1
-                continue
-
-            raw_part = fetched[0]
-            raw_bytes = raw_part[1] if isinstance(raw_part, tuple) else None
-            if not raw_bytes:
-                result.errors += 1
-                continue
-
-            msg = email.message_from_bytes(raw_bytes)
-            if _is_own_outbound_copy(msg, settings.guest_contact_email):
-                result.skipped += 1
-                continue
-            if not _address_contains_booking_guest(msg):
-                result.skipped += 1
-                continue
-
-            parsed = parse_guest_email_bytes(raw_bytes)
-            if parsed is None:
-                result.skipped += 1
-                continue
-
-            row = ingest_parsed_email(tenant, parsed, notify=notify)
-            if row is None:
-                result.skipped += 1
-            else:
-                result.ingested += 1
-
-        if result.max_uid > settings.guest_imap_last_uid:
-            settings.guest_imap_last_uid = result.max_uid
-            settings.save(update_fields=["guest_imap_last_uid", "updated_at"])
+        # 3. Process in UID order. The cursor follows the longest prefix of messages that are
+        #    processed/skipped/quarantined; a message that is still being retried holds it, but
+        #    never stops the messages after it from being processed (dedupe makes re-polls safe).
+        frontier = start_uid
+        holding = False
+        for uid in uid_list[:POLL_BATCH_LIMIT]:
+            outcome = _process_uid(
+                client, tenant, settings, uid, uidvalidity, notify=notify, result=result
+            )
+            if outcome == _HOLD:
+                holding = True
+            elif not holding:
+                frontier = uid
+                _advance_cursor(settings, frontier)  # durable per message: a killed poll resumes here
+        result.max_uid = max(start_uid, frontier)
     except Exception as exc:
         logger.exception(
             "guest imap poll failed",
@@ -443,3 +462,80 @@ def _poll_tenant_guest_inbox_locked(
             pass
 
     return result
+
+
+def _process_uid(
+    client,
+    tenant: Tenant,
+    settings: TenantReceptionSettings,
+    uid: int,
+    uidvalidity: int,
+    *,
+    notify: bool,
+    result: IngestResult,
+) -> str:
+    """Handle one message. Per-message problems never raise; they go to the ledger."""
+
+    def fail(kind: str, error_type: str) -> str:
+        issue = record_failure(
+            tenant, uid=uid, uidvalidity=uidvalidity, kind=kind, error_type=error_type
+        )
+        if kind != GuestImapIssueKind.NO_RESERVATION:
+            result.errors += 1
+        logger.warning(
+            "guest imap message not processed",
+            extra={
+                "tenant_slug": tenant.slug,
+                "uid": uid,
+                "kind": str(kind),
+                "attempts": issue.attempts,
+                "status": str(issue.status),
+                "error_type": error_type,
+            },
+        )
+        if issue.status == GuestImapIssueStatus.OPEN:
+            result.issues_open += 1
+            return _HOLD
+        result.quarantined += 1
+        return _PASS  # durably recorded and retried enough: the cursor may pass
+
+    def done() -> str:
+        mark_resolved(tenant, uid=uid, uidvalidity=uidvalidity)
+        return _PASS
+
+    try:
+        status, fetched = client.uid("FETCH", str(uid), "(RFC822)")
+    except Exception as exc:
+        return fail(GuestImapIssueKind.FETCH_FAILED, type(exc).__name__)
+    raw_part = fetched[0] if status == "OK" and fetched else None
+    raw_bytes = raw_part[1] if isinstance(raw_part, tuple) else None
+    if not raw_bytes:
+        return fail(GuestImapIssueKind.FETCH_FAILED, "EmptyResponse")
+
+    try:
+        msg = email.message_from_bytes(raw_bytes)
+        if _is_own_outbound_copy(msg, settings.guest_contact_email):
+            result.skipped += 1
+            return done()
+        if not _address_contains_booking_guest(msg):
+            result.skipped += 1
+            return done()
+        parsed = parse_guest_email_bytes(raw_bytes)
+    except Exception as exc:
+        return fail(GuestImapIssueKind.PARSE_FAILED, type(exc).__name__)
+    if parsed is None:
+        result.skipped += 1
+        return done()
+
+    try:
+        row = ingest_parsed_email(tenant, parsed, notify=notify)
+    except Exception as exc:
+        return fail(GuestImapIssueKind.INGEST_FAILED, type(exc).__name__)
+    if row is not None:
+        result.ingested += 1
+        return done()
+    if _message_already_stored(tenant, parsed):
+        result.skipped += 1  # dedupe: already ingested earlier (e.g. a re-poll while the cursor waited)
+        return done()
+    result.skipped += 1  # unchanged counter semantics: no reservation counted as skipped
+    return fail(GuestImapIssueKind.NO_RESERVATION, "")

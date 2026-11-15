@@ -349,6 +349,10 @@ def _collect(
 
     if expect_uidvalidity is not None and uidvalidity != expect_uidvalidity:
         report.blocking.append(f"UIDVALIDITY is {uidvalidity}, expected {expect_uidvalidity}")
+    stored = settings.guest_imap_uidvalidity
+    if stored is not None and uidvalidity != stored:
+        # UIDs (and therefore the cursor) belong to another mailbox generation.
+        report.blocking.append(f"UIDVALIDITY is {uidvalidity}, but the stored value is {stored}")
     if uidnext is None:
         report.blocking.append("server did not report UIDNEXT")
     elif report.to_uid > uidnext - 1:

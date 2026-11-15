@@ -49,4 +49,7 @@ class Command(BaseCommand):
             f"ingested={result.ingested} skipped={result.skipped} "
             f"errors={result.errors} max_uid={result.max_uid}"
             + (" locked=1 (another poll/replay holds the tenant lock)" if result.skipped_locked else "")
+            + (f" BLOCKED={result.blocked_reason} (cursor untouched; see GuestImapIssue)" if result.blocked_reason else "")
+            + (f" issues_open={result.issues_open}" if result.issues_open else "")
+            + (f" quarantined={result.quarantined}" if result.quarantined else "")
         )
