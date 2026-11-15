@@ -59,6 +59,10 @@ ALLOWED_HOSTS = list(
 MEDIA_ROOT = Path(tempfile.gettempdir()) / "stay-test-media"
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
+# Archive tests write real files; never touch the live private tree.
+PRIVATE_MEDIA_ROOT = Path(tempfile.gettempdir()) / "stay-test-private-media"
+PRIVATE_MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+
 # Manifest storage needs collectstatic; admin template tests only need plain URLs.
 STORAGES = {
     **STORAGES,

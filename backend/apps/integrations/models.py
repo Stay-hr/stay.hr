@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.core.models import TenantScopedModel
+from apps.integrations.media_storage import get_private_media_storage
 from apps.integrations.encryption import decrypt_config, encrypt_config
 
 
@@ -384,6 +385,107 @@ class WhatsAppMessage(TenantScopedModel):
 
     def __str__(self) -> str:
         return f"{self.direction} {self.wamid} ({self.wa_id})"
+
+
+def whatsapp_media_archive_upload_to(instance, filename: str) -> str:
+    """Server-built path only: the guest-supplied filename never reaches the disk."""
+    bucket = (
+        "personal"
+        if instance.sensitivity == WhatsAppMediaArchive.Sensitivity.PERSONAL_DOCUMENT_CANDIDATE
+        else "standard"
+    )
+    stamp = instance.created_at
+    year, month = (stamp.year, f"{stamp.month:02d}") if stamp else ("unknown", "00")
+    return f"whatsapp_media/{bucket}/{instance.tenant_id}/{year}/{month}/{filename}"
+
+
+class WhatsAppMediaArchive(TenantScopedModel):
+    """Durable private copy of media carried by a WhatsAppMessage (inbound or echo).
+
+    Independent of document intake: this is the raw-bytes record, intake is processing.
+    """
+
+    class Kind(models.TextChoices):
+        IMAGE = "image", "Image"
+        DOCUMENT = "document", "Document"
+        VIDEO = "video", "Video"
+        AUDIO = "audio", "Audio"
+        VOICE = "voice", "Voice note"
+        STICKER = "sticker", "Sticker"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        DOWNLOADING = "downloading", "Downloading"
+        ARCHIVED = "archived", "Archived"
+        FAILED = "failed", "Failed (will retry)"
+        PERMANENT_FAILED = "permanent_failed", "Failed (permanent)"
+
+    class Sensitivity(models.TextChoices):
+        STANDARD = "standard", "Standard"
+        PERSONAL_DOCUMENT_CANDIDATE = "personal_document_candidate", "Personal document candidate"
+
+    # FK + unique(message, media_id) rather than OneToOne: Cloud API carries one media
+    # per message today, but echoes / header media may not stay that way.
+    message = models.ForeignKey(
+        WhatsAppMessage,
+        on_delete=models.CASCADE,
+        related_name="media_archives",
+    )
+    wamid = models.CharField(max_length=128, db_index=True)
+    media_id = models.CharField(max_length=128, db_index=True)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    sensitivity = models.CharField(
+        max_length=32, choices=Sensitivity.choices, default=Sensitivity.STANDARD
+    )
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING)
+
+    declared_mime = models.CharField(max_length=128, blank=True)
+    mime_type = models.CharField(max_length=128, blank=True)
+    original_filename = models.CharField(max_length=255, blank=True)
+    caption = models.TextField(blank=True)
+
+    size_bytes = models.BigIntegerField(null=True, blank=True)
+    sha256 = models.CharField(max_length=64, blank=True, db_index=True)
+    file = models.FileField(
+        storage=get_private_media_storage,
+        upload_to=whatsapp_media_archive_upload_to,
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    next_retry_at = models.DateTimeField(null=True, blank=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    # Recorded only. Nothing deletes on this date until a legal basis is defined.
+    retention_until = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "media_id"],
+                name="uniq_whatsapp_media_archive_message_media",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(status="archived")
+                | (~models.Q(file="") & ~models.Q(sha256="")),
+                name="whatsapp_media_archived_has_file_and_sha",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "next_retry_at"], name="wa_media_status_retry_idx"),
+            models.Index(fields=["tenant", "created_at"], name="wa_media_tenant_created_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.kind} {self.media_id} [{self.status}]"
 
 
 class WhatsAppInboundRouting(TenantScopedModel):

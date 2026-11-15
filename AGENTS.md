@@ -138,6 +138,10 @@ Telemetry (OCR-D, write-only): [`docs/development/document-intake-telemetry.md`]
 
 **Guest document intake is web-only** (`GUEST_CHECKIN_WEB_ONLY=true`): `booking.{tenant}/check-in/{token}` — manual PATCH + `WEB_GUEST` OCR (`POST .../documents/`, `GET .../jobs/{id}/`). WhatsApp Auto check-in and inbound guest images send the web link only; no guest `DocumentIntakeJob(source=whatsapp)`. Staff Operator Toni / Hospira batch OCR unchanged. ADR: [0004](docs/architecture/adr/0004-guest-checkin-session.md).
 
+## WhatsApp media archive
+
+Private archive of inbound/echo WhatsApp media (`WhatsAppMediaArchive`), independent of document intake. Default **off** (`WHATSAPP_MEDIA_ARCHIVE_ENABLED=false`). Files live in `PRIVATE_MEDIA_ROOT` (`data/private_media`, **not** under public `MEDIA_ROOT`) — never serve them by URL. Images/documents are `personal_document_candidate`. Retention is recorded only; **never auto-delete** archived media without an agreed legal basis. No Meta-side deletion until PR 2 and a verified backup. Runbook: [docs/operations/whatsapp-media-archive.md](docs/operations/whatsapp-media-archive.md). Ops: `manage.py whatsapp_media_archive --stats|--retry-failed|--backfill` (via `django-run`).
+
 ## Gunicorn + SSE (Reception)
 
 **Thesis:** event **distribution** (Redis EventBus) is separate from **transport** (Gunicorn vs dedicated Uvicorn SSE). Full Django ASGI is optional (Phase 2c), not required for SSE scaling. See [ADR 0005](docs/architecture/adr/0005-gunicorn-sse-worker-evolution.md).
