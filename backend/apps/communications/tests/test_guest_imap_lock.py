@@ -21,7 +21,9 @@ D = datetime(2026, 8, 3, 9, 0, tzinfo=timezone.utc)
 
 
 def live_client():
+    """A live-poll client for a mailbox with UIDVALIDITY 1, nothing newer than the cursor."""
     client = MagicMock()
+    client.status.return_value = ("OK", [b"INBOX (UIDVALIDITY 1 UIDNEXT 1122)"])
     client.uid.return_value = ("OK", [b""])
     return client
 
@@ -106,7 +108,8 @@ class SingleFlightIntegrationTests(ReplayTxCase):
     def test_celery_task_reports_locked_tenants(self):
         with hold_guest_imap_lock(self.tenant.pk), patch(INGEST_CONNECT) as connect:
             summary = poll_guest_email_inbox(tenant_slug="uzorita")
-        self.assertEqual(summary, {"tenants": 1, "ingested": 0, "skipped": 0, "errors": 0, "locked": 1})
+        self.assertEqual(summary, {"tenants": 1, "ingested": 0, "skipped": 0, "errors": 0, "locked": 1,
+                                   "blocked": 0, "issues_open": 0, "quarantined": 0})
         connect.assert_not_called()
         with patch(INGEST_CONNECT, return_value=live_client()):
             self.assertEqual(poll_guest_email_inbox(tenant_slug="uzorita")["locked"], 0)

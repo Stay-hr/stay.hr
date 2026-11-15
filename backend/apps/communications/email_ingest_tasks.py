@@ -33,6 +33,9 @@ def poll_guest_email_inbox(
         "skipped": 0,
         "errors": 0,
         "locked": 0,
+        "blocked": 0,
+        "issues_open": 0,
+        "quarantined": 0,
     }
 
     for tenant in tenants:
@@ -48,6 +51,9 @@ def poll_guest_email_inbox(
         summary["skipped"] += result.skipped
         summary["errors"] += result.errors
         summary["locked"] += int(result.skipped_locked)
+        summary["blocked"] += int(bool(result.blocked_reason))
+        summary["issues_open"] += result.issues_open
+        summary["quarantined"] += result.quarantined
 
         logger.info(
             "guest email imap poll finished",
@@ -57,6 +63,9 @@ def poll_guest_email_inbox(
                 "skipped": result.skipped,
                 "errors": result.errors,
                 "locked": result.skipped_locked,
+                "blocked_reason": result.blocked_reason,
+                "issues_open": result.issues_open,
+                "quarantined": result.quarantined,
                 "max_uid": result.max_uid,
             },
         )

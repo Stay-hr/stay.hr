@@ -366,3 +366,22 @@ class CommandTests(ReplayCase):
         text = "\n".join(format_report(report))
         self.assertIn("uid=1122 internaldate=2026-07-31T21:54:02+00:00 outcome=would_insert", text)
         self.assertNotIn("@", text)
+
+class StoredUidValidityTests(ReplayCase):
+    def test_replay_refuses_when_the_mailbox_generation_differs_from_the_stored_one(self):
+        from apps.tenants.models import TenantReceptionSettings
+        TenantReceptionSettings.objects.filter(pk=self.settings_row.pk).update(guest_imap_uidvalidity=UIDVALIDITY + 1)
+        fake = FakeImap(three_messages())
+        report = replay_tenant_guest_inbox(self.tenant_fresh(), from_uid=1122, to_uid=1124, connect=lambda s: fake)
+        self.assertTrue(any("stored value" in b for b in report.blocking))
+        with self.assertRaisesMessage(ReplayError, "stored value"):
+            replay_tenant_guest_inbox(self.tenant_fresh(), from_uid=1122, to_uid=1124, apply=True,
+                                      expect_cursor=CURSOR, connect=lambda s: FakeImap(three_messages()))
+        self.assertEqual((GuestInboundMessage.objects.count(), self.cursor()), (0, CURSOR))
+
+    def test_replay_accepts_a_matching_or_missing_stored_value(self):
+        from apps.tenants.models import TenantReceptionSettings
+        TenantReceptionSettings.objects.filter(pk=self.settings_row.pk).update(guest_imap_uidvalidity=UIDVALIDITY)
+        report = replay_tenant_guest_inbox(self.tenant_fresh(), from_uid=1122, to_uid=1124,
+                                           connect=lambda s: FakeImap(three_messages()))
+        self.assertEqual(report.blocking, [])

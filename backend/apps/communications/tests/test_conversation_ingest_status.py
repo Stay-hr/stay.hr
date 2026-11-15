@@ -243,6 +243,8 @@ class ConversationIngestHookTests(TestCase):
     @patch("apps.communications.guest_email_ingest._connect_imap")
     def test_email_imap_select_stamps_last_poll(self, mock_connect):
         client = MagicMock()
+        # The poll now identifies the mailbox (UIDVALIDITY/UIDNEXT) before selecting it.
+        client.status.return_value = ("OK", [b"INBOX (UIDVALIDITY 7 UIDNEXT 1)"])
         client.uid.return_value = ("OK", [b""])
         mock_connect.return_value = client
         result = poll_tenant_guest_inbox(self.tenant)

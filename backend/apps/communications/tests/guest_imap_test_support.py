@@ -78,10 +78,14 @@ class FakeImap:
             found = sorted(u for u in self.messages if int(lo) <= u <= hi)
             return "OK", [" ".join(map(str, found)).encode()]
         uid = int(args[0])
-        assert "PEEK" in args[1] and "RFC822" not in args[1], "fetch must not mark messages read"
+        item = args[1]
+        meta_only = item.strip("() ") == "INTERNALDATE"
+        assert meta_only or ("PEEK" in item and "RFC822" not in item), "fetch must not mark messages read"
         if uid in self.fail_fetch or uid not in self.messages:
             return "NO", [b"fetch failed"]
         raw, internal = self.messages[uid]
+        if meta_only:
+            return "OK", [f'1 (UID {uid} INTERNALDATE "{imap_date(internal)}")'.encode()]
         head = f'1 (UID {uid} INTERNALDATE "{imap_date(internal)}" BODY[] {{{len(raw)}}}'.encode()
         return "OK", [(head, raw), b")"]
 
@@ -90,6 +94,67 @@ class FakeImap:
 
     def commands(self) -> list[str]:
         return [e[1] if e[0] == "UID" else e[0] for e in self.log]
+
+
+class FakeLiveImap:
+    """IMAP double for the LIVE poll (read-write select, RFC822 fetch) with real ``n:*`` semantics."""
+
+    def __init__(self, messages: dict[int, bytes], *, uidvalidity: int = UIDVALIDITY,
+                 uidnext: int | None = None, status_ok: bool = True, ignore_search_bounds: bool = False,
+                 fetch_no=(), fetch_raise=(), fetch_empty=()):
+        self.messages = dict(messages)
+        self.uidvalidity = uidvalidity
+        self.uidnext = uidnext if uidnext is not None else (max(messages) + 1 if messages else 1)
+        self.status_ok = status_ok
+        self.ignore_search_bounds = ignore_search_bounds
+        self.fetch_no, self.fetch_raise, self.fetch_empty = set(fetch_no), set(fetch_raise), set(fetch_empty)
+        self.log: list[tuple] = []
+        self.on_fetch = None  # hook(uid) called before every FETCH
+
+    def status(self, mailbox, items):
+        self.log.append(("STATUS",))
+        if not self.status_ok:
+            return "NO", [b"STATUS failed"]
+        return "OK", [f"{mailbox} (UIDVALIDITY {self.uidvalidity} UIDNEXT {self.uidnext})".encode()]
+
+    def select(self, mailbox="INBOX", readonly=False):
+        self.log.append(("SELECT", readonly))
+        return "OK", [str(len(self.messages)).encode()]
+
+    def uid(self, command, *args):
+        cmd = command.upper()
+        self.log.append(("UID", cmd, args))
+        assert cmd in ("SEARCH", "FETCH"), f"live poll used an unexpected command: {cmd}"
+        if cmd == "SEARCH":
+            lo, hi = args[1].removeprefix("UID ").split(":")
+            top = max(self.messages) if self.messages else 0
+            lo = int(lo)
+            hi = top if hi == "*" else int(hi)
+            a, b = min(lo, hi), max(lo, hi)  # IMAP: n:* with n > max UID still matches the highest UID
+            if self.ignore_search_bounds:
+                a, b = 0, 10**9
+            return "OK", [" ".join(str(u) for u in sorted(self.messages) if a <= u <= b).encode()]
+        uid = int(args[0])
+        if self.on_fetch:
+            self.on_fetch(uid)
+        if uid in self.fetch_raise:
+            import imaplib
+            raise imaplib.IMAP4.abort("connection reset")
+        if uid in self.fetch_no or uid not in self.messages:
+            return "NO", [b"fetch failed"]
+        if uid in self.fetch_empty:
+            return "OK", [None]
+        raw = self.messages[uid]
+        return "OK", [(f"1 (UID {uid} RFC822 {{{len(raw)}}}".encode(), raw), b")"]
+
+    def logout(self):
+        self.log.append(("LOGOUT",))
+
+    def fetched_uids(self) -> list[int]:
+        return [int(e[2][0]) for e in self.log if e[0] == "UID" and e[1] == "FETCH"]
+
+    def searches(self) -> list[str]:
+        return [e[2][1] for e in self.log if e[0] == "UID" and e[1] == "SEARCH"]
 
 
 class _WorldMixin:

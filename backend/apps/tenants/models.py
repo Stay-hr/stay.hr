@@ -97,6 +97,16 @@ class TenantReceptionSettings(models.Model):
         default=0,
         help_text="Last processed IMAP UID for guest inbox polling (INBOX).",
     )
+    guest_imap_uidvalidity = models.PositiveBigIntegerField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text=(
+            "IMAP UIDVALIDITY of INBOX that guest_imap_last_uid belongs to (32-bit unsigned). "
+            "NULL = not initialised: polling refuses to run when guest_imap_last_uid > 0 until "
+            "an operator runs init_guest_imap_uidvalidity. Never reset automatically."
+        ),
+    )
     guest_imap_enabled = models.BooleanField(
         default=True,
         help_text="Poll guest_contact_email inbox for Booking.com guest replies.",

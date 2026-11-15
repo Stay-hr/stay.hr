@@ -670,6 +670,65 @@ class PostCheckinSendClaim(TenantScopedModel):
 
 
 # Messaging Orchestration Engine outbox (ADR 0010) — registered on this app.
+class GuestImapIssueKind(models.TextChoices):
+    # message-level (uid = the IMAP UID)
+    FETCH_FAILED = "fetch_failed", "IMAP fetch failed"
+    PARSE_FAILED = "parse_failed", "Message could not be parsed"
+    INGEST_FAILED = "ingest_failed", "Storing the message failed"
+    NO_RESERVATION = "no_reservation", "No reservation for the booking code"
+    # mailbox-level (uid = 0): polling is refused until an operator acts
+    UIDVALIDITY_CHANGED = "uidvalidity_changed", "UIDVALIDITY differs from the stored value"
+    UIDVALIDITY_UNINITIALIZED = "uidvalidity_uninitialized", "UIDVALIDITY was never stored"
+    UIDVALIDITY_UNAVAILABLE = "uidvalidity_unavailable", "Server did not report UIDVALIDITY/UIDNEXT"
+    CURSOR_AHEAD = "cursor_ahead_of_mailbox", "Cursor is beyond the mailbox's UIDNEXT"
+
+
+class GuestImapIssueStatus(models.TextChoices):
+    OPEN = "open", "Open (holds the IMAP cursor, retried by polling)"
+    QUARANTINED = "quarantined", "Quarantined (cursor released, awaits operator retry)"
+    RESOLVED = "resolved", "Resolved"
+
+
+class GuestImapIssue(TenantScopedModel):
+    """Durable ledger of guest-inbox messages (and mailbox states) that were not processed.
+
+    Lets the IMAP cursor move past a message only once it can no longer be lost: while an
+    issue is ``open`` the cursor waits, after the per-kind attempt limit it becomes
+    ``quarantined`` (cursor released, the UID stays here for ``retry_guest_imap_issues``).
+    Holds identifiers and an exception *type* only — never message content or addresses.
+    """
+
+    uid = models.PositiveBigIntegerField(help_text="IMAP UID; 0 for mailbox-level issues.")
+    uidvalidity = models.PositiveBigIntegerField(
+        default=0, help_text="Server UIDVALIDITY the UID belongs to (0 if unknown)."
+    )
+    kind = models.CharField(max_length=32, choices=GuestImapIssueKind.choices)
+    status = models.CharField(
+        max_length=16, choices=GuestImapIssueStatus.choices, default=GuestImapIssueStatus.OPEN
+    )
+    attempts = models.PositiveSmallIntegerField(default=0)
+    error_type = models.CharField(max_length=64, blank=True, default="")
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Guest IMAP issue"
+        verbose_name_plural = "Guest IMAP issues"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "uidvalidity", "uid"],
+                name="communications_guestimapissue_uid_uniq",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["tenant", "status", "uid"], name="comm_imapissue_status_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"imap uid={self.uid} {self.kind} [{self.status}] x{self.attempts}"
+
+
 from apps.communications.messaging.intents import (  # noqa: E402
     PRE_ARRIVAL_INTENTS,
     WELCOME_INTENTS,
@@ -691,6 +750,9 @@ from apps.communications.messaging.models import (  # noqa: E402
 __all__ = [
     "Conversation",
     "ConversationLanguageSource",
+    "GuestImapIssue",
+    "GuestImapIssueKind",
+    "GuestImapIssueStatus",
     "GuestInboundMessage",
     "GuestMessage",
     "GuestMessageChannel",
