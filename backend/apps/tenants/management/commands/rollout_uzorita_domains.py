@@ -64,21 +64,12 @@ class Command(BaseCommand):
                 "is_primary": True,
             },
         )
-        legacy_domain, _ = TenantDomain.objects.update_or_create(
-            domain="booking.uzorita.hr",
-            defaults={
-                "tenant": tenant,
-                "property": property_obj,
-                "domain_type": TenantDomain.DomainType.CUSTOM_DOMAIN,
-                "is_primary": False,
-            },
-        )
 
         self.stdout.write(
             self.style.SUCCESS(
                 "TenantDomain records ready: "
                 f"{booking_domain.domain} (primary booking), "
-                f"{hub_domain.domain} (hub), {legacy_domain.domain} (legacy custom)",
+                f"{hub_domain.domain} (hub)",
             )
         )
 
@@ -91,9 +82,6 @@ class Command(BaseCommand):
                     for domain in (hub_domain, booking_domain):
                         message = provision_tenant_domain_dns(domain, dry_run=True)
                         self.stdout.write(f"Would provision tenant DNS: {message}")
-                    self.stdout.write(
-                        f"Would skip DNS for legacy custom domain: {legacy_domain.domain}",
-                    )
                 else:
                     platform_records = provision_platform_dns()
                     for line in platform_records:
@@ -101,9 +89,6 @@ class Command(BaseCommand):
                     for domain in (hub_domain, booking_domain):
                         message = provision_tenant_domain_dns(domain)
                         self.stdout.write(f"Tenant DNS: {message}")
-                    self.stdout.write(
-                        f"Skipped DNS for legacy custom domain: {legacy_domain.domain}",
-                    )
             except CloudflareAPIError as exc:
                 raise CommandError(str(exc)) from exc
 

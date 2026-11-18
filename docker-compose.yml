@@ -57,13 +57,6 @@ services:
       - traefik.http.routers.stay-admin.tls.certresolver=cloudflare
       - traefik.http.routers.stay-admin.service=stay-django
       - traefik.http.routers.stay-admin.priority=100
-      # Tenant custom domain: Django admin/static/media (must beat web-booking router)
-      - traefik.http.routers.stay-uzorita-admin.rule=Host(`booking.uzorita.hr`) && (PathPrefix(`/admin`) || PathPrefix(`/static`) || PathPrefix(`/media`))
-      - traefik.http.routers.stay-uzorita-admin.entrypoints=websecure
-      - traefik.http.routers.stay-uzorita-admin.tls=true
-      - traefik.http.routers.stay-uzorita-admin.tls.certresolver=cloudflare
-      - traefik.http.routers.stay-uzorita-admin.service=stay-django
-      - traefik.http.routers.stay-uzorita-admin.priority=200
       - traefik.http.services.stay-django.loadbalancer.server.port=8000
 
   # One-off manage.py / tests — NOT registered with Traefik (no proxy network, no labels).
@@ -157,12 +150,6 @@ services:
       - traefik.http.routers.stay-booking-apex.tls.certresolver=cloudflare
       - traefik.http.routers.stay-booking-apex.service=stay-web-booking
       - traefik.http.routers.stay-booking-apex.priority=110
-      - traefik.http.routers.stay-booking-uzorita.rule=Host(`booking.uzorita.hr`)
-      - traefik.http.routers.stay-booking-uzorita.entrypoints=websecure
-      - traefik.http.routers.stay-booking-uzorita.tls=true
-      - traefik.http.routers.stay-booking-uzorita.tls.certresolver=cloudflare
-      - traefik.http.routers.stay-booking-uzorita.service=stay-web-booking
-      - traefik.http.routers.stay-booking-uzorita.priority=50
       - traefik.http.routers.stay-booking-uzorita-sibenik.rule=Host(`uzorita-sibenik.stay.hr`)
       - traefik.http.routers.stay-booking-uzorita-sibenik.entrypoints=websecure
       - traefik.http.routers.stay-booking-uzorita-sibenik.tls=true
