@@ -178,6 +178,37 @@ Total room price
         self.assertEqual(row.external_id, "5304300338")
         self.assertEqual(row.guest_names, ["Laurence Lambert de Beaulieu"])
 
+    def test_parse_croatian_extranet_reservation_details_text(self):
+        text = (
+            "Luxury Room Uzorita B&B\n4181954\nPrijava:\nčet, 5. stu. 2026.\n"
+            "Odjava:\npet, 6. stu. 2026.\nDuljina boravka:\n1 noć\n"
+            "Ukupan broj gostiju:\n1\nUkupan broj jedinica:\n1\n"
+            "Ukupna cijena:\n1.058,61 €\nIme gosta:\nJan Novak \n cz\n"
+            "jnovak.123456@guest.booking.com\n+420 111 222 333\nJezik\nčeški\n"
+            "Broj rezervacije:\n6229741707\nIznos za obračun provizije:\n1.058,61 €\n"
+            "Primljeno:\nsri, 4. stu. 2026.\nProvizija i naknade:\n204,30 € \n"
+            "Soba Deluxe s king size krevetom (Luxury Room Uzorita - R1)\n1.058,61 €\n"
+            " čet, 5. stu. 2026.\n"
+        )
+        row = parse_booking_pdf_text(text)
+        self.assertEqual(row.external_id, "6229741707")
+        self.assertEqual(row.booker_name, "Jan Novak")
+        self.assertEqual(row.booker_country, "CZ")
+        self.assertEqual(row.booker_email, "jnovak.123456@guest.booking.com")
+        self.assertEqual(row.booker_phone, "+420 111 222 333")
+        self.assertEqual(row.check_in_date, date(2026, 11, 5))
+        self.assertEqual(row.check_out_date, date(2026, 11, 6))
+        self.assertEqual(row.booked_at.date(), date(2026, 11, 4))
+        self.assertEqual(row.total_amount, Decimal("1058.61"))
+        self.assertEqual(row.commission_amount, Decimal("204.30"))
+        self.assertEqual(row.commission_percent, Decimal("19.30"))
+        self.assertEqual(row.adults_count, 1)
+        self.assertEqual(row.units_count, 1)
+        self.assertEqual(row.nights_count, 1)
+        self.assertEqual(row.booking_status, "ok")
+        self.assertEqual(row.unit_amounts, (Decimal("1058.61"),))
+        self.assertIn("R1", row.room_name)
+
     def test_rejects_empty_pdf(self):
         with self.assertRaises(ValueError):
             parse_booking_pdf(b"")

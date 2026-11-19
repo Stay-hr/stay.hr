@@ -283,9 +283,135 @@ def _parse_unit_amounts(room_blocks: list[PdfRoomBlock]) -> tuple[Decimal, ...]:
     return ()
 
 
+# --- Croatian extranet "Detalji rezervacije" print-out -------------------------------------
+# Same Booking.com data, different layout: "Label:\nvalue" pairs, Croatian month
+# abbreviations ("5. stu. 2026.") and "1.234,56 €" money.
+
+_HR_BOOKING_NUMBER_RE = re.compile(r"Broj rezervacije:\s*(\d+)", re.IGNORECASE)
+_HR_GUEST_BLOCK_RE = re.compile(
+    r"Ime gosta:\s*\n(?P<name>[^\n]+)\n\s*(?P<country>[A-Za-z]{2})\s*\n",
+    re.IGNORECASE,
+)
+_HR_DATE_RE = r"([^\n\d,]+,\s*\d{1,2}\.\s*[^\s\d.]+\.?\s*\d{4}\.?)"
+_HR_CHECK_IN_RE = re.compile(rf"Prijava:\s*\n\s*{_HR_DATE_RE}", re.IGNORECASE)
+_HR_CHECK_OUT_RE = re.compile(rf"Odjava:\s*\n\s*{_HR_DATE_RE}", re.IGNORECASE)
+_HR_RECEIVED_RE = re.compile(rf"Primljeno:\s*\n\s*{_HR_DATE_RE}", re.IGNORECASE)
+_HR_MONEY = r"([\d.]+,\d{2}|\d+)\s*€"
+_HR_TOTAL_PRICE_RE = re.compile(rf"Ukupna cijena:\s*\n\s*{_HR_MONEY}", re.IGNORECASE)
+_HR_COMMISSION_RE = re.compile(rf"Provizija i naknade:\s*\n\s*{_HR_MONEY}", re.IGNORECASE)
+_HR_TOTAL_GUESTS_RE = re.compile(r"Ukupan broj gostiju:\s*\n\s*(\d+)", re.IGNORECASE)
+_HR_TOTAL_UNITS_RE = re.compile(r"Ukupan broj jedinica:\s*\n\s*(\d+)", re.IGNORECASE)
+_HR_PHONE_RE = re.compile(r"(\+\d[\d ]{6,}\d)")
+# "<room name> (<property> - R1)\n<price> €" — one block per booked unit.
+_HR_ROOM_RE = re.compile(
+    rf"^([^\n]+\([^)\n]+\))\s*\n\s*{_HR_MONEY}",
+    re.MULTILINE,
+)
+_HR_MONTHS = {
+    "sij": 1, "velj": 2, "ožu": 3, "tra": 4, "svi": 5, "lip": 6,
+    "srp": 7, "kol": 8, "ruj": 9, "lis": 10, "stu": 11, "pro": 12,
+}
+_HR_DATE_PARTS_RE = re.compile(r"(\d{1,2})\.\s*([^\s\d.]+)\.?\s*(\d{4})")
+
+
+def _is_hr_extranet_text(text: str) -> bool:
+    return bool(_HR_BOOKING_NUMBER_RE.search(text))
+
+
+def _parse_hr_date(raw: str) -> date:
+    match = _HR_DATE_PARTS_RE.search(raw or "")
+    month = _HR_MONTHS.get(match.group(2).lower()) if match else None
+    if not match or month is None:
+        raise ValueError(f"Neispravan datum u PDF-u: {raw!r}")
+    return date(int(match.group(3)), month, int(match.group(1)))
+
+
+def _parse_hr_money(raw: str) -> Decimal | None:
+    cleaned = (raw or "").strip().replace(".", "").replace(",", ".")
+    try:
+        return Decimal(cleaned) if cleaned else None
+    except InvalidOperation:
+        return None
+
+
+def parse_booking_extranet_hr_text(text: str) -> BookingXlsRow:
+    external_id = _require_match(_HR_BOOKING_NUMBER_RE, text, "Broj rezervacije")
+    guest_match = _HR_GUEST_BLOCK_RE.search(text)
+    if not guest_match:
+        raise ValueError("PDF potvrda nema polje: Ime gosta")
+    booker_name = re.sub(r"\s+", " ", guest_match.group("name")).strip()
+    booker_country = guest_match.group("country").upper()
+    guest_tail = text[guest_match.end(): guest_match.end() + 200]
+    email_match = _GUEST_EMAIL_RE.search(guest_tail)
+    phone_match = _HR_PHONE_RE.search(guest_tail)
+
+    check_in = _parse_hr_date(_require_match(_HR_CHECK_IN_RE, text, "Prijava"))
+    check_out = _parse_hr_date(_require_match(_HR_CHECK_OUT_RE, text, "Odjava"))
+    total_amount = _parse_hr_money(_require_match(_HR_TOTAL_PRICE_RE, text, "Ukupna cijena"))
+
+    commission_match = _HR_COMMISSION_RE.search(text)
+    commission_amount = _parse_hr_money(commission_match.group(1)) if commission_match else None
+    commission_percent = None
+    if commission_amount is not None and total_amount:
+        commission_percent = (commission_amount / total_amount * 100).quantize(Decimal("0.01"))
+
+    room_matches = list(_HR_ROOM_RE.finditer(text))
+    room_names = [_clean_room_name(m.group(1)) for m in room_matches]
+    prices = [_parse_hr_money(m.group(2)) for m in room_matches]
+    unit_amounts = tuple(p for p in prices if p is not None)
+    if len(unit_amounts) != len(room_matches):
+        unit_amounts = ()
+
+    units_match = _HR_TOTAL_UNITS_RE.search(text)
+    units_count = max(int(units_match.group(1)), 1) if units_match else max(len(room_matches), 1)
+    guests_match = _HR_TOTAL_GUESTS_RE.search(text)
+    adults_count = int(guests_match.group(1)) if guests_match else None
+
+    booked_at = None
+    received_match = _HR_RECEIVED_RE.search(text)
+    if received_match:
+        booked_at = _aware_datetime(
+            datetime.combine(_parse_hr_date(received_match.group(1)), datetime.min.time())
+        )
+
+    return BookingXlsRow(
+        external_id=external_id,
+        booker_name=booker_name,
+        guest_names=[booker_name],
+        check_in_date=check_in,
+        check_out_date=check_out,
+        booked_at=booked_at,
+        booking_status="ok",
+        units_count=units_count,
+        persons_count=adults_count,
+        adults_count=adults_count,
+        children_count=0,
+        children_ages="",
+        total_amount=total_amount,
+        currency="EUR",
+        commission_percent=commission_percent,
+        commission_amount=commission_amount,
+        payment_status="",
+        payment_provider="Payments by Booking.com",
+        notes="",
+        booker_country=booker_country,
+        travel_purpose="",
+        booking_device="",
+        room_name=", ".join(room_names),
+        nights_count=(check_out - check_in).days if check_out > check_in else None,
+        canceled_at=None,
+        booker_address="",
+        booker_phone=phone_match.group(1).strip() if phone_match else "",
+        booker_email=email_match.group(1).strip() if email_match else "",
+        unit_amounts=unit_amounts,
+    )
+
+
 def parse_booking_pdf_text(text: str) -> BookingXlsRow:
     if not text.strip():
         raise ValueError("PDF datoteka je prazna ili nije čitljiva.")
+    if _is_hr_extranet_text(text):
+        return parse_booking_extranet_hr_text(text)
 
     external_id = _require_match(_BOOKING_NUMBER_RE, text, "Booking number")
     booker_name = _require_match(_GUEST_NAME_RE, text, "Guest name")
