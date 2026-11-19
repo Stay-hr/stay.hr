@@ -23,6 +23,7 @@ data/ops/
 hospira-*.json
 *-firebase-adminsdk-*.json
 .wp_photos/
+.temp/
 google-services (hospira).json
 *.p12
 .imports/
